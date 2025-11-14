@@ -8,53 +8,40 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            wasm_core/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
 
-      - name: Add wasm32 target
-        run: rustup target add wasm32-unknown-unknown
+      - name: Build project
+        run: make build && rm -f www/pkg/.gitignore
 
-      - name: Install wasm-pack
-        run: cargo install wasm-pack
-
-      - name: cargo fmt
-        working-directory: wasm_core
-        run: cargo fmt -- --check
-
-      - name: cargo clippy
-        working-directory: wasm_core
-        run: cargo clippy -- -D warnings
-
-      - name: cargo test
-        working-directory: wasm_core
-        run: cargo test --all
-
-      - name: wasm-pack build
-        run: |
-          cd wasm_core
-          wasm-pack build --target web --out-dir ../www/pkg
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          path: www
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./www
+          publish_branch: gh-pages
+          force_orphan: true
