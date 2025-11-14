@@ -1,0 +1,4 @@
+/target
+wasm_core/target/
+www/pkg/
+.cargo

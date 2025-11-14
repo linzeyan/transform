@@ -1,0 +1,123 @@
+use crate::convert::json_utils::{
+    encode_json, json_to_toml, parse_json, toml_to_json, yaml_to_json,
+};
+use crate::convert::schema::{json_to_schema, schema_to_sample};
+use crate::convert::{go_struct, graphql, msgpack, proto, toon, xml};
+
+const FORMAT_JSON: &str = "JSON";
+const FORMAT_YAML: &str = "YAML";
+const FORMAT_TOML: &str = "TOML";
+const FORMAT_XML: &str = "XML";
+const FORMAT_SCHEMA: &str = "JSON Schema";
+const FORMAT_GO_STRUCT: &str = "Go Struct";
+const FORMAT_TOON: &str = "TOON";
+const FORMAT_MSGPACK: &str = "MsgPack";
+const FORMAT_GRAPHQL: &str = "GraphQL Schema";
+const FORMAT_PROTO: &str = "Protobuf";
+
+pub fn convert_formats(from: &str, to: &str, input: &str) -> Result<String, String> {
+    if from == to {
+        return Ok(input.to_string());
+    }
+    let value = match from {
+        FORMAT_JSON => parse_json(input)?,
+        FORMAT_YAML => yaml_to_json(serde_yaml::from_str(input).map_err(|err| err.to_string())?),
+        FORMAT_TOML => toml_to_json(
+            input
+                .parse::<toml::Value>()
+                .map_err(|err| err.to_string())?,
+        ),
+        FORMAT_XML => {
+            let json_text = xml::xml_to_json(input)?;
+            parse_json(&json_text)?
+        }
+        FORMAT_SCHEMA => {
+            let schema_value = parse_json(input)?;
+            schema_to_sample(&schema_value)
+        }
+        FORMAT_GO_STRUCT => go_struct::go_struct_to_value(input)?,
+        FORMAT_MSGPACK => {
+            let json = msgpack::msgpack_to_json(input)?;
+            parse_json(&json)?
+        }
+        FORMAT_TOON => {
+            let json = toon::toon_to_json(input)?;
+            parse_json(&json)?
+        }
+        FORMAT_GRAPHQL => {
+            let json = graphql::graphql_to_json(input)?;
+            parse_json(&json)?
+        }
+        FORMAT_PROTO => {
+            let json = proto::proto_to_json(input)?;
+            parse_json(&json)?
+        }
+        _ => return Err(format!("Unsupported source format: {from}")),
+    };
+    match to {
+        FORMAT_JSON => encode_json(&value, false),
+        FORMAT_YAML => serde_yaml::to_string(&value).map_err(|err| err.to_string()),
+        FORMAT_TOML => {
+            let toml_value = json_to_toml(&value)?;
+            toml::to_string(&toml_value).map_err(|err| err.to_string())
+        }
+        FORMAT_XML => {
+            let json_text = encode_json(&value, false)?;
+            xml::json_to_xml(&json_text)
+        }
+        FORMAT_SCHEMA => {
+            let schema = json_to_schema(&value);
+            serde_json::to_string_pretty(&schema).map_err(|err| err.to_string())
+        }
+        FORMAT_GO_STRUCT => Ok(go_struct::json_value_to_go(&value)),
+        FORMAT_MSGPACK => {
+            let json = encode_json(&value, false)?;
+            msgpack::json_to_msgpack(&json)
+        }
+        FORMAT_TOON => {
+            let json = encode_json(&value, false)?;
+            toon::json_to_toon(&json)
+        }
+        FORMAT_GRAPHQL => {
+            let json = encode_json(&value, false)?;
+            graphql::json_to_graphql(&json)
+        }
+        FORMAT_PROTO => {
+            let json = encode_json(&value, false)?;
+            proto::json_to_proto(&json)
+        }
+        _ => Err(format!("Unsupported target format: {to}")),
+    }
+}
+
+pub fn format_content(format_name: &str, input: &str, minify: bool) -> Result<String, String> {
+    match format_name {
+        FORMAT_JSON => {
+            let value = parse_json(input)?;
+            encode_json(&value, minify)
+        }
+        FORMAT_YAML => {
+            let value = yaml_to_json(serde_yaml::from_str(input).map_err(|err| err.to_string())?);
+            let formatted = encode_json(&value, minify)?;
+            let repro = parse_json(&formatted)?;
+            serde_yaml::to_string(&repro).map_err(|err| err.to_string())
+        }
+        FORMAT_TOML => {
+            let value = toml_to_json(
+                input
+                    .parse::<toml::Value>()
+                    .map_err(|err| err.to_string())?,
+            );
+            let formatted = encode_json(&value, minify)?;
+            let repro = parse_json(&formatted)?;
+            let toml_value = json_to_toml(&repro)?;
+            toml::to_string(&toml_value).map_err(|err| err.to_string())
+        }
+        FORMAT_XML => {
+            let json_text = xml::xml_to_json(input)?;
+            xml::json_to_xml(&json_text)
+        }
+        FORMAT_GO_STRUCT => Ok(input.trim().to_string()),
+        _ => Err("Formatting is not available for this format".into()),
+    }
+}

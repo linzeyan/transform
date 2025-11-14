@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width,initial-scale=1" />
+		<title>transform-go</title>
+		<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+		<link rel="stylesheet" href="style.css" />
+	</head>
+	<body>
+		<div class="app-shell">
+			<aside id="sidebar">
+				<div class="sidebar-brand">
+					<strong>transform-go</strong>
+					<span>Toolbox</span>
+				</div>
+				<nav id="toolGroups"></nav>
+			</aside>
+			<div id="sidebarResizer"></div>
+			<div class="workspace">
+				<header class="topbar">
+					<div class="tool-info">
+						<h1 id="toolName">Format Converter</h1>
+						<p id="toolDesc">Convert between structured data formats.</p>
+					</div>
+					<div class="converter-controls" id="converterControls">
+						<div class="mode-select">
+							<select id="fromSelect">
+								<option value="JSON">JSON</option>
+								<option value="Go Struct">Go Struct</option>
+								<option value="YAML">YAML</option>
+								<option value="TOML">TOML</option>
+								<option value="XML">XML</option>
+								<option value="JSON Schema">JSON Schema</option>
+								<option value="GraphQL Schema">GraphQL Schema</option>
+								<option value="Protobuf">Protobuf</option>
+								<option value="TOON">TOON</option>
+								<option value="MsgPack">MsgPack</option>
+							</select>
+							<button id="swap" title="Swap">&#8646;</button>
+							<select id="toSelect">
+								<option value="Go Struct">Go Struct</option>
+								<option value="JSON">JSON</option>
+								<option value="YAML">YAML</option>
+								<option value="TOML">TOML</option>
+								<option value="XML">XML</option>
+								<option value="JSON Schema">JSON Schema</option>
+								<option value="GraphQL Schema">GraphQL Schema</option>
+								<option value="Protobuf">Protobuf</option>
+								<option value="TOON">TOON</option>
+								<option value="MsgPack">MsgPack</option>
+							</select>
+						</div>
+						<div class="actions converter-only">
+							<button id="copy">Copy output</button>
+							<button id="clear">Clear</button>
+						</div>
+					</div>
+				</header>
+
+				<div id="converterWorkspace" class="tool-view">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2 id="inputLabel">JSON</h2>
+								<p>Input</p>
+							</div>
+							<div class="panel-actions">
+								<button class="ghost-btn" id="formatInput">Format</button>
+								<button class="ghost-btn" id="minifyInput">Minimize</button>
+							</div>
+						</div>
+						<textarea
+							id="input"
+							spellcheck="false"
+							placeholder='Paste JSON or Go struct...'
+						></textarea>
+					</section>
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2 id="outputLabel">Go Struct</h2>
+								<p>Output</p>
+							</div>
+							<div class="panel-actions">
+								<button class="ghost-btn" id="formatOutput">Format</button>
+								<button class="ghost-btn" id="minifyOutput">Minimize</button>
+							</div>
+						</div>
+						<textarea id="output" spellcheck="false" readonly></textarea>
+					</section>
+				</div>
+
+				<div id="coderWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header coder-header">
+							<div>
+								<h2 id="coderWorkspaceTitle">Encode</h2>
+								<p id="coderModeHint">Encode text into multiple bases.</p>
+							</div>
+							<label class="decode-select hidden" id="decodeVariantWrap">
+								<span>Decoder</span>
+								<select id="decodeVariant"></select>
+							</label>
+						</div>
+						<textarea
+							id="coderInput"
+							spellcheck="false"
+							placeholder="Type or paste text..."
+						></textarea>
+					</section>
+						<section class="panel">
+							<div class="panel-header">
+								<div>
+									<h2 id="coderResultHeading">Encodings</h2>
+									<p id="coderResultHint">Base32 / Base64 / Base85 / Base91 / Hex</p>
+								</div>
+								<div class="panel-actions hidden" id="coderResultActions">
+									<button
+										class="ghost-btn hidden"
+										id="hashToggleCase"
+										data-upper="false"
+									>
+										Toggle Case
+									</button>
+								</div>
+							</div>
+						<div id="coderResults" class="coder-results">
+							<div class="muted">Enter content to see results</div>
+						</div>
+					</section>
+				</div>
+
+				<div id="pairWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2 id="pairInputLabel">Encode</h2>
+								<p id="pairInputHint">Enter text to encode</p>
+							</div>
+							<div class="pair-controls">
+								<div id="jwtControls" class="jwt-controls hidden">
+									<label>
+											<span>Algorithm</span>
+										<select id="jwtAlgorithm">
+											<option value="HS256">HS256</option>
+											<option value="HS384">HS384</option>
+											<option value="HS512">HS512</option>
+										</select>
+									</label>
+									<label>
+										<span>Secret</span>
+										<input
+											type="password"
+											id="jwtSecret"
+											placeholder="Enter secret"
+											spellcheck="false"
+										/>
+									</label>
+								</div>
+							</div>
+						</div>
+						<textarea
+							id="pairInput"
+							spellcheck="false"
+							placeholder="Enter content to encode"
+						></textarea>
+					</section>
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2 id="pairOutputLabel">Decode</h2>
+								<p id="pairOutputHint">Paste encoded text to decode</p>
+							</div>
+						</div>
+						<textarea
+							id="pairOutput"
+							spellcheck="false"
+							placeholder="Paste content to decode"
+						></textarea>
+						<pre id="pairOutputMeta" class="pair-meta hidden"></pre>
+					</section>
+				</div>
+
+				<div id="numberWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Number Converter</h2>
+								<p>Update any field to sync all bases</p>
+							</div>
+						</div>
+						<div class="number-grid">
+							<label>
+								<span>Binary</span>
+								<input id="numberBinary" spellcheck="false" placeholder="e.g. 1010" />
+							</label>
+							<label>
+								<span>Octal</span>
+								<input id="numberOctal" spellcheck="false" placeholder="e.g. 12" />
+							</label>
+							<label>
+								<span>Decimal</span>
+								<input id="numberDecimal" spellcheck="false" placeholder="e.g. 10" />
+							</label>
+							<label>
+								<span>Hexadecimal</span>
+								<input id="numberHex" spellcheck="false" placeholder="e.g. a" />
+							</label>
+						</div>
+					</section>
+				</div>
+
+				<div id="ipv4Workspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>IPv4 Tools</h2>
+								<p>Enter an IP, CIDR, or IP with subnet mask</p>
+							</div>
+						</div>
+						<textarea
+							id="ipv4Input"
+							spellcheck="false"
+							placeholder="Examples: 192.168.0.1, 192.168.0.0/24, 10.0.0.0/255.255.0.0"
+						></textarea>
+					</section>
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Results</h2>
+								<p>Shows range, totals, and alternate formats</p>
+							</div>
+						</div>
+						<div id="ipv4Results" class="ipv4-results">
+							<div class="muted">Enter an IPv4 or CIDR block to see details</div>
+						</div>
+					</section>
+				</div>
+
+				<div id="uuidWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>UUID</h2>
+								<p>Generate UUID v1 ~ v8, GUID, and ULID</p>
+							</div>
+							<div class="generator-actions">
+								<button id="uuidToggleCase" data-upper="false">
+									Toggle Case
+								</button>
+								<button id="uuidRegenerate">Regenerate</button>
+							</div>
+						</div>
+						<div id="uuidList" class="uuid-list"></div>
+					</section>
+				</div>
+
+				<div id="userAgentWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>User-Agent</h2>
+								<p>Pick a browser and OS to fetch realistic strings</p>
+							</div>
+							<div class="generator-actions">
+								<select id="uaBrowser">
+									<option value="">All Browsers</option>
+									<option value="chrome">Chrome</option>
+									<option value="firefox">Firefox</option>
+									<option value="opera">Opera</option>
+									<option value="safari">Safari</option>
+									<option value="edge">Edge</option>
+									<option value="vivaldi">Vivaldi</option>
+									<option value="yandex">Yandex</option>
+								</select>
+								<select id="uaOS">
+									<option value="">All Platforms</option>
+									<option value="windows">Windows</option>
+									<option value="macos">macOS</option>
+									<option value="chrome-os">ChromeOS</option>
+									<option value="android">Android</option>
+									<option value="ios">iOS</option>
+								</select>
+							</div>
+						</div>
+						<div id="uaResults" class="ua-results">
+							<div class="muted">Choose filters to generate user agents</div>
+						</div>
+					</section>
+				</div>
+
+				<footer>
+					<div id="status">Loading WebAssembly...</div>
+					<div class="hotkeys">
+						⌘/Ctrl + L Clear · ⌘/Ctrl + Enter Run
+					</div>
+				</footer>
+			</div>
+		</div>
+
+		<script type="module" src="main.js"></script>
+	</body>
+</html>
