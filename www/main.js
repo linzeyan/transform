@@ -15,7 +15,7 @@ import initWasm, {
   format_content_text,
   markdown_to_html_text,
   html_to_markdown_text,
-  random_number_string,
+  random_number_sequences,
 } from "./pkg/wasm_core.js";
 
 const formats = [
@@ -73,7 +73,58 @@ const unitKeys = [
   "terabyte",
 ];
 
-const digitChoices = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+const digitCharacters = "0123456789";
+const specialCharacters = [
+  "!",
+  "@",
+  "#",
+  "$",
+  "%",
+  "^",
+  "&",
+  "*",
+  "-",
+  "_",
+  "+",
+  "=",
+  "~",
+  "?",
+  "/",
+  "\\",
+  "|",
+  "[",
+  "]",
+  "(",
+  ")",
+  "{",
+  "}",
+  "'",
+  "\"",
+  ".",
+  ",",
+  ":",
+  ";",
+  "`",
+];
+
+const minCountConfig = {
+  digits: {
+    stateKey: "randomMinDigits",
+    elementKey: "randomMinDigits",
+  },
+  lower: {
+    stateKey: "randomMinLower",
+    elementKey: "randomMinLower",
+  },
+  upper: {
+    stateKey: "randomMinUpper",
+    elementKey: "randomMinUpper",
+  },
+  symbols: {
+    stateKey: "randomMinSymbols",
+    elementKey: "randomMinSymbols",
+  },
+};
 
 const coderTools = [
   {
@@ -310,8 +361,8 @@ const toolGroups = [
       },
       {
         id: "generator-random",
-        label: "Random Number",
-        description: "Random numeric strings with custom digits.",
+        label: "Random",
+        description: "Random strings with customizable charset.",
       },
     ],
   },
@@ -406,10 +457,19 @@ const state = {
   pairLastSource: "input",
   numberSyncing: false,
   unitSyncing: false,
-  randomDigits: new Set(digitChoices),
+  randomIncludeDigits: true,
   randomAllowLeadingZero: true,
-  randomLength: 12,
-  randomResult: "",
+  randomLength: 24,
+  randomCount: 5,
+  randomIncludeLower: false,
+  randomIncludeUpper: false,
+  randomExclude: "",
+  randomMinDigits: 0,
+  randomMinLower: 0,
+  randomMinUpper: 0,
+  randomMinSymbols: 0,
+  randomSymbols: new Set(),
+  randomResults: [],
   formatKey: null,
 };
 
@@ -437,6 +497,7 @@ boot();
 
 async function boot() {
   cacheElements();
+  renderSymbolButtons();
   initCoderControls();
   renderSidebar();
   bindUI();
@@ -540,11 +601,22 @@ function cacheElements() {
   elements.uaOS = document.getElementById("uaOS");
   elements.uaResults = document.getElementById("uaResults");
   elements.randomWorkspace = document.getElementById("randomWorkspace");
+  elements.randomIncludeDigits = document.getElementById("randomIncludeDigits");
   elements.randomLength = document.getElementById("randomLength");
+  elements.randomCount = document.getElementById("randomCount");
   elements.randomAllowZero = document.getElementById("randomAllowZero");
-  elements.randomDigitToggles = document.getElementById("randomDigitToggles");
+  elements.randomAllowZeroRow = document.getElementById("randomAllowZeroRow");
+  elements.randomIncludeLower = document.getElementById("randomIncludeLower");
+  elements.randomIncludeUpper = document.getElementById("randomIncludeUpper");
+  elements.randomExclude = document.getElementById("randomExclude");
+  elements.randomMinDigits = document.getElementById("randomMinDigits");
+  elements.randomMinLower = document.getElementById("randomMinLower");
+  elements.randomMinUpper = document.getElementById("randomMinUpper");
+  elements.randomMinSymbols = document.getElementById("randomMinSymbols");
+  elements.randomSymbolToggles = document.getElementById("randomSymbolToggles");
+  elements.randomSymbolMinRow = document.getElementById("randomSymbolMinRow");
   elements.randomGenerate = document.getElementById("randomGenerate");
-  elements.randomResult = document.getElementById("randomResult");
+  elements.randomResults = document.getElementById("randomResults");
 }
 
 function renderSidebar() {
@@ -732,15 +804,37 @@ function bindUI() {
   elements.uuidRegenerate?.addEventListener("click", () => refreshUUIDs(true));
   elements.uaBrowser?.addEventListener("change", () => refreshUserAgents(true));
   elements.uaOS?.addEventListener("change", () => refreshUserAgents(true));
+  elements.randomIncludeDigits?.addEventListener(
+    "change",
+    handleRandomIncludeDigitsChange,
+  );
   elements.randomLength?.addEventListener("input", handleRandomLengthChange);
+  elements.randomCount?.addEventListener("input", handleRandomCountChange);
   elements.randomAllowZero?.addEventListener("change", handleRandomLeadingToggle);
-  elements.randomDigitToggles?.addEventListener("click", handleRandomDigitToggle);
+  elements.randomIncludeLower?.addEventListener(
+    "change",
+    handleRandomIncludeLowerChange,
+  );
+  elements.randomIncludeUpper?.addEventListener(
+    "change",
+    handleRandomIncludeUpperChange,
+  );
+  elements.randomExclude?.addEventListener("input", handleRandomExcludeInput);
+  elements.randomMinDigits?.addEventListener("input", () =>
+    handleRandomMinChange("digits"),
+  );
+  elements.randomMinLower?.addEventListener("input", () =>
+    handleRandomMinChange("lower"),
+  );
+  elements.randomMinUpper?.addEventListener("input", () =>
+    handleRandomMinChange("upper"),
+  );
+  elements.randomMinSymbols?.addEventListener("input", () =>
+    handleRandomMinChange("symbols"),
+  );
+  elements.randomSymbolToggles?.addEventListener("click", handleRandomSymbolToggle);
   elements.randomGenerate?.addEventListener("click", () => runRandomGenerator());
-  elements.randomResult?.addEventListener("click", () => {
-    if (!state.randomResult) return;
-    copyText(state.randomResult, "Random number");
-    setStatus("Copied", false);
-  });
+  elements.randomResults?.addEventListener("click", handleRandomResultsClick);
 }
 
 function ensureConverterMode() {
@@ -1777,16 +1871,188 @@ function renderUserAgents(list) {
   });
 }
 
+function renderSymbolButtons() {
+  if (!elements.randomSymbolToggles) return;
+  const buttons = specialCharacters
+    .map((symbol) => {
+      const isActive = state.randomSymbols?.has(symbol);
+      return `<button type="button" data-symbol="${escapeAttr(symbol)}" data-active="${isActive ? "true" : "false"}">${escapeHTML(symbol)}</button>`;
+    })
+    .join("");
+  elements.randomSymbolToggles.innerHTML = buttons;
+  syncSymbolButtons();
+  updateSymbolMinState();
+}
+
+function syncSymbolButtons() {
+  if (!elements.randomSymbolToggles) return;
+  elements.randomSymbolToggles
+    .querySelectorAll("button[data-symbol]")
+    .forEach((button) => {
+      const symbol = button.dataset.symbol || "";
+      const isActive = state.randomSymbols?.has(symbol);
+      button.dataset.active = isActive ? "true" : "false";
+    });
+}
+
+function handleRandomSymbolToggle(event) {
+  const button = event.target.closest("button[data-symbol]");
+  if (!button) return;
+  const symbol = button.dataset.symbol || "";
+  if (!state.randomSymbols) {
+    state.randomSymbols = new Set();
+  }
+  const active = button.dataset.active !== "false";
+  if (active) {
+    state.randomSymbols.delete(symbol);
+    button.dataset.active = "false";
+  } else {
+    state.randomSymbols.add(symbol);
+    button.dataset.active = "true";
+  }
+  updateSymbolMinState();
+  validateMinimumTotals(true);
+}
+
 function activateRandomTool() {
-  syncRandomDigitButtons();
+  if (elements.randomIncludeDigits) {
+    elements.randomIncludeDigits.checked = state.randomIncludeDigits;
+  }
   if (elements.randomLength) {
     elements.randomLength.value = state.randomLength;
+  }
+  if (elements.randomCount) {
+    elements.randomCount.value = state.randomCount;
   }
   if (elements.randomAllowZero) {
     elements.randomAllowZero.checked = state.randomAllowLeadingZero;
   }
-  updateRandomResult(state.randomResult);
+  if (elements.randomIncludeLower) {
+    elements.randomIncludeLower.checked = state.randomIncludeLower;
+  }
+  if (elements.randomIncludeUpper) {
+    elements.randomIncludeUpper.checked = state.randomIncludeUpper;
+  }
+  if (elements.randomExclude) {
+    elements.randomExclude.value = state.randomExclude;
+  }
+  updateMinInputStates();
+  updateSymbolMinState();
+  syncSymbolButtons();
+  updateRandomZeroControl();
+  updateRandomResults(state.randomResults);
   setStatus("Ready", false);
+}
+
+function updateRandomZeroControl() {
+  if (!elements.randomAllowZero) return;
+  if (elements.randomAllowZeroRow) {
+    elements.randomAllowZeroRow.classList.toggle(
+      "hidden",
+      !state.randomIncludeDigits,
+    );
+  }
+  if (!state.randomIncludeDigits) {
+    state.randomAllowLeadingZero = false;
+    elements.randomAllowZero.checked = false;
+    elements.randomAllowZero.disabled = true;
+  } else {
+    elements.randomAllowZero.disabled = false;
+    elements.randomAllowZero.checked = state.randomAllowLeadingZero;
+  }
+}
+
+function handleRandomMinChange(kind) {
+  const config = minCountConfig[kind];
+  if (!config) return;
+  const el = elements[config.elementKey];
+  if (!el) return;
+  let value = parseInt(el.value, 10);
+  if (!Number.isFinite(value) || value < 0) {
+    value = 0;
+  }
+  const max = Math.max(0, Number(state.randomLength) || 0);
+  if (value > max) {
+    value = max;
+  }
+  state[config.stateKey] = value;
+  el.value = value;
+  validateMinimumTotals(true);
+}
+
+function updateMinInputStates() {
+  setMinInputState("digits", state.randomIncludeDigits);
+  setMinInputState("lower", state.randomIncludeLower);
+  setMinInputState("upper", state.randomIncludeUpper);
+}
+
+function setMinInputState(kind, enabled) {
+  const config = minCountConfig[kind];
+  if (!config) return;
+  const el = elements[config.elementKey];
+  if (!el) return;
+  el.disabled = !enabled;
+  el.classList.toggle("hidden", !enabled);
+  if (!enabled) {
+    state[config.stateKey] = 0;
+    el.value = 0;
+  } else {
+    el.value = state[config.stateKey] || 0;
+  }
+  if (enabled) {
+    handleRandomMinChange(kind);
+  } else {
+    validateMinimumTotals(false);
+  }
+}
+
+function updateSymbolMinState() {
+  const el = elements.randomMinSymbols;
+  if (!el) return;
+  const hasSymbols = state.randomSymbols && state.randomSymbols.size > 0;
+  if (elements.randomSymbolMinRow) {
+    elements.randomSymbolMinRow.classList.toggle("hidden", !hasSymbols);
+  }
+  el.disabled = !hasSymbols;
+  if (!hasSymbols) {
+    state.randomMinSymbols = 0;
+    el.value = 0;
+  } else {
+    el.value = state.randomMinSymbols || 0;
+  }
+  validateMinimumTotals(false);
+}
+
+function validateMinimumTotals(showWarning = false) {
+  const {
+    minDigits,
+    minLower,
+    minUpper,
+    minSymbols,
+  } = getMinimumCounts();
+  const total = minDigits + minLower + minUpper + minSymbols;
+  if (total > state.randomLength) {
+    if (showWarning) {
+      setStatus("Minimum counts exceed length", true);
+    }
+    return false;
+  }
+  return true;
+}
+
+function getMinimumCounts() {
+  if (!state.randomSymbols) {
+    state.randomSymbols = new Set();
+  }
+  const symbolSet = state.randomSymbols;
+  const hasSymbols = symbolSet.size > 0;
+  return {
+    minDigits: state.randomIncludeDigits ? state.randomMinDigits || 0 : 0,
+    minLower: state.randomIncludeLower ? state.randomMinLower || 0 : 0,
+    minUpper: state.randomIncludeUpper ? state.randomMinUpper || 0 : 0,
+    minSymbols: hasSymbols ? state.randomMinSymbols || 0 : 0,
+    hasSymbols,
+  };
 }
 
 function handleRandomLengthChange() {
@@ -1798,48 +2064,66 @@ function handleRandomLengthChange() {
   value = Math.min(Math.max(value, 1), 2048);
   state.randomLength = value;
   elements.randomLength.value = value;
+  validateMinimumTotals(true);
+}
+
+function handleRandomCountChange() {
+  if (!elements.randomCount) return;
+  let value = parseInt(elements.randomCount.value, 10);
+  if (!Number.isFinite(value)) {
+    value = 1;
+  }
+  value = Math.min(Math.max(value, 1), 256);
+  state.randomCount = value;
+  elements.randomCount.value = value;
+}
+
+function handleRandomIncludeDigitsChange(event) {
+  state.randomIncludeDigits = Boolean(event?.target?.checked);
+  updateRandomZeroControl();
+  if (!state.randomIncludeDigits) {
+    state.randomMinDigits = 0;
+    if (elements.randomMinDigits) elements.randomMinDigits.value = 0;
+  }
+  updateMinInputStates();
+  validateMinimumTotals(true);
 }
 
 function handleRandomLeadingToggle(event) {
   state.randomAllowLeadingZero = Boolean(event?.target?.checked);
+  updateRandomZeroControl();
 }
 
-function handleRandomDigitToggle(event) {
-  const button = event.target.closest("button[data-digit]");
-  if (!button || !elements.randomDigitToggles) return;
-  const digit = button.dataset.digit;
-  if (!digitChoices.includes(digit)) return;
-  const active = button.dataset.active !== "false";
-  if (active) {
-    if (state.randomDigits.size === 1) {
-      setStatus("Keep at least one digit", true);
-      return;
-    }
-    state.randomDigits.delete(digit);
-    button.dataset.active = "false";
-  } else {
-    state.randomDigits.add(digit);
-    button.dataset.active = "true";
+function handleRandomIncludeLowerChange(event) {
+  state.randomIncludeLower = Boolean(event?.target?.checked);
+  if (!state.randomIncludeLower) {
+    state.randomMinLower = 0;
+    if (elements.randomMinLower) elements.randomMinLower.value = 0;
   }
+  updateMinInputStates();
+  validateMinimumTotals(true);
 }
 
-function syncRandomDigitButtons() {
-  if (!elements.randomDigitToggles) return;
-  if (!state.randomDigits || state.randomDigits.size === 0) {
-    state.randomDigits = new Set(digitChoices);
+function handleRandomIncludeUpperChange(event) {
+  state.randomIncludeUpper = Boolean(event?.target?.checked);
+  if (!state.randomIncludeUpper) {
+    state.randomMinUpper = 0;
+    if (elements.randomMinUpper) elements.randomMinUpper.value = 0;
   }
-  elements.randomDigitToggles
-    .querySelectorAll("button[data-digit]")
-    .forEach((button) => {
-      const digit = button.dataset.digit;
-      const isActive = state.randomDigits.has(digit);
-      button.dataset.active = isActive ? "true" : "false";
-    });
+  updateMinInputStates();
+  validateMinimumTotals(true);
+}
+
+function handleRandomExcludeInput() {
+  if (!elements.randomExclude) return;
+  const sanitized = sanitizeRandomExclude(elements.randomExclude.value || "");
+  state.randomExclude = sanitized;
+  elements.randomExclude.value = sanitized;
 }
 
 function runRandomGenerator() {
   if (!isRandomTool(state.currentTool)) {
-    setStatus("Select the Random Number tool", true);
+    setStatus("Select the Random tool", true);
     return;
   }
   if (!state.wasmReady) {
@@ -1847,37 +2131,97 @@ function runRandomGenerator() {
     return;
   }
   handleRandomLengthChange();
-  const digits = Array.from(state.randomDigits).sort();
-  if (!digits.length) {
-    setStatus("Select at least one digit", true);
+  handleRandomCountChange();
+  handleRandomExcludeInput();
+  if (!validateMinimumTotals(true)) {
     return;
   }
+  if (!state.randomSymbols) {
+    state.randomSymbols = new Set();
+  }
+  const symbolSet = state.randomSymbols;
+  const { minDigits, minLower, minUpper, minSymbols, hasSymbols } =
+    getMinimumCounts();
+  if (
+    !state.randomIncludeDigits &&
+    !state.randomIncludeLower &&
+    !state.randomIncludeUpper &&
+    !hasSymbols
+  ) {
+    setStatus("Select at least one character set", true);
+    return;
+  }
+  const digits = state.randomIncludeDigits ? digitCharacters : "";
+  const symbols = hasSymbols ? Array.from(symbolSet).join("") : "";
   try {
-    const result = random_number_string(
+    const result = random_number_sequences(
       state.randomLength,
+      state.randomCount,
       state.randomAllowLeadingZero,
-      digits.join("") || "0123456789",
+      digits,
+      state.randomIncludeLower,
+      state.randomIncludeUpper,
+      symbols,
+      state.randomExclude,
+      minDigits,
+      minLower,
+      minUpper,
+      minSymbols,
     );
-    updateRandomResult(result);
+    const list = Array.isArray(result)
+      ? result.map((item) => String(item || ""))
+      : [];
+    updateRandomResults(list);
     setStatus("Done", false);
   } catch (err) {
-    updateRandomResult("");
+    updateRandomResults([]);
     setStatus(`⚠️ ${err?.message || err}`, true);
   }
 }
 
-function updateRandomResult(value) {
-  state.randomResult = value || "";
-  if (!elements.randomResult) return;
-  if (state.randomResult) {
-    elements.randomResult.textContent = state.randomResult;
-    elements.randomResult.dataset.copyValue = state.randomResult;
-    elements.randomResult.classList.remove("empty");
-  } else {
-    elements.randomResult.textContent = "Click Generate to produce a number";
-    elements.randomResult.dataset.copyValue = "";
-    elements.randomResult.classList.add("empty");
+function updateRandomResults(values) {
+  state.randomResults = Array.isArray(values)
+    ? values.filter((value) => typeof value === "string" && value.length > 0)
+    : [];
+  if (!elements.randomResults) return;
+  if (!state.randomResults.length) {
+    elements.randomResults.innerHTML =
+      '<div class="random-placeholder">Click Generate to produce strings</div>';
+    return;
   }
+  const items = state.randomResults
+    .map(
+      (value) => `
+        <div class="random-result-item" data-random-value="${escapeAttr(value)}">
+          ${escapeHTML(value)}
+        </div>
+      `,
+    )
+    .join("");
+  elements.randomResults.innerHTML = items;
+}
+
+function handleRandomResultsClick(event) {
+  const row = event.target.closest(".random-result-item");
+  if (!row) return;
+  const value = row.dataset.randomValue || "";
+  if (!value) return;
+  copyText(value, "Random string");
+}
+
+function sanitizeRandomExclude(value) {
+  if (!value) return "";
+  const compact = value.replace(/\s+/g, "");
+  if (!compact) return "";
+  const seen = new Set();
+  let result = "";
+  for (const ch of compact) {
+    if (!seen.has(ch)) {
+      seen.add(ch);
+      result += ch;
+    }
+  }
+  return result;
 }
 
 async function copyText(value, label) {

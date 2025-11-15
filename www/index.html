@@ -3,7 +3,7 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width,initial-scale=1" />
-		<title>transform-go</title>
+		<title>transform</title>
 		<link rel="icon" type="image/svg+xml" href="favicon.svg" />
 		<link rel="stylesheet" href="style.css" />
 	</head>
@@ -11,7 +11,7 @@
 		<div class="app-shell">
 			<aside id="sidebar">
 				<div class="sidebar-brand">
-					<strong>transform-go</strong>
+					<strong>transform</strong>
 					<span>Toolbox</span>
 				</div>
 				<nav id="toolGroups"></nav>
@@ -347,8 +347,8 @@
 					<section class="panel">
 						<div class="panel-header">
 							<div>
-								<h2>Random Number</h2>
-								<p>Generate numeric strings with custom rules</p>
+								<h2>Random</h2>
+								<p>Generate random strings with custom rules</p>
 							</div>
 							<div class="generator-actions">
 								<button id="randomGenerate">Generate</button>
@@ -361,33 +361,90 @@
 									type="number"
 									min="1"
 									max="2048"
-									value="12"
+									value="24"
 									id="randomLength"
 								/>
 							</label>
-							<label class="checkbox">
-								<input type="checkbox" id="randomAllowZero" checked />
-								<span>Allow leading zero</span>
+							<label>
+								<span>Count</span>
+								<input
+									type="number"
+									min="1"
+									max="256"
+									value="5"
+									id="randomCount"
+								/>
+							</label>
+							<div class="checkbox-row" data-min-row="digits">
+								<label class="checkbox">
+									<input type="checkbox" id="randomIncludeDigits" checked />
+									<span>Include digits</span>
+								</label>
+								<input
+									type="number"
+									min="0"
+									value="0"
+									id="randomMinDigits"
+									class="min-count"
+								/>
+							</div>
+							<div class="checkbox-row" id="randomAllowZeroRow">
+								<label class="checkbox">
+									<input type="checkbox" id="randomAllowZero" checked />
+									<span>Allow leading zero</span>
+								</label>
+							</div>
+							<div class="checkbox-row" data-min-row="lower">
+								<label class="checkbox">
+									<input type="checkbox" id="randomIncludeLower" />
+									<span>Include a-z</span>
+								</label>
+								<input
+									type="number"
+									min="0"
+									value="0"
+									id="randomMinLower"
+									class="min-count"
+								/>
+							</div>
+							<div class="checkbox-row" data-min-row="upper">
+								<label class="checkbox">
+									<input type="checkbox" id="randomIncludeUpper" />
+									<span>Include A-Z</span>
+								</label>
+								<input
+									type="number"
+									min="0"
+									value="0"
+									id="randomMinUpper"
+									class="min-count"
+								/>
+							</div>
+						</div>
+						<div class="random-exclude">
+							<label>
+								<span>Exclude characters</span>
+								<input
+									type="text"
+									id="randomExclude"
+									spellcheck="false"
+									placeholder="e.g. O0Il"
+								/>
 							</label>
 						</div>
-						<div class="digit-toggle-grid" id="randomDigitToggles">
-							<button type="button" data-digit="0" data-active="true">0</button>
-							<button type="button" data-digit="1" data-active="true">1</button>
-							<button type="button" data-digit="2" data-active="true">2</button>
-							<button type="button" data-digit="3" data-active="true">3</button>
-							<button type="button" data-digit="4" data-active="true">4</button>
-							<button type="button" data-digit="5" data-active="true">5</button>
-							<button type="button" data-digit="6" data-active="true">6</button>
-							<button type="button" data-digit="7" data-active="true">7</button>
-							<button type="button" data-digit="8" data-active="true">8</button>
-							<button type="button" data-digit="9" data-active="true">9</button>
+						<div class="symbol-toggle-grid" id="randomSymbolToggles"></div>
+						<div class="symbol-min hidden" id="randomSymbolMinRow">
+							<label for="randomMinSymbols">Min symbols</label>
+							<input
+								type="number"
+								min="0"
+								value="0"
+								id="randomMinSymbols"
+								class="min-count"
+							/>
 						</div>
-						<div
-							id="randomResult"
-							class="random-result"
-							data-copy-label="Random number"
-						>
-							Click Generate to produce a number
+						<div id="randomResults" class="random-results">
+							<div class="random-placeholder">Click Generate to produce strings</div>
 						</div>
 					</section>
 				</div>

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 use std::sync::OnceLock;
@@ -319,50 +319,150 @@ pub fn generate_user_agents(browser: &str, os: &str) -> JsValue {
 }
 
 #[wasm_bindgen]
-pub fn random_number_string(
+#[allow(clippy::too_many_arguments)]
+pub fn random_number_sequences(
     length: u32,
+    count: u32,
     allow_leading_zero: bool,
     digits: &str,
-) -> Result<String, JsValue> {
-    random_number_string_internal(length, allow_leading_zero, digits)
-        .map_err(|err| JsValue::from_str(&err))
+    include_lowercase: bool,
+    include_uppercase: bool,
+    symbols: &str,
+    exclude_chars: &str,
+    min_digits: u32,
+    min_lowercase: u32,
+    min_uppercase: u32,
+    min_symbols: u32,
+) -> Result<JsValue, JsValue> {
+    random_sequences_internal(
+        length,
+        count,
+        allow_leading_zero,
+        digits,
+        include_lowercase,
+        include_uppercase,
+        symbols,
+        exclude_chars,
+        min_digits,
+        min_lowercase,
+        min_uppercase,
+        min_symbols,
+    )
+    .and_then(|list| serde_wasm_bindgen::to_value(&list).map_err(|err| err.to_string()))
+    .map_err(|err| JsValue::from_str(&err))
 }
 
-fn random_number_string_internal(
+#[allow(clippy::too_many_arguments)]
+fn random_sequences_internal(
     length: u32,
+    count: u32,
     allow_leading_zero: bool,
     digits: &str,
-) -> Result<String, String> {
+    include_lowercase: bool,
+    include_uppercase: bool,
+    symbols: &str,
+    exclude_chars: &str,
+    min_digits: u32,
+    min_lowercase: u32,
+    min_uppercase: u32,
+    min_symbols: u32,
+) -> Result<Vec<String>, String> {
     if length == 0 {
         return Err("length must be greater than zero".into());
     }
     if length > 2048 {
         return Err("length must be 2048 or less".into());
     }
-    let mut allowed = sanitize_digits(digits);
-    if allowed.is_empty() {
-        allowed = (b'0'..=b'9').map(|b| b as char).collect();
+    if count == 0 {
+        return Err("count must be greater than zero".into());
     }
-    let mut primary_pool = allowed.clone();
-    if !allow_leading_zero {
-        primary_pool.retain(|ch| *ch != '0');
-        if primary_pool.is_empty() {
-            return Err("No valid leading digit available with current settings".into());
-        }
+    if count > 256 {
+        return Err("count must be 256 or less".into());
+    }
+    let total_required =
+        min_digits as u64 + min_lowercase as u64 + min_uppercase as u64 + min_symbols as u64;
+    if total_required > length as u64 {
+        return Err("Minimum character counts exceed requested length".into());
     }
 
-    let mut output = String::with_capacity(length as usize);
-    let pools = [primary_pool.as_slice(), allowed.as_slice()];
-    for idx in 0..length as usize {
-        let pool = if idx == 0 && !allow_leading_zero {
-            pools[0]
-        } else {
-            pools[1]
-        };
-        let ch = pool[random_index(pool.len())];
-        output.push(ch);
+    let exclude = sanitize_exclusions(exclude_chars);
+    let mut digits_pool = sanitize_digits(digits);
+    digits_pool.retain(|ch| !exclude.contains(ch));
+    let mut symbols_vec = sanitize_symbols(symbols);
+    symbols_vec.retain(|ch| !exclude.contains(ch));
+
+    let lowercase_pool: Vec<char> = if include_lowercase {
+        ('a'..='z').filter(|ch| !exclude.contains(ch)).collect()
+    } else {
+        Vec::new()
+    };
+    let uppercase_pool: Vec<char> = if include_uppercase {
+        ('A'..='Z').filter(|ch| !exclude.contains(ch)).collect()
+    } else {
+        Vec::new()
+    };
+
+    if min_digits > 0 && digits_pool.is_empty() {
+        return Err("No digits available to satisfy minimum requirement".into());
     }
-    Ok(output)
+    if min_lowercase > 0 && lowercase_pool.is_empty() {
+        return Err("No lowercase letters available to satisfy minimum requirement".into());
+    }
+    if min_uppercase > 0 && uppercase_pool.is_empty() {
+        return Err("No uppercase letters available to satisfy minimum requirement".into());
+    }
+    if min_symbols > 0 && symbols_vec.is_empty() {
+        return Err("No symbols available to satisfy minimum requirement".into());
+    }
+
+    let mut general_pool = Vec::new();
+    general_pool.extend(&digits_pool);
+    general_pool.extend(&lowercase_pool);
+    general_pool.extend(&uppercase_pool);
+    general_pool.extend(&symbols_vec);
+    general_pool.sort_unstable();
+    general_pool.dedup();
+
+    if general_pool.is_empty() {
+        return Err("No available characters to generate values".into());
+    }
+    if !allow_leading_zero && general_pool.iter().all(|ch| *ch == '0') {
+        return Err("No valid leading character available when zero is disallowed".into());
+    }
+
+    let mut results = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        let mut chars = Vec::with_capacity(length as usize);
+        append_required_chars(&mut chars, &digits_pool, min_digits, "digits")?;
+        append_required_chars(
+            &mut chars,
+            &lowercase_pool,
+            min_lowercase,
+            "lowercase letters",
+        )?;
+        append_required_chars(
+            &mut chars,
+            &uppercase_pool,
+            min_uppercase,
+            "uppercase letters",
+        )?;
+        append_required_chars(&mut chars, &symbols_vec, min_symbols, "symbols")?;
+
+        while chars.len() < length as usize {
+            let ch = random_char_from_pool(&general_pool)?;
+            chars.push(ch);
+        }
+        shuffle_chars(&mut chars);
+        if !allow_leading_zero && !chars.is_empty() && chars[0] == '0' {
+            if let Some(idx) = chars.iter().position(|ch| *ch != '0') {
+                chars.swap(0, idx);
+            } else {
+                return Err("No valid leading character available when zero is disallowed".into());
+            }
+        }
+        results.push(chars.into_iter().collect());
+    }
+    Ok(results)
 }
 
 fn sanitize_digits(digits: &str) -> Vec<char> {
@@ -370,6 +470,20 @@ fn sanitize_digits(digits: &str) -> Vec<char> {
     out.sort_unstable();
     out.dedup();
     out
+}
+
+fn sanitize_symbols(symbols: &str) -> Vec<char> {
+    let mut out: Vec<char> = symbols
+        .chars()
+        .filter(|ch| !ch.is_alphanumeric() && !ch.is_whitespace())
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+fn sanitize_exclusions(input: &str) -> HashSet<char> {
+    input.chars().filter(|ch| !ch.is_whitespace()).collect()
 }
 
 #[wasm_bindgen]
@@ -1344,6 +1458,45 @@ fn fnv1a_128(data: &[u8]) -> u128 {
         hash = hash.wrapping_mul(prime);
     }
     hash
+}
+
+fn append_required_chars(
+    buffer: &mut Vec<char>,
+    pool: &[char],
+    count: u32,
+    label: &str,
+) -> Result<(), String> {
+    if count == 0 {
+        return Ok(());
+    }
+    if pool.is_empty() {
+        return Err(format!(
+            "No {} available to satisfy minimum requirement",
+            label
+        ));
+    }
+    for _ in 0..count {
+        let ch = random_char_from_pool(pool)?;
+        buffer.push(ch);
+    }
+    Ok(())
+}
+
+fn random_char_from_pool(pool: &[char]) -> Result<char, String> {
+    if pool.is_empty() {
+        return Err("Character pool is empty".into());
+    }
+    Ok(pool[random_index(pool.len())])
+}
+
+fn shuffle_chars(chars: &mut [char]) {
+    if chars.len() < 2 {
+        return;
+    }
+    for idx in (1..chars.len()).rev() {
+        let swap_idx = random_index(idx + 1);
+        chars.swap(idx, swap_idx);
+    }
 }
 fn fill_random(buf: &mut [u8]) {
     getrandom::fill(buf).expect("randomness available");
