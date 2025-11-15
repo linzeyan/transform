@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 use std::sync::OnceLock;
 
@@ -35,6 +35,19 @@ static BASE91_LOOKUP: OnceLock<[i16; 256]> = OnceLock::new();
 
 const BASE91_ALPHABET: &[u8] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~\"";
+
+const UNIT_FACTORS: &[(&str, f64)] = &[
+    ("bit", 1.0),
+    ("byte", 8.0),
+    ("kilobit", 1_000.0),
+    ("kilobyte", 8_000.0),
+    ("megabit", 1_000_000.0),
+    ("megabyte", 8_000_000.0),
+    ("gigabit", 1_000_000_000.0),
+    ("gigabyte", 8_000_000_000.0),
+    ("terabit", 1_000_000_000_000.0),
+    ("terabyte", 8_000_000_000_000.0),
+];
 
 fn node_id() -> &'static [u8; 6] {
     NODE_ID.get_or_init(|| {
@@ -306,6 +319,60 @@ pub fn generate_user_agents(browser: &str, os: &str) -> JsValue {
 }
 
 #[wasm_bindgen]
+pub fn random_number_string(
+    length: u32,
+    allow_leading_zero: bool,
+    digits: &str,
+) -> Result<String, JsValue> {
+    random_number_string_internal(length, allow_leading_zero, digits)
+        .map_err(|err| JsValue::from_str(&err))
+}
+
+fn random_number_string_internal(
+    length: u32,
+    allow_leading_zero: bool,
+    digits: &str,
+) -> Result<String, String> {
+    if length == 0 {
+        return Err("length must be greater than zero".into());
+    }
+    if length > 2048 {
+        return Err("length must be 2048 or less".into());
+    }
+    let mut allowed = sanitize_digits(digits);
+    if allowed.is_empty() {
+        allowed = (b'0'..=b'9').map(|b| b as char).collect();
+    }
+    let mut primary_pool = allowed.clone();
+    if !allow_leading_zero {
+        primary_pool.retain(|ch| *ch != '0');
+        if primary_pool.is_empty() {
+            return Err("No valid leading digit available with current settings".into());
+        }
+    }
+
+    let mut output = String::with_capacity(length as usize);
+    let pools = [primary_pool.as_slice(), allowed.as_slice()];
+    for idx in 0..length as usize {
+        let pool = if idx == 0 && !allow_leading_zero {
+            pools[0]
+        } else {
+            pools[1]
+        };
+        let ch = pool[random_index(pool.len())];
+        output.push(ch);
+    }
+    Ok(output)
+}
+
+fn sanitize_digits(digits: &str) -> Vec<char> {
+    let mut out: Vec<char> = digits.chars().filter(|ch| ch.is_ascii_digit()).collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+#[wasm_bindgen]
 pub fn encode_content(input: &str) -> Result<JsValue, JsValue> {
     let map = encode_content_map(input);
     serde_wasm_bindgen::to_value(&map).map_err(|err| JsValue::from_str(&err.to_string()))
@@ -532,31 +599,100 @@ fn format_bigint(value: &BigInt, radix: u32, uppercase: bool) -> String {
     out
 }
 
-#[derive(Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct Ipv4Result {
-    #[serde(rename = "type")]
-    kind: Option<String>,
-    input: String,
-    cidr: Option<String>,
-    mask: Option<String>,
-    range_start: Option<String>,
-    range_end: Option<String>,
-    total: Option<String>,
-    standard: Option<String>,
-    three_part: Option<String>,
-    two_part: Option<String>,
-    integer: Option<String>,
-}
-
 #[wasm_bindgen]
-pub fn ipv4_info(input: &str) -> Result<JsValue, JsValue> {
-    ipv4_info_internal(input)
+pub fn convert_units(unit: &str, value: &str) -> Result<JsValue, JsValue> {
+    convert_units_internal(unit, value)
         .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
         .map_err(|err| JsValue::from_str(&err))
 }
 
-fn ipv4_info_internal(input: &str) -> Result<Ipv4Result, String> {
+fn convert_units_internal(unit: &str, value: &str) -> Result<BTreeMap<String, String>, String> {
+    let factor = find_unit_factor(unit).ok_or_else(|| format!("unsupported unit: {}", unit))?;
+    let parsed = parse_unit_value(value)?;
+    let total_bits = parsed * factor;
+    let mut results = BTreeMap::new();
+    for (name, unit_factor) in UNIT_FACTORS.iter() {
+        let converted = total_bits / unit_factor;
+        results.insert((*name).to_string(), format_unit_value(converted));
+    }
+    Ok(results)
+}
+
+fn find_unit_factor(unit: &str) -> Option<f64> {
+    let trimmed = unit.trim();
+    UNIT_FACTORS
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(trimmed))
+        .map(|(_, factor)| *factor)
+}
+
+fn parse_unit_value(value: &str) -> Result<f64, String> {
+    let cleaned = value.trim().replace('_', "");
+    if cleaned.is_empty() {
+        return Err("value is empty".into());
+    }
+    cleaned
+        .parse::<f64>()
+        .map_err(|_| "invalid numeric value".into())
+}
+
+fn format_unit_value(value: f64) -> String {
+    if value == 0.0 {
+        return "0".into();
+    }
+    if !value.is_finite() {
+        return value.to_string();
+    }
+    let mut formatted = format!("{:.12}", value);
+    if let Some(dot_pos) = formatted.find('.') {
+        let mut idx = formatted.len();
+        while idx > dot_pos && formatted.as_bytes()[idx - 1] == b'0' {
+            idx -= 1;
+        }
+        if idx > dot_pos && formatted.as_bytes()[idx - 1] == b'.' {
+            idx -= 1;
+        }
+        formatted.truncate(idx);
+    }
+    if formatted == "-0" {
+        formatted = "0".into();
+    }
+    formatted
+}
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct IpInfoResult {
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    version: Option<String>,
+    input: String,
+    cidr: Option<String>,
+    mask: Option<String>,
+    mask_binary: Option<String>,
+    range_start: Option<String>,
+    range_end: Option<String>,
+    total: Option<String>,
+    standard: Option<String>,
+    network: Option<String>,
+    broadcast: Option<String>,
+    three_part: Option<String>,
+    two_part: Option<String>,
+    integer: Option<String>,
+    expanded: Option<String>,
+    compressed: Option<String>,
+    binary: Option<String>,
+    host_bits: Option<String>,
+}
+
+#[wasm_bindgen]
+pub fn ipv4_info(input: &str) -> Result<JsValue, JsValue> {
+    ip_info_internal(input)
+        .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
+        .map_err(|err| JsValue::from_str(&err))
+}
+
+fn ip_info_internal(input: &str) -> Result<IpInfoResult, String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return Err("input is empty".into());
@@ -565,9 +701,34 @@ fn ipv4_info_internal(input: &str) -> Result<Ipv4Result, String> {
         return ipv4_range(trimmed);
     }
     if trimmed.contains('/') {
-        return ipv4_with_prefix(trimmed);
+        return ip_with_prefix(trimmed);
     }
-    let ip = parse_ipv4(trimmed).ok_or_else(|| format!("invalid IPv4 address: {}", trimmed))?;
+    if let Some(ip) = parse_ipv4(trimmed) {
+        return Ok(ipv4_single(ip, trimmed));
+    }
+    if let Some(ip) = parse_ipv6(trimmed) {
+        return Ok(ipv6_single(ip, trimmed));
+    }
+    Err("invalid IP input".into())
+}
+
+fn ip_with_prefix(input: &str) -> Result<IpInfoResult, String> {
+    let mut parts = input.splitn(2, '/');
+    let left = parts.next().unwrap_or("").trim();
+    let right = parts.next().unwrap_or("").trim();
+    if right.is_empty() {
+        return Err("invalid prefix length".into());
+    }
+    if let Some(ip) = parse_ipv4(left) {
+        return ipv4_with_prefix(ip, right, input);
+    }
+    if let Some(ip) = parse_ipv6(left) {
+        return ipv6_with_prefix(ip, right, input);
+    }
+    Err(format!("invalid IP address: {}", left))
+}
+
+fn ipv4_single(ip: Ipv4Addr, original: &str) -> IpInfoResult {
     let octets = ip.octets();
     let three_part = format!(
         "{}.{}.{}",
@@ -580,30 +741,50 @@ fn ipv4_info_internal(input: &str) -> Result<Ipv4Result, String> {
         octets[0],
         (((octets[1] as u32) << 16) | ((octets[2] as u32) << 8) | octets[3] as u32)
     );
-    let integer = u32::from(ip).to_string();
-    Ok(Ipv4Result {
+    let mask_value = u32::MAX;
+    IpInfoResult {
         kind: Some("single".into()),
-        input: trimmed.to_string(),
+        version: Some("IPv4".into()),
+        input: original.to_string(),
         cidr: Some(format!("{}/32", ip)),
-        mask: None,
+        mask: Some(Ipv4Addr::from(mask_value).to_string()),
+        mask_binary: Some(format_binary(mask_value as u128, 32)),
+        network: Some(ip.to_string()),
+        broadcast: Some(ip.to_string()),
         range_start: Some(ip.to_string()),
         range_end: Some(ip.to_string()),
         total: Some("1".into()),
         standard: Some(ip.to_string()),
         three_part: Some(three_part),
         two_part: Some(two_part),
-        integer: Some(integer),
-    })
+        integer: Some(u32::from(ip).to_string()),
+        binary: Some(format_binary(u32::from(ip) as u128, 32)),
+        host_bits: Some("0".into()),
+        ..Default::default()
+    }
 }
 
-fn ipv4_with_prefix(input: &str) -> Result<Ipv4Result, String> {
-    let mut parts = input.splitn(2, '/');
-    let left = parts.next().unwrap_or("").trim();
-    let right = parts.next().unwrap_or("").trim();
-    let ip = parse_ipv4(left).ok_or_else(|| format!("invalid IPv4 address: {}", left))?;
-    if right.is_empty() {
-        return Err("invalid prefix length".into());
+fn ipv6_single(ip: Ipv6Addr, original: &str) -> IpInfoResult {
+    IpInfoResult {
+        kind: Some("single".into()),
+        version: Some("IPv6".into()),
+        input: original.to_string(),
+        cidr: Some(format!("{}/128", ip)),
+        mask: Some(Ipv6Addr::from(u128::MAX).to_string()),
+        mask_binary: Some(format_binary(u128::MAX, 128)),
+        range_start: Some(ip.to_string()),
+        range_end: Some(ip.to_string()),
+        total: Some("1".into()),
+        standard: Some(ip.to_string()),
+        compressed: Some(ip.to_string()),
+        expanded: Some(format_ipv6_expanded(ip)),
+        binary: Some(format_binary(ipv6_to_u128(ip), 128)),
+        host_bits: Some("0".into()),
+        ..Default::default()
     }
+}
+
+fn ipv4_with_prefix(ip: Ipv4Addr, right: &str, original: &str) -> Result<IpInfoResult, String> {
     let (prefix, mask_value, mask_string) = if right.contains('.') {
         let mask_ip = parse_ipv4(right).ok_or_else(|| format!("invalid subnet mask: {}", right))?;
         let mask_value = u32::from(mask_ip);
@@ -632,7 +813,6 @@ fn ipv4_with_prefix(input: &str) -> Result<Ipv4Result, String> {
     } else {
         1u128 << host_bits
     };
-    let standard_ip = ip.to_string();
     let three_part = format!(
         "{}.{}.{}",
         ip.octets()[0],
@@ -644,25 +824,68 @@ fn ipv4_with_prefix(input: &str) -> Result<Ipv4Result, String> {
         ip.octets()[0],
         (((ip.octets()[1] as u32) << 16) | ((ip.octets()[2] as u32) << 8) | ip.octets()[3] as u32)
     );
-    let range_start = Ipv4Addr::from(network).to_string();
-    let range_end = Ipv4Addr::from(broadcast).to_string();
-    let result = Ipv4Result {
+    Ok(IpInfoResult {
         kind: Some("network".into()),
-        input: input.trim().to_string(),
+        version: Some("IPv4".into()),
+        input: original.trim().to_string(),
         cidr: Some(format!("{}/{}", Ipv4Addr::from(network), prefix)),
         mask: Some(mask_string),
-        range_start: Some(range_start),
-        range_end: Some(range_end),
+        mask_binary: Some(format_binary(mask_value as u128, 32)),
+        range_start: Some(Ipv4Addr::from(network).to_string()),
+        range_end: Some(Ipv4Addr::from(broadcast).to_string()),
         total: Some(total.to_string()),
-        standard: Some(standard_ip),
+        standard: Some(ip.to_string()),
+        network: Some(Ipv4Addr::from(network).to_string()),
+        broadcast: Some(Ipv4Addr::from(broadcast).to_string()),
         three_part: Some(three_part),
         two_part: Some(two_part),
         integer: Some(ip_value.to_string()),
-    };
-    Ok(result)
+        binary: Some(format_binary(ip_value as u128, 32)),
+        host_bits: Some(host_bits.to_string()),
+        ..Default::default()
+    })
 }
 
-fn ipv4_range(input: &str) -> Result<Ipv4Result, String> {
+fn ipv6_with_prefix(ip: Ipv6Addr, right: &str, original: &str) -> Result<IpInfoResult, String> {
+    let prefix: u8 = right
+        .parse()
+        .map_err(|_| format!("invalid prefix length: {}", right))?;
+    if prefix > 128 {
+        return Err(format!("invalid prefix length: {}", right));
+    }
+    let mask_value = if prefix == 0 {
+        0
+    } else {
+        (!0u128) << (128 - prefix as u32)
+    };
+    let ip_value = ipv6_to_u128(ip);
+    let network = ip_value & mask_value;
+    let broadcast = network | (!mask_value);
+    let host_bits = 128 - prefix as u32;
+    let mut total = BigInt::from(1u8);
+    total <<= host_bits;
+    Ok(IpInfoResult {
+        kind: Some("network".into()),
+        version: Some("IPv6".into()),
+        input: original.trim().to_string(),
+        cidr: Some(format!("{}/{}", Ipv6Addr::from(network), prefix)),
+        mask: Some(Ipv6Addr::from(mask_value).to_string()),
+        mask_binary: Some(format_binary(mask_value, 128)),
+        range_start: Some(Ipv6Addr::from(network).to_string()),
+        range_end: Some(Ipv6Addr::from(broadcast).to_string()),
+        total: Some(total.to_string()),
+        standard: Some(ip.to_string()),
+        compressed: Some(ip.to_string()),
+        expanded: Some(format_ipv6_expanded(ip)),
+        binary: Some(format_binary(ip_value, 128)),
+        network: Some(Ipv6Addr::from(network).to_string()),
+        broadcast: Some(Ipv6Addr::from(broadcast).to_string()),
+        host_bits: Some(host_bits.to_string()),
+        ..Default::default()
+    })
+}
+
+fn ipv4_range(input: &str) -> Result<IpInfoResult, String> {
     let normalized = normalize_range_input(input);
     let pieces: Vec<&str> = normalized.split('-').collect();
     if pieces.len() != 2 {
@@ -677,8 +900,9 @@ fn ipv4_range(input: &str) -> Result<Ipv4Result, String> {
     }
     let total = (end - start) as u64 + 1;
     let cidrs = ip_range_to_cidrs(start, end);
-    Ok(Ipv4Result {
+    Ok(IpInfoResult {
         kind: Some("range".into()),
+        version: Some("IPv4".into()),
         input: input.trim().to_string(),
         cidr: if cidrs.is_empty() {
             None
@@ -693,11 +917,75 @@ fn ipv4_range(input: &str) -> Result<Ipv4Result, String> {
         three_part: None,
         two_part: None,
         integer: None,
+        ..Default::default()
     })
 }
 
 fn parse_ipv4(value: &str) -> Option<Ipv4Addr> {
-    Ipv4Addr::from_str(value.trim()).ok()
+    let trimmed = value.trim();
+    Ipv4Addr::from_str(trimmed)
+        .ok()
+        .or_else(|| parse_ipv4_extended(trimmed))
+}
+
+fn parse_ipv4_extended(value: &str) -> Option<Ipv4Addr> {
+    if value.is_empty() {
+        return None;
+    }
+    if value.contains('.') {
+        let parts: Vec<&str> = value.split('.').collect();
+        if parts.len() > 4 {
+            return None;
+        }
+        let mut nums = Vec::with_capacity(parts.len());
+        for part in parts.iter() {
+            nums.push(parse_ipv4_number(part.trim())?);
+        }
+        let val = match nums.len() {
+            1 => nums[0],
+            2 => {
+                if nums[0] > 0xFF || nums[1] > 0xFFFFFF {
+                    return None;
+                }
+                (nums[0] << 24) | nums[1]
+            }
+            3 => {
+                if nums[0] > 0xFF || nums[1] > 0xFF || nums[2] > 0xFFFF {
+                    return None;
+                }
+                (nums[0] << 24) | (nums[1] << 16) | nums[2]
+            }
+            4 => {
+                if nums.iter().any(|n| *n > 0xFF) {
+                    return None;
+                }
+                (nums[0] << 24) | (nums[1] << 16) | (nums[2] << 8) | nums[3]
+            }
+            _ => return None,
+        };
+        return Some(Ipv4Addr::from(val));
+    }
+    let num = parse_ipv4_number(value)?;
+    Some(Ipv4Addr::from(num))
+}
+
+fn parse_ipv4_number(part: &str) -> Option<u32> {
+    let trimmed = part.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    {
+        u32::from_str_radix(rest, 16).ok()
+    } else {
+        trimmed.parse::<u32>().ok()
+    }
+}
+
+fn parse_ipv6(value: &str) -> Option<Ipv6Addr> {
+    Ipv6Addr::from_str(value.trim()).ok()
 }
 
 fn looks_like_range(input: &str) -> bool {
@@ -749,6 +1037,37 @@ fn ip_range_to_cidrs(mut start: u32, end: u32) -> Vec<String> {
         }
     }
     cidrs
+}
+
+fn ipv6_to_u128(addr: Ipv6Addr) -> u128 {
+    u128::from(addr)
+}
+
+fn format_ipv6_expanded(addr: Ipv6Addr) -> String {
+    let segments = addr.segments();
+    format!(
+        "{:04x}:{:04x}:{:04x}:{:04x}:{:04x}:{:04x}:{:04x}:{:04x}",
+        segments[0],
+        segments[1],
+        segments[2],
+        segments[3],
+        segments[4],
+        segments[5],
+        segments[6],
+        segments[7]
+    )
+}
+
+fn format_binary(value: u128, bits: usize) -> String {
+    let raw = format!("{:0width$b}", value, width = bits);
+    let mut out = String::with_capacity(raw.len() + raw.len() / 4);
+    for (idx, ch) in raw.chars().enumerate() {
+        if idx > 0 && idx % 4 == 0 {
+            out.push(' ');
+        }
+        out.push(ch);
+    }
+    out
 }
 
 #[derive(Serialize, Default)]
@@ -1028,4 +1347,18 @@ fn fnv1a_128(data: &[u8]) -> u128 {
 }
 fn fill_random(buf: &mut [u8]) {
     getrandom::fill(buf).expect("randomness available");
+}
+
+fn random_index(max: usize) -> usize {
+    assert!(max > 0, "pool cannot be empty");
+    let bound = max as u64;
+    let threshold = u64::MAX - (u64::MAX % bound);
+    loop {
+        let mut buf = [0u8; 8];
+        fill_random(&mut buf);
+        let sample = u64::from_le_bytes(buf);
+        if sample < threshold {
+            return (sample % bound) as usize;
+        }
+    }
 }

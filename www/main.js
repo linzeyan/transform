@@ -2,6 +2,7 @@ import initWasm, {
   generate_uuids,
   generate_user_agents,
   convert_number_base,
+  convert_units,
   ipv4_info,
   url_encode,
   url_decode,
@@ -14,6 +15,7 @@ import initWasm, {
   format_content_text,
   markdown_to_html_text,
   html_to_markdown_text,
+  random_number_string,
 } from "./pkg/wasm_core.js";
 
 const formats = [
@@ -57,6 +59,21 @@ const samples = {
 };
 
 const supportedFormats = new Set(formats);
+
+const unitKeys = [
+  "bit",
+  "byte",
+  "kilobit",
+  "kilobyte",
+  "megabit",
+  "megabyte",
+  "gigabit",
+  "gigabyte",
+  "terabit",
+  "terabyte",
+];
+
+const digitChoices = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
 const coderTools = [
   {
@@ -259,9 +276,14 @@ const toolGroups = [
         description: "Binary / Octal / Decimal / Hex conversions.",
       },
       {
+        id: "converter-units",
+        label: "Unit Converter",
+        description: "Bits, Bytes, and SI multiples.",
+      },
+      {
         id: "converter-ipv4",
-        label: "IPv4 Tools",
-        description: "CIDR, ranges, and alternate formats.",
+        label: "IP Tools",
+        description: "IPv4/IPv6 helpers for CIDR, ranges, and formats.",
       },
     ],
   },
@@ -286,6 +308,11 @@ const toolGroups = [
         label: "User-Agent",
         description: "Generate realistic browser user agents.",
       },
+      {
+        id: "generator-random",
+        label: "Random Number",
+        description: "Random numeric strings with custom digits.",
+      },
     ],
   },
 ];
@@ -294,6 +321,7 @@ const workspaceByTool = {
   format: "converterWorkspace",
   "converter-html-md": "pairWorkspace",
   "converter-number-bases": "numberWorkspace",
+  "converter-units": "unitWorkspace",
   "converter-ipv4": "ipv4Workspace",
   "coder-encode": "coderWorkspace",
   "coder-decode": "coderWorkspace",
@@ -302,27 +330,36 @@ const workspaceByTool = {
   "coder-jwt": "pairWorkspace",
   "generator-uuid": "uuidWorkspace",
   "generator-useragent": "userAgentWorkspace",
+  "generator-random": "randomWorkspace",
 };
 
 const coderMainTools = new Set(["coder-encode", "coder-decode", "coder-hash"]);
 const pairTools = new Set(["converter-html-md", "coder-url", "coder-jwt"]);
 const numberTools = new Set(["converter-number-bases"]);
+const unitTools = new Set(["converter-units"]);
 const ipv4Tools = new Set(["converter-ipv4"]);
-const generatorTools = new Set(["generator-uuid", "generator-useragent"]);
+const generatorTools = new Set([
+  "generator-uuid",
+  "generator-useragent",
+  "generator-random",
+]);
 const uuidToolSet = new Set(["generator-uuid"]);
 const userAgentToolSet = new Set(["generator-useragent"]);
+const randomToolSet = new Set(["generator-random"]);
 const implementedTools = new Set([
   "format",
   "converter-html-md",
   "generator-uuid",
   "generator-useragent",
   "converter-number-bases",
+  "converter-units",
   "converter-ipv4",
   "coder-encode",
   "coder-decode",
   "coder-hash",
   "coder-url",
   "coder-jwt",
+  "generator-random",
 ]);
 
 const toolInfo = {};
@@ -341,9 +378,11 @@ const workspaceIds = [
   "coderWorkspace",
   "pairWorkspace",
   "numberWorkspace",
+  "unitWorkspace",
   "ipv4Workspace",
   "uuidWorkspace",
   "userAgentWorkspace",
+  "randomWorkspace",
 ];
 
 const defaultDecoder = allEncodingVariants[0]?.key || "";
@@ -366,6 +405,11 @@ const state = {
   pairSyncing: false,
   pairLastSource: "input",
   numberSyncing: false,
+  unitSyncing: false,
+  randomDigits: new Set(digitChoices),
+  randomAllowLeadingZero: true,
+  randomLength: 12,
+  randomResult: "",
   formatKey: null,
 };
 
@@ -481,6 +525,11 @@ function cacheElements() {
   elements.numberOctal = document.getElementById("numberOctal");
   elements.numberDecimal = document.getElementById("numberDecimal");
   elements.numberHex = document.getElementById("numberHex");
+  elements.unitWorkspace = document.getElementById("unitWorkspace");
+  unitKeys.forEach((key) => {
+    const id = `unit${capitalize(key)}`;
+    elements[id] = document.getElementById(id);
+  });
   elements.ipv4Workspace = document.getElementById("ipv4Workspace");
   elements.ipv4Input = document.getElementById("ipv4Input");
   elements.ipv4Results = document.getElementById("ipv4Results");
@@ -490,6 +539,12 @@ function cacheElements() {
   elements.uaBrowser = document.getElementById("uaBrowser");
   elements.uaOS = document.getElementById("uaOS");
   elements.uaResults = document.getElementById("uaResults");
+  elements.randomWorkspace = document.getElementById("randomWorkspace");
+  elements.randomLength = document.getElementById("randomLength");
+  elements.randomAllowZero = document.getElementById("randomAllowZero");
+  elements.randomDigitToggles = document.getElementById("randomDigitToggles");
+  elements.randomGenerate = document.getElementById("randomGenerate");
+  elements.randomResult = document.getElementById("randomResult");
 }
 
 function renderSidebar() {
@@ -652,7 +707,21 @@ function bindUI() {
   elements.numberHex?.addEventListener("input", () =>
     handleNumberInput("hex"),
   );
+  unitKeys.forEach((key) => {
+    const id = `unit${capitalize(key)}`;
+    elements[id]?.addEventListener("input", () => handleUnitInput(key));
+  });
   elements.ipv4Input?.addEventListener("input", () => runIPv4Conversion());
+  elements.ipv4Results?.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-copy-value]");
+    if (target) {
+      const toCopy = target.dataset.copyValue || "";
+      if (toCopy) {
+        copyText(toCopy, "IP value");
+        setStatus("Copied", false);
+      }
+    }
+  });
   elements.uuidToggleCase?.addEventListener("click", () => {
     state.uuidUppercase = !state.uuidUppercase;
     if (elements.uuidToggleCase) {
@@ -663,6 +732,15 @@ function bindUI() {
   elements.uuidRegenerate?.addEventListener("click", () => refreshUUIDs(true));
   elements.uaBrowser?.addEventListener("change", () => refreshUserAgents(true));
   elements.uaOS?.addEventListener("change", () => refreshUserAgents(true));
+  elements.randomLength?.addEventListener("input", handleRandomLengthChange);
+  elements.randomAllowZero?.addEventListener("change", handleRandomLeadingToggle);
+  elements.randomDigitToggles?.addEventListener("click", handleRandomDigitToggle);
+  elements.randomGenerate?.addEventListener("click", () => runRandomGenerator());
+  elements.randomResult?.addEventListener("click", () => {
+    if (!state.randomResult) return;
+    copyText(state.randomResult, "Random number");
+    setStatus("Copied", false);
+  });
 }
 
 function ensureConverterMode() {
@@ -782,6 +860,10 @@ function selectTool(toolId) {
     activateNumberTool();
     return;
   }
+  if (isUnitTool(toolId)) {
+    activateUnitTool();
+    return;
+  }
   if (isIPv4Tool(toolId)) {
     activateIPv4Tool();
     return;
@@ -790,6 +872,8 @@ function selectTool(toolId) {
     activateUUIDTool();
   } else if (isUserAgentTool(toolId)) {
     activateUserAgentTool();
+  } else if (isRandomTool(toolId)) {
+    activateRandomTool();
   }
 }
 
@@ -798,10 +882,12 @@ function updateBodyClasses(toolId) {
   document.body.classList.toggle("tool-coder", coderMainTools.has(toolId));
   document.body.classList.toggle("tool-pair", pairTools.has(toolId));
   document.body.classList.toggle("tool-number", numberTools.has(toolId));
+  document.body.classList.toggle("tool-unit", unitTools.has(toolId));
   document.body.classList.toggle("tool-ipv4", ipv4Tools.has(toolId));
   document.body.classList.toggle("tool-generator", generatorTools.has(toolId));
   document.body.classList.toggle("tool-uuid", isUUIDTool(toolId));
   document.body.classList.toggle("tool-useragent", isUserAgentTool(toolId));
+  document.body.classList.toggle("tool-random", isRandomTool(toolId));
 }
 
 function toggleConverterControls(show) {
@@ -1133,8 +1219,16 @@ function isNumberTool(toolId) {
   return numberTools.has(toolId);
 }
 
+function isUnitTool(toolId) {
+  return unitTools.has(toolId);
+}
+
 function isIPv4Tool(toolId) {
   return ipv4Tools.has(toolId);
+}
+
+function isRandomTool(toolId) {
+  return randomToolSet.has(toolId);
 }
 
 function activatePairTool(toolId) {
@@ -1390,10 +1484,61 @@ function runNumberConversion(base) {
   }
 }
 
+function activateUnitTool() {
+  clearUnitFields();
+  setStatus("Ready", false);
+}
+
+function handleUnitInput(unitKey) {
+  if (!isUnitTool(state.currentTool) || state.unitSyncing) return;
+  runUnitConversion(unitKey);
+}
+
+function runUnitConversion(unitKey) {
+  const fieldId = `unit${capitalize(unitKey)}`;
+  const field = elements[fieldId];
+  if (!field) return;
+  if (!state.wasmReady) {
+    setStatus("Waiting for WebAssembly...", true);
+    return;
+  }
+  const value = field.value;
+  if (!value.trim()) {
+    clearUnitFields();
+    setStatus("Cleared");
+    return;
+  }
+  try {
+    const result = convert_units(unitKey, value);
+    const normalized = normalizeMapResult(result);
+    state.unitSyncing = true;
+    unitKeys.forEach((key) => {
+      const target = elements[`unit${capitalize(key)}`];
+      if (target && typeof normalized[key] === "string") {
+        target.value = normalized[key];
+      }
+    });
+    state.unitSyncing = false;
+    setStatus("Done", false);
+  } catch (err) {
+    state.unitSyncing = false;
+    setStatus(`⚠️ ${err?.message || err}`, true);
+  }
+}
+
+function clearUnitFields() {
+  state.unitSyncing = true;
+  unitKeys.forEach((key) => {
+    const target = elements[`unit${capitalize(key)}`];
+    if (target) target.value = "";
+  });
+  state.unitSyncing = false;
+}
+
 function activateIPv4Tool() {
   if (elements.ipv4Results) {
     elements.ipv4Results.innerHTML =
-      '<div class="muted">Enter an IPv4 or CIDR block to see details</div>';
+      '<div class="muted">Enter an IP address (IPv4/IPv6), CIDR block, or range to see details</div>';
   }
   if (elements.ipv4Input) {
     elements.ipv4Input.value = "";
@@ -1411,7 +1556,7 @@ function runIPv4Conversion() {
   if (!value) {
     if (elements.ipv4Results) {
       elements.ipv4Results.innerHTML =
-        '<div class="muted">Enter an IPv4 or CIDR block to see details</div>';
+        '<div class="muted">Enter an IP address (IPv4/IPv6), CIDR block, or range to see details</div>';
     }
     setStatus("Cleared");
     return;
@@ -1428,35 +1573,29 @@ function runIPv4Conversion() {
 function renderIPv4Results(data) {
   if (!elements.ipv4Results) return;
   const stats = [];
-  if (data.standard) {
-    stats.push(renderIPv4Row("Standard", data.standard));
-  }
-  if (data.cidr) {
-    stats.push(renderIPv4Row("CIDR", data.cidr));
-  }
-  if (data.mask) {
-    stats.push(renderIPv4Row("Mask", data.mask));
-  }
+  const addRow = (label, value) => {
+    if (!value) return;
+    stats.push(renderIPv4Row(label, value));
+  };
+  addRow("Version", data.version);
+  addRow("Type", data.type);
+  addRow("Standard", data.standard);
+  addRow("CIDR", data.cidr);
+  addRow("Mask", data.mask);
+  addRow("Mask (binary)", data.maskBinary);
   if (data.rangeStart || data.rangeEnd) {
-    stats.push(
-      renderIPv4Row(
-        "Range",
-        `${data.rangeStart || "?"} → ${data.rangeEnd || "?"}`,
-      ),
-    );
+    addRow("Range", `${data.rangeStart || "?"} → ${data.rangeEnd || "?"}`);
   }
-  if (data.total) {
-    stats.push(renderIPv4Row("Total IPs", data.total));
-  }
-  if (data.threePart) {
-    stats.push(renderIPv4Row("3-part", data.threePart));
-  }
-  if (data.twoPart) {
-    stats.push(renderIPv4Row("2-part", data.twoPart));
-  }
-  if (data.integer) {
-    stats.push(renderIPv4Row("Integer", data.integer));
-  }
+  addRow("Network", data.network);
+  addRow("Broadcast", data.broadcast);
+  addRow("Total IPs", data.total);
+  addRow("3-part", data.threePart);
+  addRow("2-part", data.twoPart);
+  addRow("Integer", data.integer);
+  addRow("Expanded", data.expanded);
+  addRow("Compressed", data.compressed);
+  addRow("Binary", data.binary);
+  addRow("Host bits", data.hostBits);
   if (!stats.length) {
     elements.ipv4Results.innerHTML =
       '<div class="muted">Unable to parse input</div>';
@@ -1468,10 +1607,11 @@ function renderIPv4Results(data) {
 function renderIPv4Row(label, value) {
   const safeLabel = escapeHTML(label || "");
   const safeValue = escapeHTML(value || "");
+  const attrValue = escapeAttr(value || "");
   return `
     <div class="stat">
       <span>${safeLabel}</span>
-      <span>${safeValue}</span>
+      <span class="click-copy" data-copy-value="${attrValue}">${safeValue}</span>
     </div>
   `;
 }
@@ -1635,6 +1775,109 @@ function renderUserAgents(list) {
       copyText(value, "user agent");
     });
   });
+}
+
+function activateRandomTool() {
+  syncRandomDigitButtons();
+  if (elements.randomLength) {
+    elements.randomLength.value = state.randomLength;
+  }
+  if (elements.randomAllowZero) {
+    elements.randomAllowZero.checked = state.randomAllowLeadingZero;
+  }
+  updateRandomResult(state.randomResult);
+  setStatus("Ready", false);
+}
+
+function handleRandomLengthChange() {
+  if (!elements.randomLength) return;
+  let value = parseInt(elements.randomLength.value, 10);
+  if (!Number.isFinite(value)) {
+    value = 1;
+  }
+  value = Math.min(Math.max(value, 1), 2048);
+  state.randomLength = value;
+  elements.randomLength.value = value;
+}
+
+function handleRandomLeadingToggle(event) {
+  state.randomAllowLeadingZero = Boolean(event?.target?.checked);
+}
+
+function handleRandomDigitToggle(event) {
+  const button = event.target.closest("button[data-digit]");
+  if (!button || !elements.randomDigitToggles) return;
+  const digit = button.dataset.digit;
+  if (!digitChoices.includes(digit)) return;
+  const active = button.dataset.active !== "false";
+  if (active) {
+    if (state.randomDigits.size === 1) {
+      setStatus("Keep at least one digit", true);
+      return;
+    }
+    state.randomDigits.delete(digit);
+    button.dataset.active = "false";
+  } else {
+    state.randomDigits.add(digit);
+    button.dataset.active = "true";
+  }
+}
+
+function syncRandomDigitButtons() {
+  if (!elements.randomDigitToggles) return;
+  if (!state.randomDigits || state.randomDigits.size === 0) {
+    state.randomDigits = new Set(digitChoices);
+  }
+  elements.randomDigitToggles
+    .querySelectorAll("button[data-digit]")
+    .forEach((button) => {
+      const digit = button.dataset.digit;
+      const isActive = state.randomDigits.has(digit);
+      button.dataset.active = isActive ? "true" : "false";
+    });
+}
+
+function runRandomGenerator() {
+  if (!isRandomTool(state.currentTool)) {
+    setStatus("Select the Random Number tool", true);
+    return;
+  }
+  if (!state.wasmReady) {
+    setStatus("Waiting for WebAssembly...", true);
+    return;
+  }
+  handleRandomLengthChange();
+  const digits = Array.from(state.randomDigits).sort();
+  if (!digits.length) {
+    setStatus("Select at least one digit", true);
+    return;
+  }
+  try {
+    const result = random_number_string(
+      state.randomLength,
+      state.randomAllowLeadingZero,
+      digits.join("") || "0123456789",
+    );
+    updateRandomResult(result);
+    setStatus("Done", false);
+  } catch (err) {
+    updateRandomResult("");
+    setStatus(`⚠️ ${err?.message || err}`, true);
+  }
+}
+
+function updateRandomResult(value) {
+  state.randomResult = value || "";
+  if (!elements.randomResult) return;
+  if (state.randomResult) {
+    elements.randomResult.textContent = state.randomResult;
+    elements.randomResult.dataset.copyValue = state.randomResult;
+    elements.randomResult.classList.remove("empty");
+  } else {
+    elements.randomResult.textContent = "Click Generate to produce a number";
+    elements.randomResult.dataset.copyValue = "";
+    elements.randomResult.classList.add("empty");
+  }
 }
 
 async function copyText(value, label) {

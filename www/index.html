@@ -211,6 +211,59 @@
 					</section>
 				</div>
 
+				<div id="unitWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Unit Converter</h2>
+								<p>Bits ↔ Bytes with SI multiples</p>
+							</div>
+						</div>
+						<div class="number-grid">
+							<label>
+								<span>Bit</span>
+								<input id="unitBit" spellcheck="false" placeholder="e.g. 8" />
+							</label>
+							<label>
+								<span>Byte</span>
+								<input id="unitByte" spellcheck="false" placeholder="e.g. 1" />
+							</label>
+							<label>
+								<span>Kilobit</span>
+								<input id="unitKilobit" spellcheck="false" placeholder="e.g. 1" />
+							</label>
+							<label>
+								<span>Kilobyte</span>
+								<input id="unitKilobyte" spellcheck="false" placeholder="e.g. 0.125" />
+							</label>
+							<label>
+								<span>Megabit</span>
+								<input id="unitMegabit" spellcheck="false" placeholder="e.g. 0.001" />
+							</label>
+							<label>
+								<span>Megabyte</span>
+								<input id="unitMegabyte" spellcheck="false" placeholder="e.g. 0.000125" />
+							</label>
+							<label>
+								<span>Gigabit</span>
+								<input id="unitGigabit" spellcheck="false" placeholder="e.g. 0.000001" />
+							</label>
+							<label>
+								<span>Gigabyte</span>
+								<input id="unitGigabyte" spellcheck="false" placeholder="e.g. 0.000000125" />
+							</label>
+							<label>
+								<span>Terabit</span>
+								<input id="unitTerabit" spellcheck="false" placeholder="e.g. 0.000000001" />
+							</label>
+							<label>
+								<span>Terabyte</span>
+								<input id="unitTerabyte" spellcheck="false" placeholder="e.g. 0.000000000125" />
+							</label>
+						</div>
+					</section>
+				</div>
+
 				<div id="ipv4Workspace" class="tool-view hidden">
 					<section class="panel">
 						<div class="panel-header">
@@ -286,6 +339,55 @@
 						</div>
 						<div id="uaResults" class="ua-results">
 							<div class="muted">Choose filters to generate user agents</div>
+						</div>
+					</section>
+				</div>
+
+				<div id="randomWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Random Number</h2>
+								<p>Generate numeric strings with custom rules</p>
+							</div>
+							<div class="generator-actions">
+								<button id="randomGenerate">Generate</button>
+							</div>
+						</div>
+						<div class="random-controls">
+							<label>
+								<span>Length</span>
+								<input
+									type="number"
+									min="1"
+									max="2048"
+									value="12"
+									id="randomLength"
+								/>
+							</label>
+							<label class="checkbox">
+								<input type="checkbox" id="randomAllowZero" checked />
+								<span>Allow leading zero</span>
+							</label>
+						</div>
+						<div class="digit-toggle-grid" id="randomDigitToggles">
+							<button type="button" data-digit="0" data-active="true">0</button>
+							<button type="button" data-digit="1" data-active="true">1</button>
+							<button type="button" data-digit="2" data-active="true">2</button>
+							<button type="button" data-digit="3" data-active="true">3</button>
+							<button type="button" data-digit="4" data-active="true">4</button>
+							<button type="button" data-digit="5" data-active="true">5</button>
+							<button type="button" data-digit="6" data-active="true">6</button>
+							<button type="button" data-digit="7" data-active="true">7</button>
+							<button type="button" data-digit="8" data-active="true">8</button>
+							<button type="button" data-digit="9" data-active="true">9</button>
+						</div>
+						<div
+							id="randomResult"
+							class="random-result"
+							data-copy-label="Random number"
+						>
+							Click Generate to produce a number
 						</div>
 					</section>
 				</div>
