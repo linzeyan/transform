@@ -1,5 +1,5 @@
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 use serde_json::{Map, Value};
 
 use crate::convert::json_utils::{ordered_keys, parse_json};

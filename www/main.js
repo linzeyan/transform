@@ -16,6 +16,10 @@ import initWasm, {
   markdown_to_html_text,
   html_to_markdown_text,
   random_number_sequences,
+  generate_insert_statements,
+  inspect_schema,
+  convert_timestamp,
+  totp_token,
 } from "./pkg/wasm_core.js";
 
 const formats = [
@@ -71,6 +75,17 @@ const unitKeys = [
   "gigabyte",
   "terabit",
   "terabyte",
+];
+
+const timestampFields = [
+  { key: "iso8601", id: "timestampIso" },
+  { key: "rfc2822", id: "timestampRfc" },
+  { key: "sql_datetime", id: "timestampSql" },
+  { key: "sql_date", id: "timestampSqlDate" },
+  { key: "timestamp_seconds", id: "timestampSeconds" },
+  { key: "timestamp_milliseconds", id: "timestampMillis" },
+  { key: "timestamp_microseconds", id: "timestampMicros" },
+  { key: "timestamp_nanoseconds", id: "timestampNanos" },
 ];
 
 const digitCharacters = "0123456789";
@@ -143,7 +158,7 @@ const coderTools = [
     id: "coder-hash",
     mode: "hash",
     label: "Hash",
-    description: "Hashes from Go's stdlib.",
+    description: "Hashes from stdlib.",
   },
   {
     id: "coder-url",
@@ -256,7 +271,7 @@ const hashLabels = {
 const coderModeDescriptions = {
   encode: "Encode text into multiple bases.",
   decode: "Decode text with your selected base.",
-  hash: "Generate hashes provided by Go's standard library.",
+  hash: "Generate hashes provided by standard library.",
 };
 
 const coderModeTitles = {
@@ -329,7 +344,12 @@ const toolGroups = [
       {
         id: "converter-units",
         label: "Unit Converter",
-        description: "Bits, Bytes, and SI multiples.",
+        description: "Bits, Bytes, and binary multiples.",
+      },
+      {
+        id: "converter-timestamp",
+        label: "Timestamp Converter",
+        description: "Convert Unix timestamps and date formats.",
       },
       {
         id: "converter-ipv4",
@@ -364,6 +384,16 @@ const toolGroups = [
         label: "Random",
         description: "Random strings with customizable charset.",
       },
+      {
+        id: "generator-totp",
+        label: "TOTP",
+        description: "Time-based one-time passwords.",
+      },
+      {
+        id: "generator-sql",
+        label: "SQL Inserts",
+        description: "Generate INSERT statements from MySQL schema.",
+      },
     ],
   },
 ];
@@ -373,6 +403,7 @@ const workspaceByTool = {
   "converter-html-md": "pairWorkspace",
   "converter-number-bases": "numberWorkspace",
   "converter-units": "unitWorkspace",
+  "converter-timestamp": "timestampWorkspace",
   "converter-ipv4": "ipv4Workspace",
   "coder-encode": "coderWorkspace",
   "coder-decode": "coderWorkspace",
@@ -382,21 +413,28 @@ const workspaceByTool = {
   "generator-uuid": "uuidWorkspace",
   "generator-useragent": "userAgentWorkspace",
   "generator-random": "randomWorkspace",
+  "generator-totp": "totpWorkspace",
+  "generator-sql": "dataWorkspace",
 };
 
 const coderMainTools = new Set(["coder-encode", "coder-decode", "coder-hash"]);
 const pairTools = new Set(["converter-html-md", "coder-url", "coder-jwt"]);
 const numberTools = new Set(["converter-number-bases"]);
 const unitTools = new Set(["converter-units"]);
+const timestampTools = new Set(["converter-timestamp"]);
 const ipv4Tools = new Set(["converter-ipv4"]);
 const generatorTools = new Set([
   "generator-uuid",
   "generator-useragent",
   "generator-random",
+  "generator-totp",
+  "generator-sql",
 ]);
 const uuidToolSet = new Set(["generator-uuid"]);
 const userAgentToolSet = new Set(["generator-useragent"]);
 const randomToolSet = new Set(["generator-random"]);
+const totpToolSet = new Set(["generator-totp"]);
+const dataToolSet = new Set(["generator-sql"]);
 const implementedTools = new Set([
   "format",
   "converter-html-md",
@@ -404,6 +442,7 @@ const implementedTools = new Set([
   "generator-useragent",
   "converter-number-bases",
   "converter-units",
+  "converter-timestamp",
   "converter-ipv4",
   "coder-encode",
   "coder-decode",
@@ -411,6 +450,8 @@ const implementedTools = new Set([
   "coder-url",
   "coder-jwt",
   "generator-random",
+  "generator-totp",
+  "generator-sql",
 ]);
 
 const toolInfo = {};
@@ -430,10 +471,13 @@ const workspaceIds = [
   "pairWorkspace",
   "numberWorkspace",
   "unitWorkspace",
+  "timestampWorkspace",
   "ipv4Workspace",
   "uuidWorkspace",
   "userAgentWorkspace",
   "randomWorkspace",
+  "totpWorkspace",
+  "dataWorkspace",
 ];
 
 const defaultDecoder = allEncodingVariants[0]?.key || "";
@@ -470,6 +514,18 @@ const state = {
   randomMinSymbols: 0,
   randomSymbols: new Set(),
   randomResults: [],
+  timestampUpdating: false,
+  timestampActiveField: null,
+  totpSecret: "",
+  totpAlgorithm: "SHA256",
+  totpPeriod: 30,
+  totpDigits: 6,
+  totpTimer: null,
+  dataRows: 5,
+  dataOverrides: {},
+  dataTables: [],
+  dataSchemaTimer: null,
+  dataGenerateTimer: null,
   formatKey: null,
 };
 
@@ -535,6 +591,20 @@ async function boot() {
     }
     if (isIPv4Tool(state.currentTool) && elements.ipv4Input?.value.trim()) {
       runIPv4Conversion();
+    }
+    if (isTimestampTool(state.currentTool) && elements.timestampInputs?.length) {
+      const filled = Array.from(elements.timestampInputs).find((input) =>
+        input?.value?.trim(),
+      );
+      if (filled && filled.dataset.field) {
+        runTimestampConversion(filled.dataset.field, filled.value, true);
+      }
+    }
+    if (isTotpTool(state.currentTool)) {
+      activateTotpTool();
+    }
+    if (isDataTool(state.currentTool)) {
+      activateDataTool();
     }
   } catch (err) {
     console.error(err);
@@ -617,6 +687,26 @@ function cacheElements() {
   elements.randomSymbolMinRow = document.getElementById("randomSymbolMinRow");
   elements.randomGenerate = document.getElementById("randomGenerate");
   elements.randomResults = document.getElementById("randomResults");
+  elements.timestampInputs = document.querySelectorAll(
+    "#timestampWorkspace input[data-field]",
+  );
+  elements.timestampPresets = document.getElementById("timestampPresets");
+  elements.totpSecret = document.getElementById("totpSecret");
+  elements.totpAlgorithm = document.getElementById("totpAlgorithm");
+  elements.totpPeriod = document.getElementById("totpPeriod");
+  elements.totpDigits = document.getElementById("totpDigits");
+  elements.totpCode = document.getElementById("totpCode");
+  elements.totpPeriodLabel = document.getElementById("totpPeriodLabel");
+  elements.totpRemainingLabel = document.getElementById("totpRemainingLabel");
+  elements.totpError = document.getElementById("totpError");
+  elements.totpCopy = document.getElementById("totpCopy");
+  elements.dataSchema = document.getElementById("dataSchema");
+  elements.dataRows = document.getElementById("dataRows");
+  elements.dataGenerate = document.getElementById("dataGenerate");
+  elements.dataOutput = document.getElementById("dataOutput");
+  elements.dataCopy = document.getElementById("dataCopy");
+  elements.dataColumnEditor = document.getElementById("dataColumnEditor");
+
 }
 
 function renderSidebar() {
@@ -835,6 +925,20 @@ function bindUI() {
   elements.randomSymbolToggles?.addEventListener("click", handleRandomSymbolToggle);
   elements.randomGenerate?.addEventListener("click", () => runRandomGenerator());
   elements.randomResults?.addEventListener("click", handleRandomResultsClick);
+  elements.timestampInputs?.forEach((input) =>
+    input.addEventListener("input", handleTimestampInput),
+  );
+  elements.timestampPresets?.addEventListener("click", handleTimestampPreset);
+  elements.totpSecret?.addEventListener("input", handleTotpFieldChange);
+  elements.totpAlgorithm?.addEventListener("change", handleTotpFieldChange);
+  elements.totpPeriod?.addEventListener("input", handleTotpFieldChange);
+  elements.totpDigits?.addEventListener("input", handleTotpFieldChange);
+  elements.totpCopy?.addEventListener("click", copyTotpCode);
+  elements.dataSchema?.addEventListener("input", handleDataSchemaInput);
+  elements.dataRows?.addEventListener("input", handleDataRowsChange);
+  elements.dataGenerate?.addEventListener("click", () => runDataGenerator());
+  elements.dataCopy?.addEventListener("click", copyDataOutput);
+  elements.dataColumnEditor?.addEventListener("input", handleDataOverrideInput);
 }
 
 function ensureConverterMode() {
@@ -917,6 +1021,7 @@ function handleFormatField(target, formatName, minify) {
 function selectTool(toolId) {
   const meta = toolInfo[toolId];
   if (!meta) return;
+  const previousTool = state.currentTool;
   state.currentTool = toolId;
   elements.toolName && (elements.toolName.textContent = meta.label);
   elements.toolDesc && (elements.toolDesc.textContent = meta.description || "");
@@ -925,6 +1030,9 @@ function selectTool(toolId) {
   showWorkspace(workspaceId);
   toggleConverterControls(toolId === "format");
   updateToolButtons();
+  if (previousTool && isTotpTool(previousTool) && !isTotpTool(toolId)) {
+    stopTotpTimer();
+  }
   if (!implementedTools.has(toolId)) {
     setStatus("This tool isn't wired up in this build.", true);
   } else {
@@ -958,6 +1066,10 @@ function selectTool(toolId) {
     activateUnitTool();
     return;
   }
+  if (isTimestampTool(toolId)) {
+    activateTimestampTool();
+    return;
+  }
   if (isIPv4Tool(toolId)) {
     activateIPv4Tool();
     return;
@@ -968,6 +1080,10 @@ function selectTool(toolId) {
     activateUserAgentTool();
   } else if (isRandomTool(toolId)) {
     activateRandomTool();
+  } else if (isTotpTool(toolId)) {
+    activateTotpTool();
+  } else if (isDataTool(toolId)) {
+    activateDataTool();
   }
 }
 
@@ -1317,12 +1433,24 @@ function isUnitTool(toolId) {
   return unitTools.has(toolId);
 }
 
+function isTimestampTool(toolId) {
+  return timestampTools.has(toolId);
+}
+
 function isIPv4Tool(toolId) {
   return ipv4Tools.has(toolId);
 }
 
 function isRandomTool(toolId) {
   return randomToolSet.has(toolId);
+}
+
+function isTotpTool(toolId) {
+  return totpToolSet.has(toolId);
+}
+
+function isDataTool(toolId) {
+  return dataToolSet.has(toolId);
 }
 
 function activatePairTool(toolId) {
@@ -2208,6 +2336,450 @@ function handleRandomResultsClick(event) {
   if (!value) return;
   copyText(value, "Random string");
 }
+
+function handleTimestampPreset(event) {
+  const button = event.target.closest("button[data-preset]");
+  if (!button) return;
+  const preset = button.dataset.preset;
+  const entry = buildTimestampPreset(preset);
+  if (!entry) return;
+  const target = document.querySelector(`#timestampWorkspace input[data-field="${entry.field}"]`);
+  if (!target) return;
+  target.value = entry.value;
+  runTimestampConversion(entry.field, entry.value);
+}
+
+function buildTimestampPreset(kind) {
+  const now = new Date();
+  const pad = (num) => String(num).padStart(2, "0");
+  const iso = now.toISOString();
+  const rfc2822 = now.toUTCString();
+  const sqlDate = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
+  const sqlDateTime = `${sqlDate} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
+  switch (kind) {
+    case "now":
+      return { field: "timestamp_seconds", value: Math.floor(Date.now() / 1000).toString() };
+    case "rfc3339":
+      return { field: "iso8601", value: iso };
+    case "rfc2822":
+      return { field: "rfc2822", value: rfc2822 };
+    case "sql-datetime":
+      return { field: "sql_datetime", value: sqlDateTime };
+    default:
+      return null;
+  }
+}
+
+function activateTimestampTool() {
+  if (!elements.timestampInputs?.length) return;
+  const filled = Array.from(elements.timestampInputs).find((input) =>
+    input?.value?.trim(),
+  );
+  if (filled && filled.dataset.field) {
+    runTimestampConversion(filled.dataset.field, filled.value, true);
+  } else {
+    clearTimestampOutputs();
+  }
+}
+
+function handleTimestampInput(event) {
+  const target = event.target;
+  if (!target || state.timestampUpdating) return;
+  const field = target.dataset.field;
+  if (!field) return;
+  const value = target.value || "";
+  if (!value.trim()) {
+    clearTimestampOutputs();
+    return;
+  }
+  runTimestampConversion(field, value);
+}
+
+function runTimestampConversion(field, value, silent = false) {
+  if (!state.wasmReady) {
+    if (!silent) setStatus("Waiting for WebAssembly...", true);
+    return;
+  }
+  if (!elements.timestampInputs?.length) return;
+  try {
+    const record = normalizeMapResult(convert_timestamp(field, value));
+    state.timestampUpdating = true;
+    timestampFields.forEach(({ id, key }) => {
+      const input = document.getElementById(id);
+      if (!input) return;
+      const nextValue = record[key] ?? "";
+      input.value = key === field ? (nextValue || value) : nextValue;
+    });
+    state.timestampUpdating = false;
+    if (!silent) {
+      setStatus("Converted timestamp", false);
+    }
+  } catch (err) {
+    state.timestampUpdating = false;
+    if (!silent) {
+      setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+  }
+}
+
+function clearTimestampOutputs() {
+  if (!elements.timestampInputs?.length) return;
+  elements.timestampInputs.forEach((input) => {
+    input.value = "";
+  });
+}
+
+function activateTotpTool() {
+  if (elements.totpSecret) {
+    elements.totpSecret.value = state.totpSecret || "";
+  }
+  if (elements.totpAlgorithm) {
+    elements.totpAlgorithm.value = state.totpAlgorithm || "SHA256";
+  }
+  if (elements.totpPeriod) {
+    elements.totpPeriod.value = state.totpPeriod;
+  }
+  if (elements.totpDigits) {
+    elements.totpDigits.value = state.totpDigits;
+  }
+  refreshTotp(true);
+  stopTotpTimer();
+  state.totpTimer = setInterval(() => refreshTotp(true), 1000);
+}
+
+function stopTotpTimer() {
+  if (state.totpTimer) {
+    clearInterval(state.totpTimer);
+    state.totpTimer = null;
+  }
+}
+
+function handleTotpFieldChange() {
+  if (elements.totpSecret) {
+    state.totpSecret = elements.totpSecret.value || "";
+  }
+  if (elements.totpAlgorithm) {
+    state.totpAlgorithm = elements.totpAlgorithm.value || "SHA256";
+  }
+  if (elements.totpPeriod) {
+    let period = parseInt(elements.totpPeriod.value, 10);
+    if (!Number.isFinite(period)) period = 30;
+    period = Math.min(Math.max(period, 1), 300);
+    state.totpPeriod = period;
+    elements.totpPeriod.value = period;
+  }
+  if (elements.totpDigits) {
+    let digits = parseInt(elements.totpDigits.value, 10);
+    if (!Number.isFinite(digits)) digits = 6;
+    digits = Math.min(Math.max(digits, 4), 10);
+    state.totpDigits = digits;
+    elements.totpDigits.value = digits;
+  }
+  refreshTotp();
+}
+
+function refreshTotp(silent = false) {
+  if (!elements.totpSecret) return;
+  const secret = elements.totpSecret.value || "";
+  if (!secret.trim()) {
+    renderTotpError("Enter a secret");
+    if (!silent) setStatus("Secret is required", true);
+    return;
+  }
+  if (!state.wasmReady) {
+    if (!silent) setStatus("Waiting for WebAssembly...", true);
+    return;
+  }
+  try {
+    const result = totp_token(
+      secret,
+      elements.totpAlgorithm?.value || "SHA256",
+      state.totpPeriod,
+      state.totpDigits,
+    );
+    renderTotpResult(result);
+    if (!silent) setStatus("Generated TOTP code", false);
+  } catch (err) {
+    renderTotpError(err?.message || String(err));
+    if (!silent) setStatus(`⚠️ ${err?.message || err}`, true);
+  }
+}
+
+function renderTotpResult(result) {
+  if (!result) return;
+  if (elements.totpCode) {
+    elements.totpCode.textContent = result.code || "";
+  }
+  if (elements.totpPeriodLabel) {
+    elements.totpPeriodLabel.textContent = `${result.algorithm || "SHA256"} · every ${result.period || 30}s`;
+  }
+  if (elements.totpRemainingLabel) {
+    elements.totpRemainingLabel.textContent = `${result.remaining || 0}s remaining`;
+  }
+  if (elements.totpError) {
+    elements.totpError.textContent = "";
+  }
+}
+
+function renderTotpError(message) {
+  if (elements.totpCode) {
+    elements.totpCode.textContent = "——";
+  }
+  if (elements.totpError) {
+    elements.totpError.textContent = message || "";
+  }
+  if (elements.totpPeriodLabel) {
+    elements.totpPeriodLabel.textContent = "";
+  }
+  if (elements.totpRemainingLabel) {
+    elements.totpRemainingLabel.textContent = "";
+  }
+}
+
+function copyTotpCode() {
+  const value = elements.totpCode?.textContent?.trim();
+  if (!value) {
+    setStatus("No code to copy", true);
+    return;
+  }
+  copyText(value, "TOTP code");
+}
+
+function activateDataTool() {
+  if (elements.dataRows) {
+    elements.dataRows.value = state.dataRows;
+  }
+  handleDataSchemaInput();
+}
+
+function handleDataRowsChange() {
+  if (!elements.dataRows) return;
+  let value = parseInt(elements.dataRows.value, 10);
+  if (!Number.isFinite(value)) value = 1;
+  value = Math.min(Math.max(value, 1), 100);
+  state.dataRows = value;
+  elements.dataRows.value = value;
+  scheduleDataGeneration();
+}
+
+function handleDataSchemaInput() {
+  if (!elements.dataSchema) return;
+  const schema = elements.dataSchema.value || "";
+  clearTimeout(state.dataSchemaTimer);
+  state.dataSchemaTimer = setTimeout(() => parseDataSchema(schema), 400);
+}
+
+function parseDataSchema(schemaText) {
+  if (!state.wasmReady) return;
+  const trimmed = schemaText.trim();
+  if (!trimmed) {
+    state.dataTables = [];
+    state.dataOverrides = {};
+    renderDataColumnEditor();
+    if (elements.dataOutput) elements.dataOutput.value = "";
+    return;
+  }
+  try {
+    const tables = inspect_schema(trimmed);
+    if (Array.isArray(tables)) {
+      state.dataTables = tables;
+      pruneDataOverrides();
+      renderDataColumnEditor();
+      runDataGenerator();
+    } else {
+      state.dataTables = [];
+      renderDataColumnEditor();
+      setStatus("No tables detected", true);
+    }
+  } catch (err) {
+    console.error(err);
+    setStatus(`⚠️ ${err?.message || err}`, true);
+  }
+}
+
+function pruneDataOverrides() {
+  if (!state.dataTables?.length) {
+    state.dataOverrides = {};
+    return;
+  }
+  const valid = {};
+  state.dataTables.forEach((table) => {
+    valid[table.name] = new Set(table.columns.map((col) => col.name));
+  });
+  Object.keys(state.dataOverrides).forEach((tableName) => {
+    if (!valid[tableName]) {
+      delete state.dataOverrides[tableName];
+      return;
+    }
+    Object.keys(state.dataOverrides[tableName]).forEach((columnName) => {
+      if (!valid[tableName].has(columnName)) {
+        delete state.dataOverrides[tableName][columnName];
+      }
+    });
+    if (!Object.keys(state.dataOverrides[tableName]).length) {
+      delete state.dataOverrides[tableName];
+    }
+  });
+}
+
+function renderDataColumnEditor() {
+  if (!elements.dataColumnEditor) return;
+  if (!state.dataTables?.length) {
+    elements.dataColumnEditor.innerHTML = '<div class="muted">Paste a schema to configure column ranges.</div>';
+    return;
+  }
+  const groups = state.dataTables
+    .map((table) => {
+      const cards = table.columns
+        .map((column) => renderDataColumnCard(table.name, column))
+        .join("");
+      return `<div class="data-column-group"><h3>${escapeHTML(table.name)}</h3>${cards}</div>`;
+    })
+    .join("");
+  elements.dataColumnEditor.innerHTML = groups;
+}
+
+function renderDataColumnCard(tableName, column) {
+  const kind = column.kind || "string";
+  const overrides = state.dataOverrides?.[tableName]?.[column.name] || {};
+  const isNumeric = ["integer", "decimal", "float", "boolean"].includes(kind);
+  const defaultValue = column.default_value ? escapeHTML(column.default_value) : "—";
+  const minPlaceholder = column.min_value || "";
+  const maxPlaceholder = column.max_value || "";
+  const minValue = overrides.min ?? "";
+  const maxValue = overrides.max ?? "";
+  const allowedValue = overrides.allowed ?? "";
+  const controls = isNumeric
+    ? `<div class="data-override-row">
+        <label>
+          <span>Min</span>
+          <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(column.name)}" data-field="min" value="${escapeAttr(minValue)}" placeholder="${escapeAttr(minPlaceholder)}" />
+        </label>
+        <label>
+          <span>Max</span>
+          <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(column.name)}" data-field="max" value="${escapeAttr(maxValue)}" placeholder="${escapeAttr(maxPlaceholder)}" />
+        </label>
+        <label>
+          <span>Allowed (comma)</span>
+          <input type="text" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(column.name)}" data-field="allowed" value="${escapeAttr(allowedValue)}" placeholder="e.g. 10,20" />
+        </label>
+      </div>`
+    : column.enum_values?.length
+      ? `<div class="muted">Enum values: ${escapeHTML(column.enum_values.join(", "))}</div>`
+      : '<div class="muted">Text columns use lorem ipsum</div>';
+  return `<div class="data-column-card">
+    <header>
+      <strong>${escapeHTML(column.name)}</strong>
+      <span>${escapeHTML(column.data_type || "")}</span>
+    </header>
+    <div class="muted">Default: ${defaultValue}</div>
+    ${controls}
+  </div>`;
+}
+
+function handleDataOverrideInput(event) {
+  const input = event.target.closest('[data-field]');
+  if (!input) return;
+  const table = input.dataset.table;
+  const column = input.dataset.column;
+  const field = input.dataset.field;
+  if (!table || !column || !field) return;
+  if (!state.dataOverrides[table]) state.dataOverrides[table] = {};
+  if (!state.dataOverrides[table][column]) state.dataOverrides[table][column] = {};
+  const value = input.value || "";
+  if (!value.trim()) {
+    delete state.dataOverrides[table][column][field];
+  } else {
+    state.dataOverrides[table][column][field] = value;
+  }
+  if (!Object.keys(state.dataOverrides[table][column]).length) {
+    delete state.dataOverrides[table][column];
+  }
+  if (!Object.keys(state.dataOverrides[table]).length) {
+    delete state.dataOverrides[table];
+  }
+  scheduleDataGeneration();
+}
+
+function scheduleDataGeneration() {
+  clearTimeout(state.dataGenerateTimer);
+  state.dataGenerateTimer = setTimeout(() => runDataGenerator(), 250);
+}
+
+function buildDataOverrides() {
+  const overrides = {};
+  Object.entries(state.dataOverrides || {}).forEach(([tableName, columns]) => {
+    const tableOverrides = {};
+    Object.entries(columns).forEach(([columnName, config]) => {
+      const entry = {};
+      const min = parseFloat(config.min);
+      if (Number.isFinite(min)) entry.min = min;
+      const max = parseFloat(config.max);
+      if (Number.isFinite(max)) entry.max = max;
+      const allowed = parseAllowedNumbers(config.allowed);
+      if (allowed.length) entry.allowed = allowed;
+      if (Object.keys(entry).length) {
+        tableOverrides[columnName] = entry;
+      }
+    });
+    if (Object.keys(tableOverrides).length) {
+      overrides[tableName] = tableOverrides;
+    }
+  });
+  return overrides;
+}
+
+function parseAllowedNumbers(value) {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map((part) => parseFloat(part.trim()))
+    .filter((num) => Number.isFinite(num));
+}
+
+function runDataGenerator() {
+  if (!isDataTool(state.currentTool)) {
+    setStatus("Select the SQL Inserts tool", true);
+    return;
+  }
+  if (!state.wasmReady) {
+    setStatus("Waiting for WebAssembly...", true);
+    return;
+  }
+  if (!elements.dataSchema) return;
+  handleDataRowsChange();
+  const schema = elements.dataSchema.value || "";
+  if (!schema.trim()) {
+    setStatus("Schema is empty", true);
+    return;
+  }
+  try {
+    const overrides = buildDataOverrides();
+    const result =
+      generate_insert_statements(schema, state.dataRows, overrides) || "";
+    if (elements.dataOutput) {
+      elements.dataOutput.value = result;
+    }
+    setStatus("Generated INSERT statements", false);
+  } catch (err) {
+    console.error(err);
+    setStatus(`⚠️ ${err?.message || err}`, true);
+    if (elements.dataOutput) {
+      elements.dataOutput.value = "";
+    }
+  }
+}
+
+function copyDataOutput() {
+  const value = elements.dataOutput?.value || "";
+  if (!value.trim()) {
+    setStatus("No INSERT statements to copy", true);
+    return;
+  }
+  copyText(value, "INSERT statements");
+  setStatus("Copied", false);
+}
+
 
 function sanitizeRandomExclude(value) {
   if (!value) return "";

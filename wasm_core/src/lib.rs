@@ -1,20 +1,24 @@
 use std::collections::{BTreeMap, HashSet};
+use std::convert::TryInto;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 use std::sync::OnceLock;
 
 use adler::Adler32;
 use ascii85::{decode as ascii85_decode, encode as ascii85_encode};
-use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
+use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use console_error_panic_hook::set_once as set_panic_hook;
-use crc::{Crc, CRC_32_ISCSI, CRC_64_ECMA_182, CRC_64_GO_ISO};
-use data_encoding::{BASE32, BASE32HEX, BASE32HEX_NOPAD, BASE32_NOPAD};
+use crc::{CRC_32_ISCSI, CRC_64_ECMA_182, CRC_64_GO_ISO, Crc};
+use data_encoding::{BASE32, BASE32_NOPAD, BASE32HEX, BASE32HEX_NOPAD};
+use hmac::digest::KeyInit;
 use hmac::{Hmac, Mac};
 use js_sys::Date;
 use md5::Md5;
 use num_bigint::BigInt;
-use serde::Serialize;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha1::Sha1;
 use sha2::{Digest, Sha224, Sha256, Sha384, Sha512, Sha512_224, Sha512_256};
@@ -32,6 +36,8 @@ pub fn wasm_start() {
 static NODE_ID: OnceLock<[u8; 6]> = OnceLock::new();
 static V1_CONTEXT: OnceLock<Context> = OnceLock::new();
 static BASE91_LOOKUP: OnceLock<[i16; 256]> = OnceLock::new();
+static TABLE_REGEX: OnceLock<Regex> = OnceLock::new();
+static COLUMN_REGEX: OnceLock<Regex> = OnceLock::new();
 
 const BASE91_ALPHABET: &[u8] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~\"";
@@ -39,14 +45,53 @@ const BASE91_ALPHABET: &[u8] =
 const UNIT_FACTORS: &[(&str, f64)] = &[
     ("bit", 1.0),
     ("byte", 8.0),
-    ("kilobit", 1_000.0),
-    ("kilobyte", 8_000.0),
-    ("megabit", 1_000_000.0),
-    ("megabyte", 8_000_000.0),
-    ("gigabit", 1_000_000_000.0),
-    ("gigabyte", 8_000_000_000.0),
-    ("terabit", 1_000_000_000_000.0),
-    ("terabyte", 8_000_000_000_000.0),
+    ("kilobit", 1_024.0),
+    ("kilobyte", 8_192.0),
+    ("megabit", 1_048_576.0),
+    ("megabyte", 8_388_608.0),
+    ("gigabit", 1_073_741_824.0),
+    ("gigabyte", 8_589_934_592.0),
+    ("terabit", 1_099_511_627_776.0),
+    ("terabyte", 8_796_093_022_208.0),
+];
+
+const LOREM_WORDS: &[&str] = &[
+    "lorem",
+    "ipsum",
+    "dolor",
+    "sit",
+    "amet",
+    "consectetur",
+    "adipiscing",
+    "elit",
+    "sed",
+    "do",
+    "eiusmod",
+    "tempor",
+    "incididunt",
+    "ut",
+    "labore",
+    "et",
+    "dolore",
+    "magna",
+    "aliqua",
+    "ut",
+    "enim",
+    "ad",
+    "minim",
+    "veniam",
+    "quis",
+    "nostrud",
+    "exercitation",
+    "ullamco",
+    "laboris",
+    "nisi",
+    "ut",
+    "aliquip",
+    "ex",
+    "ea",
+    "commodo",
+    "consequat",
 ];
 
 fn node_id() -> &'static [u8; 6] {
@@ -513,6 +558,824 @@ fn encode_content_map(input: &str) -> BTreeMap<String, String> {
 }
 
 #[wasm_bindgen]
+pub fn generate_insert_statements(
+    schema: &str,
+    rows: u32,
+    overrides: JsValue,
+) -> Result<String, JsValue> {
+    let override_map: TableOverrideMap = if overrides.is_undefined() || overrides.is_null() {
+        BTreeMap::new()
+    } else {
+        serde_wasm_bindgen::from_value(overrides)
+            .map_err(|err| JsValue::from_str(&err.to_string()))?
+    };
+    generate_insert_statements_internal(schema, rows, override_map)
+        .map_err(|err| JsValue::from_str(&err))
+}
+
+#[wasm_bindgen]
+pub fn inspect_schema(schema: &str) -> Result<JsValue, JsValue> {
+    let tables = parse_mysql_tables(schema);
+    let inspections: Vec<TableInspection> = tables
+        .iter()
+        .map(|table| TableInspection {
+            name: table.name.clone(),
+            columns: table
+                .columns
+                .iter()
+                .map(|column| {
+                    let limits = column_numeric_limits(column);
+                    ColumnInspection {
+                        name: column.name.clone(),
+                        data_type: column.data_type.clone(),
+                        kind: classify_column_kind(column).to_string(),
+                        default_value: column_default_display(column),
+                        min_value: limits.clone().map(|(min, _)| min),
+                        max_value: limits.map(|(_, max)| max),
+                        enum_values: if column.enum_values.is_empty() {
+                            None
+                        } else {
+                            Some(column.enum_values.clone())
+                        },
+                    }
+                })
+                .collect(),
+        })
+        .collect();
+    serde_wasm_bindgen::to_value(&inspections).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+fn generate_insert_statements_internal(
+    schema: &str,
+    rows: u32,
+    overrides: TableOverrideMap,
+) -> Result<String, String> {
+    if rows == 0 {
+        return Err("Row count must be greater than zero".into());
+    }
+    if rows > 100 {
+        return Err("Row count must be 100 or less".into());
+    }
+    let tables = parse_mysql_tables(schema);
+    if tables.is_empty() {
+        return Err("No CREATE TABLE statements detected".into());
+    }
+    let mut statements = Vec::new();
+    for table in tables {
+        if table.columns.is_empty() {
+            continue;
+        }
+        let header = table
+            .columns
+            .iter()
+            .map(|col| format!("`{}`", col.name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let mut rows_buf = Vec::new();
+        for idx in 0..rows as usize {
+            let values = table
+                .columns
+                .iter()
+                .map(|col| {
+                    let override_cfg = overrides
+                        .get(&table.name)
+                        .and_then(|cols| cols.get(&col.name));
+                    sample_value(col, idx, override_cfg)
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            rows_buf.push(format!("({})", values));
+        }
+        let statement = format!(
+            "INSERT INTO `{}` ({}) VALUES
+  {};",
+            table.name,
+            header,
+            rows_buf.join(
+                ",
+  "
+            )
+        );
+        statements.push(statement);
+    }
+    if statements.is_empty() {
+        return Err("No usable columns found in schema".into());
+    }
+    Ok(statements.join(
+        "
+
+",
+    ))
+}
+
+#[derive(Debug, Clone)]
+struct TableSchema {
+    name: String,
+    columns: Vec<ColumnSchema>,
+}
+
+#[derive(Debug, Clone)]
+struct ColumnSchema {
+    name: String,
+    data_type: String,
+    base_type: String,
+    unsigned: bool,
+    length: Option<usize>,
+    scale: Option<u32>,
+    enum_values: Vec<String>,
+    default_value: Option<ColumnDefault>,
+}
+
+#[derive(Debug, Clone)]
+enum ColumnDefault {
+    Null,
+    Literal(String),
+    Numeric(String),
+    CurrentTimestamp,
+    UnixTimestamp,
+}
+
+#[derive(Debug, Default, Deserialize, Clone)]
+struct ColumnOverride {
+    min: Option<f64>,
+    max: Option<f64>,
+    allowed: Option<Vec<f64>>,
+}
+
+type TableOverrideMap = BTreeMap<String, BTreeMap<String, ColumnOverride>>;
+
+#[derive(Serialize)]
+struct TableInspection {
+    name: String,
+    columns: Vec<ColumnInspection>,
+}
+
+#[derive(Serialize)]
+struct ColumnInspection {
+    name: String,
+    data_type: String,
+    kind: String,
+    default_value: Option<String>,
+    min_value: Option<String>,
+    max_value: Option<String>,
+    enum_values: Option<Vec<String>>,
+}
+
+fn table_regex() -> &'static Regex {
+    TABLE_REGEX.get_or_init(|| {
+        Regex::new(r#"(?i)create\s+table\s+(?:if\s+not\s+exists\s+)?[`"\[]?([a-zA-Z0-9_]+)[`"\]]?"#)
+            .expect("create table regex")
+    })
+}
+
+fn column_regex() -> &'static Regex {
+    COLUMN_REGEX.get_or_init(|| {
+        Regex::new(r#"(?i)^\s*[`"\[]?([a-zA-Z0-9_]+)[`"\]]?\s+([a-zA-Z0-9]+(?:\s*\([^)]*\))?)"#)
+            .expect("column regex")
+    })
+}
+
+fn parse_mysql_tables(schema: &str) -> Vec<TableSchema> {
+    let regex = table_regex();
+    let mut tables = Vec::new();
+    for caps in regex.captures_iter(schema) {
+        let matched = caps.get(0).unwrap();
+        let name = caps.get(1).map(|m| m.as_str()).unwrap_or("table");
+        let after = matched.end();
+        let relative_open = schema[after..].find('(');
+        let open_idx = match relative_open {
+            Some(pos) => after + pos,
+            None => continue,
+        };
+        if let Some(close_idx) = find_matching_paren(schema, open_idx) {
+            let body = &schema[open_idx + 1..close_idx];
+            let columns = parse_column_definitions(body);
+            if !columns.is_empty() {
+                tables.push(TableSchema {
+                    name: name
+                        .trim_matches(|ch| matches!(ch, '`' | '"' | '[' | ']'))
+                        .to_string(),
+                    columns,
+                });
+            }
+        }
+    }
+    tables
+}
+
+fn parse_column_definitions(body: &str) -> Vec<ColumnSchema> {
+    let column_re = column_regex();
+    let mut columns = Vec::new();
+    for raw in body.lines() {
+        if let Some(column) = parse_column_line(raw.trim(), column_re) {
+            columns.push(column);
+        }
+    }
+    columns
+}
+
+fn parse_column_line(line: &str, column_re: &Regex) -> Option<ColumnSchema> {
+    if line.is_empty() {
+        return None;
+    }
+    let trimmed = line.trim_end_matches(',');
+    let lowered = trimmed.to_lowercase();
+    if lowered.starts_with("primary ")
+        || lowered.starts_with("unique ")
+        || lowered.starts_with("constraint ")
+        || lowered.starts_with("key ")
+        || lowered.starts_with("index ")
+        || lowered.starts_with("foreign ")
+    {
+        return None;
+    }
+    let caps = column_re.captures(trimmed)?;
+    let name = caps
+        .get(1)
+        .unwrap()
+        .as_str()
+        .trim_matches(|ch| matches!(ch, '`' | '"' | '[' | ']'))
+        .to_string();
+    let type_segment = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+    let base_type = detect_base_type(type_segment);
+    let (length, scale) = parse_length_and_scale(type_segment);
+    let enum_values = if base_type == "enum" || base_type == "set" {
+        parse_enum_values(type_segment)
+    } else {
+        Vec::new()
+    };
+    let default_value = parse_default_clause(trimmed);
+    let unsigned = trimmed.to_lowercase().contains(" unsigned");
+    Some(ColumnSchema {
+        name,
+        data_type: type_segment.to_string(),
+        base_type,
+        unsigned,
+        length,
+        scale,
+        enum_values,
+        default_value,
+    })
+}
+
+fn parse_length_and_scale(data_type: &str) -> (Option<usize>, Option<u32>) {
+    if let Some(start) = data_type.find('(') {
+        if let Some(end) = data_type[start + 1..].find(')') {
+            let inner = &data_type[start + 1..start + 1 + end];
+            let mut parts = inner.split(',');
+            let len = parts.next().and_then(|v| v.trim().parse::<usize>().ok());
+            let scale = parts.next().and_then(|v| v.trim().parse::<u32>().ok());
+            return (len, scale);
+        }
+    }
+    (None, None)
+}
+
+fn detect_base_type(data_type: &str) -> String {
+    data_type
+        .split(|ch: char| ch == '(' || ch.is_whitespace())
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase()
+}
+
+fn parse_default_clause(line: &str) -> Option<ColumnDefault> {
+    let lower = line.to_lowercase();
+    let needle = " default ";
+    let pos = lower.find(needle)?;
+    let start = pos + needle.len();
+    let remainder = line[start..].trim_start();
+    if remainder.is_empty() {
+        return None;
+    }
+    if let Some(stripped) = remainder.strip_prefix('\'') {
+        let (literal, _) = parse_quoted_literal(stripped, '\'');
+        let value = literal.replace("''", "'");
+        return Some(ColumnDefault::Literal(value));
+    }
+    if let Some(stripped) = remainder.strip_prefix('"') {
+        let (literal, _) = parse_quoted_literal(stripped, '"');
+        return Some(ColumnDefault::Literal(literal));
+    }
+    let token = remainder
+        .split(|ch: char| ch.is_whitespace() || ch == ',')
+        .next()
+        .unwrap_or("")
+        .trim();
+    if token.is_empty() {
+        return None;
+    }
+    match token.to_ascii_lowercase().as_str() {
+        "null" => Some(ColumnDefault::Null),
+        "current_timestamp" | "current_timestamp()" => Some(ColumnDefault::CurrentTimestamp),
+        "unix_timestamp" | "unix_timestamp()" => Some(ColumnDefault::UnixTimestamp),
+        _ => {
+            if token
+                .chars()
+                .all(|ch| ch.is_ascii_digit() || ch == '.' || ch == '-')
+            {
+                Some(ColumnDefault::Numeric(token.to_string()))
+            } else {
+                Some(ColumnDefault::Literal(
+                    token.trim_matches('"').trim_matches('\'').to_string(),
+                ))
+            }
+        }
+    }
+}
+
+fn parse_quoted_literal(input: &str, quote: char) -> (String, usize) {
+    let mut result = String::new();
+    let mut chars = input.chars().peekable();
+    let mut consumed = 0;
+    while let Some(ch) = chars.next() {
+        consumed += ch.len_utf8();
+        if ch == quote {
+            if matches!(chars.peek(), Some(next) if *next == quote) {
+                chars.next();
+                consumed += quote.len_utf8();
+                result.push(quote);
+                continue;
+            }
+            break;
+        }
+        result.push(ch);
+    }
+    (result, consumed)
+}
+
+fn parse_enum_values(definition: &str) -> Vec<String> {
+    let start = definition.find('(');
+    let end = definition.rfind(')');
+    if let (Some(start), Some(end)) = (start, end) {
+        if end <= start {
+            return Vec::new();
+        }
+        let inner = &definition[start + 1..end];
+        let mut values = Vec::new();
+        let mut current = String::new();
+        let mut chars = inner.chars().peekable();
+        let mut in_value = false;
+        while let Some(ch) = chars.next() {
+            match ch {
+                '\'' => {
+                    if in_value {
+                        if matches!(chars.peek(), Some('\'')) {
+                            chars.next();
+                            current.push('\'');
+                        } else {
+                            values.push(current.clone());
+                            current.clear();
+                            in_value = false;
+                        }
+                    } else {
+                        in_value = true;
+                    }
+                }
+                ',' => {
+                    if in_value {
+                        current.push(ch);
+                    }
+                }
+                _ => {
+                    if in_value {
+                        current.push(ch);
+                    }
+                }
+            }
+        }
+        if in_value && !current.is_empty() {
+            values.push(current);
+        }
+        values
+    } else {
+        Vec::new()
+    }
+}
+
+fn column_default_display(column: &ColumnSchema) -> Option<String> {
+    column.default_value.as_ref().map(render_default)
+}
+
+fn column_numeric_limits(column: &ColumnSchema) -> Option<(String, String)> {
+    match column.base_type.as_str() {
+        base if base.contains("int") || base == "serial" || base == "year" || base == "bit" => {
+            let (min, max) = integer_bounds(column)?;
+            Some((min.to_string(), max.to_string()))
+        }
+        base if base == "decimal" || base == "numeric" => {
+            let (min, max) = decimal_limits(column);
+            Some((
+                format_decimal(min, column.scale.unwrap_or(2)),
+                format_decimal(max, column.scale.unwrap_or(2)),
+            ))
+        }
+        base if base == "float" || base == "double" || base == "real" => {
+            Some(("-1000000".into(), "1000000".into()))
+        }
+        "bool" | "boolean" => Some(("0".into(), "1".into())),
+        _ => None,
+    }
+}
+
+fn classify_column_kind(column: &ColumnSchema) -> &'static str {
+    match column.base_type.as_str() {
+        base if base.contains("int") || base == "serial" || base == "year" || base == "bit" => {
+            "integer"
+        }
+        base if base == "decimal" || base == "numeric" => "decimal",
+        base if base == "float" || base == "double" || base == "real" => "float",
+        "bool" | "boolean" => "boolean",
+        "date" | "datetime" | "timestamp" | "time" => "datetime",
+        "enum" => "enum",
+        "set" => "set",
+        base if base.contains("blob") || base.contains("binary") => "binary",
+        _ => "string",
+    }
+}
+
+fn sample_value(
+    column: &ColumnSchema,
+    row_idx: usize,
+    override_cfg: Option<&ColumnOverride>,
+) -> String {
+    if override_cfg.is_none() {
+        if let Some(default) = column.default_value.as_ref() {
+            return render_default(default);
+        }
+    }
+    match column.base_type.as_str() {
+        base if base.contains("int") || base == "serial" || base == "year" || base == "bit" => {
+            sample_integer_value(column, override_cfg)
+        }
+        base if base == "decimal" || base == "numeric" => {
+            sample_decimal_value(column, override_cfg)
+        }
+        base if base == "float" || base == "double" || base == "real" => {
+            sample_float_value(column, override_cfg)
+        }
+        "bool" | "boolean" => sample_integer_value(column, override_cfg),
+        "date" => escape_sql_string(&format!("2025-01-{day:02}", day = row_idx % 28 + 1)),
+        "datetime" | "timestamp" => escape_sql_string(&format!(
+            "2025-01-{day:02} {hour:02}:{minute:02}:00",
+            day = row_idx % 28 + 1,
+            hour = (row_idx * 3) % 24,
+            minute = (row_idx * 7) % 60
+        )),
+        "time" => escape_sql_string(&format!(
+            "{hour:02}:{minute:02}:{second:02}",
+            hour = (row_idx * 3) % 24,
+            minute = (row_idx * 7) % 60,
+            second = (row_idx * 11) % 60
+        )),
+        "enum" => {
+            if column.enum_values.is_empty() {
+                sample_text_value(column)
+            } else {
+                let idx = random_index(column.enum_values.len());
+                escape_sql_string(&column.enum_values[idx])
+            }
+        }
+        "set" => {
+            if column.enum_values.is_empty() {
+                sample_text_value(column)
+            } else {
+                let take = ((row_idx % column.enum_values.len()) + 1).min(column.enum_values.len());
+                let combined = column
+                    .enum_values
+                    .iter()
+                    .take(take)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(",");
+                escape_sql_string(&combined)
+            }
+        }
+        "json" => escape_sql_string(&format!(r#"{{"{}": {}}}"#, column.name, row_idx + 1)),
+        base if base.contains("blob") || base.contains("binary") => {
+            let first = ((row_idx + 65) % 256) as u8;
+            let second = ((row_idx + 97) % 256) as u8;
+            format!("X'{:02X}{:02X}'", first, second)
+        }
+        _ => sample_text_value(column),
+    }
+}
+
+fn sample_integer_value(column: &ColumnSchema, override_cfg: Option<&ColumnOverride>) -> String {
+    let (mut min, mut max) = integer_bounds(column).unwrap_or((0, 1));
+    if let Some(override_cfg) = override_cfg {
+        if let Some(value) = override_cfg.min {
+            min = value.floor() as i128;
+        }
+        if let Some(value) = override_cfg.max {
+            max = value.floor() as i128;
+        }
+        if let Some(list) = override_cfg.allowed.as_ref() {
+            if !list.is_empty() {
+                let idx = random_index(list.len());
+                let value = list[idx].round() as i128;
+                return value.to_string();
+            }
+        }
+    }
+    if max < min {
+        std::mem::swap(&mut min, &mut max);
+    }
+    random_integer_in_range(min, max).to_string()
+}
+
+fn sample_decimal_value(column: &ColumnSchema, override_cfg: Option<&ColumnOverride>) -> String {
+    let (mut min, mut max) = decimal_limits(column);
+    if let Some(override_cfg) = override_cfg {
+        if let Some(value) = override_cfg.min {
+            min = value;
+        }
+        if let Some(value) = override_cfg.max {
+            max = value;
+        }
+        if let Some(list) = override_cfg.allowed.as_ref() {
+            if !list.is_empty() {
+                let idx = random_index(list.len());
+                return format_decimal(list[idx], column.scale.unwrap_or(2));
+            }
+        }
+    }
+    if max < min {
+        std::mem::swap(&mut min, &mut max);
+    }
+    let value = random_decimal_value(min, max);
+    format_decimal(value, column.scale.unwrap_or(2))
+}
+
+fn sample_float_value(column: &ColumnSchema, override_cfg: Option<&ColumnOverride>) -> String {
+    let (mut min, mut max) = (-1_000_000.0, 1_000_000.0);
+    let precision = column.scale.unwrap_or(4).min(10);
+    if let Some(override_cfg) = override_cfg {
+        if let Some(value) = override_cfg.min {
+            min = value;
+        }
+        if let Some(value) = override_cfg.max {
+            max = value;
+        }
+        if let Some(list) = override_cfg.allowed.as_ref() {
+            if !list.is_empty() {
+                let idx = random_index(list.len());
+                return format!("{:.*}", precision as usize, list[idx]);
+            }
+        }
+    }
+    if max < min {
+        std::mem::swap(&mut min, &mut max);
+    }
+    let value = random_decimal_value(min, max);
+    format!("{:.*}", precision as usize, value)
+}
+
+fn integer_bounds(column: &ColumnSchema) -> Option<(i128, i128)> {
+    let unsigned = column.unsigned;
+    match column.base_type.as_str() {
+        "tinyint" => Some(if unsigned { (0, 255) } else { (-128, 127) }),
+        "smallint" => Some(if unsigned {
+            (0, 65_535)
+        } else {
+            (-32_768, 32_767)
+        }),
+        "mediumint" => Some(if unsigned {
+            (0, 16_777_215)
+        } else {
+            (-8_388_608, 8_388_607)
+        }),
+        "int" | "integer" => Some(if unsigned {
+            (0, 4_294_967_295)
+        } else {
+            (-2_147_483_648, 2_147_483_647)
+        }),
+        "bigint" => Some(if unsigned {
+            (0, 18_446_744_073_709_551_615)
+        } else {
+            (-9_223_372_036_854_775_808, 9_223_372_036_854_775_807)
+        }),
+        "year" => Some((1901, 2155)),
+        "bit" | "bool" | "boolean" => Some((0, 1)),
+        _ => None,
+    }
+}
+
+fn decimal_limits(column: &ColumnSchema) -> (f64, f64) {
+    if let Some(precision) = column.length {
+        let scale = column.scale.unwrap_or(0) as i32;
+        let integer_digits = precision.saturating_sub(column.scale.unwrap_or(0) as usize);
+        let max_integer = 10f64.powi(integer_digits as i32) - 1.0;
+        let fractional = if scale > 0 {
+            1.0 - 10f64.powi(-scale)
+        } else {
+            0.0
+        };
+        let max = max_integer + fractional;
+        return (-max, max);
+    }
+    (-1_000_000.0, 1_000_000.0)
+}
+
+fn format_decimal(value: f64, scale: u32) -> String {
+    if scale == 0 {
+        format!("{:.0}", value)
+    } else {
+        format!("{:.*}", scale as usize, value)
+    }
+}
+
+fn random_integer_in_range(min: i128, max: i128) -> i128 {
+    if min >= max {
+        return min;
+    }
+    let span = (max - min + 1) as u128;
+    let threshold = u128::MAX - (u128::MAX % span);
+    loop {
+        let mut buf = [0u8; 16];
+        fill_random(&mut buf);
+        let sample = u128::from_le_bytes(buf);
+        if sample < threshold {
+            return min + (sample % span) as i128;
+        }
+    }
+}
+
+fn random_decimal_value(min: f64, max: f64) -> f64 {
+    if min >= max {
+        return min;
+    }
+    let mut buf = [0u8; 8];
+    fill_random(&mut buf);
+    let sample = u64::from_le_bytes(buf);
+    let unit = (sample as f64) / (u64::MAX as f64);
+    min + (max - min) * unit
+}
+
+fn render_default(default: &ColumnDefault) -> String {
+    match default {
+        ColumnDefault::Null => "NULL".into(),
+        ColumnDefault::Literal(value) => escape_sql_string(value),
+        ColumnDefault::Numeric(value) => value.clone(),
+        ColumnDefault::CurrentTimestamp => escape_sql_string(&now_timestamp_string()),
+        ColumnDefault::UnixTimestamp => unix_timestamp_value(),
+    }
+}
+
+fn now_timestamp_string() -> String {
+    let date = Date::new_0();
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        date.get_utc_full_year(),
+        date.get_utc_month() + 1,
+        date.get_utc_date(),
+        date.get_utc_hours(),
+        date.get_utc_minutes(),
+        date.get_utc_seconds()
+    )
+}
+
+fn unix_timestamp_value() -> String {
+    let seconds = (Date::now() / 1000.0).floor() as i64;
+    seconds.to_string()
+}
+
+fn sample_text_value(column: &ColumnSchema) -> String {
+    let max_len = column.length.unwrap_or(32).clamp(1, 256);
+    let mut value = lorem_text(max_len);
+    if value.len() > max_len {
+        value.truncate(max_len);
+    }
+    escape_sql_string(&value)
+}
+
+fn lorem_text(max_len: usize) -> String {
+    if max_len == 0 {
+        return String::new();
+    }
+    let mut out = String::new();
+    while out.len() < max_len {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        let idx = random_index(LOREM_WORDS.len());
+        out.push_str(LOREM_WORDS[idx]);
+    }
+    out
+}
+
+fn escape_sql_string(value: &str) -> String {
+    let escaped = value.replace('\'', "''");
+    format!("'{}'", escaped)
+}
+
+#[derive(Serialize)]
+struct TotpResponse {
+    code: String,
+    period: u32,
+    remaining: u32,
+    algorithm: String,
+    timestamp_seconds: String,
+}
+
+#[wasm_bindgen]
+pub fn totp_token(
+    secret: &str,
+    algorithm: &str,
+    period: u32,
+    digits: u32,
+) -> Result<JsValue, JsValue> {
+    totp_token_internal(secret, algorithm, period, digits)
+        .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
+        .map_err(|err| JsValue::from_str(&err))
+}
+
+fn totp_token_internal(
+    secret: &str,
+    algorithm: &str,
+    period: u32,
+    digits: u32,
+) -> Result<TotpResponse, String> {
+    let trimmed = secret.trim();
+    if trimmed.is_empty() {
+        return Err("secret cannot be empty".into());
+    }
+    if !(1..=300).contains(&period) {
+        return Err("period must be between 1 and 300".into());
+    }
+    if !(4..=10).contains(&digits) {
+        return Err("digits must be between 4 and 10".into());
+    }
+    let key = decode_totp_secret(trimmed)?;
+    if key.is_empty() {
+        return Err("secret cannot be empty".into());
+    }
+    let seconds = (Date::now() / 1000.0).floor() as u64;
+    let period64 = period as u64;
+    let counter = seconds / period64;
+    let mut remaining = period64 - (seconds % period64);
+    if remaining == 0 {
+        remaining = period64;
+    }
+    let algorithm_normalized = algorithm.trim().to_ascii_lowercase();
+    let digest = match algorithm_normalized.as_str() {
+        "sha1" => hmac_digest::<Hmac<Sha1>>(&key, counter)?,
+        "sha256" => hmac_digest::<Hmac<Sha256>>(&key, counter)?,
+        "sha512" => hmac_digest::<Hmac<Sha512>>(&key, counter)?,
+        _ => return Err("unsupported algorithm".into()),
+    };
+    let truncated = dynamic_truncate(&digest);
+    let modulus = 10u64.pow(digits);
+    let otp_value = truncated as u64 % modulus;
+    let code = format!("{:0width$}", otp_value, width = digits as usize);
+    Ok(TotpResponse {
+        code,
+        period,
+        remaining: remaining as u32,
+        algorithm: algorithm_normalized.to_uppercase(),
+        timestamp_seconds: seconds.to_string(),
+    })
+}
+
+fn decode_totp_secret(secret: &str) -> Result<Vec<u8>, String> {
+    let cleaned: String = secret
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        .to_ascii_uppercase();
+    if cleaned.is_empty() {
+        return Err("secret cannot be empty".into());
+    }
+    BASE32
+        .decode(cleaned.as_bytes())
+        .map_err(|err| err.to_string())
+}
+
+fn hmac_digest<M>(key: &[u8], counter: u64) -> Result<Vec<u8>, String>
+where
+    M: Mac + KeyInit,
+{
+    let mut mac = <M as KeyInit>::new_from_slice(key).map_err(|_| "invalid secret".to_string())?;
+    mac.update(&counter.to_be_bytes());
+    Ok(mac.finalize().into_bytes().to_vec())
+}
+
+fn dynamic_truncate(payload: &[u8]) -> u32 {
+    if payload.len() < 4 {
+        return 0;
+    }
+    let offset = (payload[payload.len() - 1] & 0xf) as usize;
+    if offset + 4 > payload.len() {
+        return 0;
+    }
+    let slice = &payload[offset..offset + 4];
+    ((slice[0] as u32 & 0x7f) << 24)
+        | ((slice[1] as u32) << 16)
+        | ((slice[2] as u32) << 8)
+        | slice[3] as u32
+}
+
+#[wasm_bindgen]
 pub fn decode_content(kind: &str, input: &str) -> Result<String, JsValue> {
     decode_content_internal(kind, input)
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
@@ -772,6 +1635,172 @@ fn format_unit_value(value: f64) -> String {
         formatted = "0".into();
     }
     formatted
+}
+
+#[wasm_bindgen]
+pub fn convert_timestamp(source: &str, value: &str) -> Result<JsValue, JsValue> {
+    convert_timestamp_internal(source, value)
+        .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
+        .map_err(|err| JsValue::from_str(&err))
+}
+
+fn convert_timestamp_internal(
+    source: &str,
+    value: &str,
+) -> Result<BTreeMap<String, String>, String> {
+    let dt = parse_timestamp_from_source(source, value)?;
+    let mut map = BTreeMap::new();
+    map.insert("iso8601".into(), dt.to_rfc3339());
+    map.insert("rfc2822".into(), dt.to_rfc2822());
+    map.insert(
+        "sql_datetime".into(),
+        dt.format("%Y-%m-%d %H:%M:%S").to_string(),
+    );
+    map.insert("sql_date".into(), dt.format("%Y-%m-%d").to_string());
+    map.insert("timestamp_seconds".into(), dt.timestamp().to_string());
+    map.insert(
+        "timestamp_milliseconds".into(),
+        timestamp_value(&dt, TimestampUnit::Milliseconds),
+    );
+    map.insert(
+        "timestamp_microseconds".into(),
+        timestamp_value(&dt, TimestampUnit::Microseconds),
+    );
+    map.insert(
+        "timestamp_nanoseconds".into(),
+        timestamp_value(&dt, TimestampUnit::Nanoseconds),
+    );
+    Ok(map)
+}
+
+fn timestamp_value(dt: &DateTime<Utc>, unit: TimestampUnit) -> String {
+    let base = i128::from(dt.timestamp());
+    let nanos = i128::from(dt.timestamp_subsec_nanos());
+    let value = match unit {
+        TimestampUnit::Seconds => base,
+        TimestampUnit::Milliseconds => base * 1_000 + nanos / 1_000_000,
+        TimestampUnit::Microseconds => base * 1_000_000 + nanos / 1_000,
+        TimestampUnit::Nanoseconds => base * 1_000_000_000 + nanos,
+    };
+    value.to_string()
+}
+
+fn parse_timestamp_from_source(source: &str, value: &str) -> Result<DateTime<Utc>, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("input is empty".into());
+    }
+    let key = source.trim().to_ascii_lowercase();
+    match key.as_str() {
+        "timestamp_seconds" => parse_numeric_timestamp(trimmed, TimestampUnit::Seconds),
+        "timestamp_milliseconds" => parse_numeric_timestamp(trimmed, TimestampUnit::Milliseconds),
+        "timestamp_microseconds" => parse_numeric_timestamp(trimmed, TimestampUnit::Microseconds),
+        "timestamp_nanoseconds" => parse_numeric_timestamp(trimmed, TimestampUnit::Nanoseconds),
+        "sql_datetime" => parse_sql_datetime(trimmed),
+        "sql_date" => parse_sql_date(trimmed),
+        "rfc2822" => parse_textual_timestamp(trimmed),
+        _ => parse_textual_timestamp(trimmed),
+    }
+}
+
+fn parse_numeric_timestamp(value: &str, unit: TimestampUnit) -> Result<DateTime<Utc>, String> {
+    let parsed = value
+        .trim()
+        .parse::<i128>()
+        .map_err(|_| "invalid numeric value".to_string())?;
+    let factor = unit.factor();
+    let mut seconds = parsed / factor;
+    let mut remainder = parsed % factor;
+    if remainder < 0 {
+        remainder += factor;
+        seconds -= 1;
+    }
+    let nanos = remainder * unit.nanos_per_unit();
+    let secs_i64: i64 = seconds
+        .try_into()
+        .map_err(|_| "timestamp out of range".to_string())?;
+    let nanos_u32: u32 = nanos
+        .try_into()
+        .map_err(|_| "timestamp out of range".to_string())?;
+    Utc.timestamp_opt(secs_i64, nanos_u32)
+        .single()
+        .ok_or_else(|| "timestamp out of range".to_string())
+}
+
+fn parse_textual_timestamp(value: &str) -> Result<DateTime<Utc>, String> {
+    if let Ok(dt) = DateTime::parse_from_rfc3339(value) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    if let Ok(dt) = DateTime::parse_from_rfc2822(value) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    if let Ok(naive) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
+        return Utc
+            .from_local_datetime(&naive)
+            .single()
+            .ok_or_else(|| "invalid datetime".to_string());
+    }
+    if let Ok(naive_date) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
+        let naive_dt =
+            naive_date.and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("valid midnight"));
+        return Utc
+            .from_local_datetime(&naive_dt)
+            .single()
+            .ok_or_else(|| "invalid datetime".to_string());
+    }
+    Err("unable to parse timestamp".into())
+}
+
+fn parse_sql_datetime(value: &str) -> Result<DateTime<Utc>, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("input is empty".into());
+    }
+    let naive = NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S")
+        .map_err(|_| "invalid SQL datetime".to_string())?;
+    Utc.from_local_datetime(&naive)
+        .single()
+        .ok_or_else(|| "invalid datetime".to_string())
+}
+
+fn parse_sql_date(value: &str) -> Result<DateTime<Utc>, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("input is empty".into());
+    }
+    let naive_date = NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
+        .map_err(|_| "invalid SQL date".to_string())?;
+    let naive_dt = naive_date.and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("valid midnight"));
+    Utc.from_local_datetime(&naive_dt)
+        .single()
+        .ok_or_else(|| "invalid datetime".to_string())
+}
+
+enum TimestampUnit {
+    Seconds,
+    Milliseconds,
+    Microseconds,
+    Nanoseconds,
+}
+
+impl TimestampUnit {
+    fn factor(&self) -> i128 {
+        match self {
+            TimestampUnit::Seconds => 1,
+            TimestampUnit::Milliseconds => 1_000,
+            TimestampUnit::Microseconds => 1_000_000,
+            TimestampUnit::Nanoseconds => 1_000_000_000,
+        }
+    }
+
+    fn nanos_per_unit(&self) -> i128 {
+        match self {
+            TimestampUnit::Seconds => 1_000_000_000,
+            TimestampUnit::Milliseconds => 1_000_000,
+            TimestampUnit::Microseconds => 1_000,
+            TimestampUnit::Nanoseconds => 1,
+        }
+    }
 }
 
 #[derive(Serialize, Default)]
@@ -1309,17 +2338,20 @@ fn sign_jwt(signing_input: &str, secret: &str, algorithm: &str) -> Result<String
     let key = secret.as_bytes();
     let signature = match algorithm {
         "HS256" | "" => {
-            let mut mac = Hmac::<Sha256>::new_from_slice(key).map_err(|err| err.to_string())?;
+            let mut mac =
+                <Hmac<Sha256> as KeyInit>::new_from_slice(key).map_err(|err| err.to_string())?;
             mac.update(signing_input.as_bytes());
             mac.finalize().into_bytes().to_vec()
         }
         "HS384" => {
-            let mut mac = Hmac::<Sha384>::new_from_slice(key).map_err(|err| err.to_string())?;
+            let mut mac =
+                <Hmac<Sha384> as KeyInit>::new_from_slice(key).map_err(|err| err.to_string())?;
             mac.update(signing_input.as_bytes());
             mac.finalize().into_bytes().to_vec()
         }
         "HS512" => {
-            let mut mac = Hmac::<Sha512>::new_from_slice(key).map_err(|err| err.to_string())?;
+            let mut mac =
+                <Hmac<Sha512> as KeyInit>::new_from_slice(key).map_err(|err| err.to_string())?;
             mac.update(signing_input.as_bytes());
             mac.finalize().into_bytes().to_vec()
         }
@@ -1514,4 +2546,21 @@ fn random_index(max: usize) -> usize {
             return (sample % bound) as usize;
         }
     }
+}
+
+fn find_matching_paren(src: &str, open_idx: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    for (idx, byte) in src.as_bytes().iter().enumerate().skip(open_idx) {
+        match *byte {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(idx);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }

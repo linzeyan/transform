@@ -216,7 +216,7 @@
 						<div class="panel-header">
 							<div>
 								<h2>Unit Converter</h2>
-								<p>Bits ↔ Bytes with SI multiples</p>
+								<p>Bits ↔ Bytes with binary multiples</p>
 							</div>
 						</div>
 						<div class="number-grid">
@@ -262,9 +262,60 @@
 							</label>
 						</div>
 					</section>
-				</div>
+                </div>
 
-				<div id="ipv4Workspace" class="tool-view hidden">
+                <div id="timestampWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Timestamp Converter</h2>
+                                <p>Convert ISO/RFC/SQL dates and Unix timestamps.</p>
+                            </div>
+                        </div>
+                        <div class="timestamp-presets" id="timestampPresets">
+                            <button type="button" data-preset="now">Now (Unix sec)</button>
+                            <button type="button" data-preset="rfc3339">Now (RFC3339)</button>
+                            <button type="button" data-preset="rfc2822">Now (RFC2822)</button>
+                            <button type="button" data-preset="sql-datetime">Now (SQL datetime)</button>
+                        </div>
+                        <div class="timestamp-grid">
+                            <label>
+                                <span>ISO 8601 / RFC 3339</span>
+                                <input id="timestampIso" data-field="iso8601" spellcheck="false" placeholder="2025-03-13T15:09:26Z" />
+                            </label>
+                            <label>
+                                <span>RFC 2822</span>
+                                <input id="timestampRfc" data-field="rfc2822" spellcheck="false" placeholder="Thu, 13 Mar 2025 15:09:26 +0000" />
+                            </label>
+                            <label>
+                                <span>SQL DateTime</span>
+                                <input id="timestampSql" data-field="sql_datetime" spellcheck="false" placeholder="2025-03-13 15:09:26" />
+                            </label>
+                            <label>
+                                <span>SQL Date</span>
+                                <input id="timestampSqlDate" data-field="sql_date" spellcheck="false" placeholder="2025-03-13" />
+                            </label>
+                            <label>
+                                <span>Unix Seconds</span>
+                                <input id="timestampSeconds" data-field="timestamp_seconds" type="text" inputmode="numeric" spellcheck="false" placeholder="1710324566" />
+                            </label>
+                            <label>
+                                <span>Unix Millis</span>
+                                <input id="timestampMillis" data-field="timestamp_milliseconds" type="text" inputmode="numeric" spellcheck="false" placeholder="1710324566000" />
+                            </label>
+                            <label>
+                                <span>Unix Micros</span>
+                                <input id="timestampMicros" data-field="timestamp_microseconds" type="text" inputmode="numeric" spellcheck="false" placeholder="1710324566000000" />
+                            </label>
+                            <label>
+                                <span>Unix Nanos</span>
+                                <input id="timestampNanos" data-field="timestamp_nanoseconds" type="text" inputmode="numeric" spellcheck="false" placeholder="1710324566000000000" />
+                            </label>
+                        </div>
+                    </section>
+                </div>
+
+                <div id="ipv4Workspace" class="tool-view hidden">
 					<section class="panel">
 						<div class="panel-header">
 							<div>
@@ -446,6 +497,94 @@
 						<div id="randomResults" class="random-results">
 							<div class="random-placeholder">Click Generate to produce strings</div>
 						</div>
+					</section>
+				</div>
+
+				<div id="totpWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>TOTP</h2>
+								<p>Compute time-based OTP codes from a Base32 secret.</p>
+							</div>
+							<div class="generator-actions">
+								<button id="totpCopy">Copy code</button>
+							</div>
+						</div>
+						<div class="totp-form">
+							<label>
+								<span>Secret</span>
+								<input type="text" id="totpSecret" spellcheck="false" placeholder="6BDRT7ATRRCZV5ISFLOHAHQLYF4ZORG7" />
+							</label>
+							<label>
+								<span>Algorithm</span>
+								<select id="totpAlgorithm">
+									<option value="SHA256" selected>SHA256</option>
+									<option value="SHA1">SHA1</option>
+									<option value="SHA512">SHA512</option>
+								</select>
+							</label>
+							<label>
+								<span>Period (seconds)</span>
+								<input type="number" id="totpPeriod" min="1" max="300" value="30" />
+							</label>
+							<label>
+								<span>Digits</span>
+								<input type="number" id="totpDigits" min="4" max="10" value="6" />
+							</label>
+						</div>
+						<div class="totp-result" id="totpResult">
+							<code id="totpCode"></code>
+							<div class="totp-meta">
+								<span id="totpPeriodLabel"></span>
+								<span id="totpRemainingLabel"></span>
+							</div>
+							<div class="totp-error" id="totpError"></div>
+						</div>
+					</section>
+				</div>
+
+				<div id="dataWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>SQL Inserts</h2>
+								<p>Paste a MySQL schema to generate sample INSERT statements</p>
+							</div>
+							<div class="generator-actions data-actions">
+								<label>
+									<span>Rows</span>
+									<input
+										type="number"
+										min="1"
+										max="100"
+										value="5"
+										id="dataRows"
+									/>
+								</label>
+								<button id="dataGenerate">Generate</button>
+							</div>
+						</div>
+						<textarea
+							id="dataSchema"
+							spellcheck="false"
+							placeholder="CREATE TABLE users (\n  id INT PRIMARY KEY,\n  name VARCHAR(64),\n  created_at DATETIME\n);"
+						></textarea>
+                        <div id="dataColumnEditor" class="data-column-editor">
+                            <div class="muted">Paste a schema to configure column ranges.</div>
+                        </div>
+					</section>
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>INSERT Statements</h2>
+								<p>Results update when you generate</p>
+							</div>
+							<div class="panel-actions">
+								<button id="dataCopy">Copy</button>
+							</div>
+						</div>
+						<textarea id="dataOutput" spellcheck="false" readonly></textarea>
 					</section>
 				</div>
 

@@ -371,25 +371,32 @@ button#swap {
   display: flex;
   align-items: center;
   gap: 10px;
+  justify-content: space-between;
 }
 
-.checkbox-row.hidden,
-.symbol-min.hidden {
-  display: none;
+.checkbox-row .checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
 }
 
 .checkbox-row .min-count,
 .symbol-min .min-count {
-  width: 80px;
+  width: 56px;
+  min-width: 56px;
+  flex: 0 0 56px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 4px 6px;
   background: rgba(0, 0, 0, 0.25);
   color: var(--fg);
   font: inherit;
 }
 
-.min-count.hidden {
+.min-count.hidden,
+.symbol-min.hidden,
+.checkbox-row.hidden {
   display: none;
 }
 .symbol-min {
@@ -420,6 +427,85 @@ button#swap {
 
 .symbol-toggle-grid button[data-active="false"] {
   opacity: 0.35;
+}
+
+@media (max-width: 960px) {
+  :root {
+    --sidebar-width: 220px;
+  }
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  #sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  #sidebarResizer {
+    display: none;
+  }
+  .workspace {
+    grid-column: 1;
+  }
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .converter-controls {
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .mode-select {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .actions button {
+    flex: 1 1 140px;
+  }
+  #converterWorkspace,
+  #coderWorkspace,
+  .tool-view {
+    grid-template-columns: 1fr !important;
+  }
+  .random-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 640px) {
+  .converter-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .mode-select,
+  .actions {
+    width: 100%;
+  }
+  .actions button,
+  .mode-select select,
+  .converter-controls select {
+    width: 100%;
+  }
+  .checkbox-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .checkbox-row .min-count {
+    width: 100%;
+  }
 }
 
 .checkbox {
@@ -790,5 +876,162 @@ body.tool-generator .converter-only {
   .converter-controls {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+
+.timestamp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 0 18px 18px;
+}
+
+.timestamp-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 18px 12px;
+}
+
+.timestamp-presets button {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.timestamp-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.timestamp-grid input {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--fg);
+  font: inherit;
+}
+
+.totp-form {
+  padding: 0 18px 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.totp-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.totp-form input,
+.totp-form select {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--fg);
+  font: inherit;
+}
+
+.totp-result {
+  padding: 12px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.totp-result code {
+  font-size: 2.5rem;
+  letter-spacing: 0.2rem;
+  text-align: center;
+}
+
+.totp-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.totp-error {
+  color: #ff8585;
+  min-height: 1.2em;
+}
+
+.data-column-editor {
+  padding: 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.data-column-group {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.data-column-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  margin-top: 10px;
+}
+
+.data-column-card header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+
+.data-override-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.data-override-row label {
+  flex: 1 1 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.data-override-row input {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--fg);
+  font: inherit;
+}
+
+@media (max-width: 800px) {
+  .timestamp-grid,
+  .totp-form {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   }
 }
