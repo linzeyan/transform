@@ -563,6 +563,9 @@ pub fn generate_insert_statements(
     rows: u32,
     overrides: JsValue,
 ) -> Result<String, JsValue> {
+    // Mirrors the "SQL Inserts" generator spec: parse MySQL CREATE TABLE
+    // statements, then emit deterministic INSERT samples with lorem ipsum
+    // strings, realistic numeric ranges, and optional per-column overrides.
     let override_map: TableOverrideMap = if overrides.is_undefined() || overrides.is_null() {
         BTreeMap::new()
     } else {
@@ -610,6 +613,8 @@ fn generate_insert_statements_internal(
     rows: u32,
     overrides: TableOverrideMap,
 ) -> Result<String, String> {
+    // We only need a handful of example rows, so bounds-check early to avoid
+    // accidentally allocating massive buffers when a user pastes an odd value.
     if rows == 0 {
         return Err("Row count must be greater than zero".into());
     }
@@ -625,21 +630,33 @@ fn generate_insert_statements_internal(
         if table.columns.is_empty() {
             continue;
         }
-        let header = table
+        let table_override = overrides.get(&table.name);
+        let included_columns: Vec<&ColumnSchema> = table
             .columns
+            .iter()
+            .filter(|col| {
+                !table_override
+                    .and_then(|cols| cols.get(&col.name))
+                    .map(|cfg| cfg.exclude)
+                    .unwrap_or(false)
+            })
+            .collect();
+        if included_columns.is_empty() {
+            continue;
+        }
+        let header = included_columns
             .iter()
             .map(|col| format!("`{}`", col.name))
             .collect::<Vec<_>>()
             .join(", ");
+        // Pre-build stringified rows so we can join them with the SQL-friendly
+        // layout that mirrors the original Go tool.
         let mut rows_buf = Vec::new();
         for idx in 0..rows as usize {
-            let values = table
-                .columns
+            let values = included_columns
                 .iter()
                 .map(|col| {
-                    let override_cfg = overrides
-                        .get(&table.name)
-                        .and_then(|cols| cols.get(&col.name));
+                    let override_cfg = table_override.and_then(|cols| cols.get(&col.name));
                     sample_value(col, idx, override_cfg)
                 })
                 .collect::<Vec<_>>()
@@ -670,7 +687,10 @@ fn generate_insert_statements_internal(
 
 #[derive(Debug, Clone)]
 struct TableSchema {
+    // Canonical table name extracted from the `CREATE TABLE` definition.
     name: String,
+    // Raw column list in declaration order. We keep the order so the emitted
+    // INSERT statement matches what users expect to see in the UI.
     columns: Vec<ColumnSchema>,
 }
 
@@ -678,6 +698,8 @@ struct TableSchema {
 struct ColumnSchema {
     name: String,
     data_type: String,
+    // Lower-cased type keyword without length modifiers. Helps us map to
+    // sampling strategies without needing a full SQL parser.
     base_type: String,
     unsigned: bool,
     length: Option<usize>,
@@ -700,6 +722,8 @@ struct ColumnOverride {
     min: Option<f64>,
     max: Option<f64>,
     allowed: Option<Vec<f64>>,
+    #[serde(default)]
+    exclude: bool,
 }
 
 type TableOverrideMap = BTreeMap<String, BTreeMap<String, ColumnOverride>>;
@@ -736,6 +760,9 @@ fn column_regex() -> &'static Regex {
 }
 
 fn parse_mysql_tables(schema: &str) -> Vec<TableSchema> {
+    // This is intentionally permissive: we only need the column metadata, so
+    // a couple of focused regexes are enough and avoid pulling a SQL parser
+    // into Wasm.
     let regex = table_regex();
     let mut tables = Vec::new();
     for caps in regex.captures_iter(schema) {
@@ -787,6 +814,7 @@ fn parse_column_line(line: &str, column_re: &Regex) -> Option<ColumnSchema> {
         || lowered.starts_with("index ")
         || lowered.starts_with("foreign ")
     {
+        // Skip secondary indexes—only physical columns get INSERT values.
         return None;
     }
     let caps = column_re.captures(trimmed)?;
@@ -999,10 +1027,8 @@ fn sample_value(
     row_idx: usize,
     override_cfg: Option<&ColumnOverride>,
 ) -> String {
-    if override_cfg.is_none() {
-        if let Some(default) = column.default_value.as_ref() {
-            return render_default(default);
-        }
+    if let Some(prefilled) = column_default_value(column, override_cfg) {
+        return prefilled;
     }
     match column.base_type.as_str() {
         base if base.contains("int") || base == "serial" || base == "year" || base == "bit" => {
@@ -1059,6 +1085,38 @@ fn sample_value(
         }
         _ => sample_text_value(column),
     }
+}
+
+fn column_default_value(
+    column: &ColumnSchema,
+    override_cfg: Option<&ColumnOverride>,
+) -> Option<String> {
+    // User overrides always win; otherwise fall back to SQL defaults when they
+    // carry actual information (e.g., CURRENT_TIMESTAMP) so our output matches
+    // production schemas more closely.
+    if override_cfg.is_some() {
+        return None;
+    }
+    let default = column.default_value.as_ref()?;
+    if is_textual_column(column) {
+        match default {
+            ColumnDefault::Null => return None,
+            ColumnDefault::Literal(value) if value.trim().is_empty() => return None,
+            _ => {}
+        }
+    }
+    Some(render_default(default))
+}
+
+fn is_textual_column(column: &ColumnSchema) -> bool {
+    let ty = column.base_type.as_str();
+    // Covers MySQL string-ish types that benefit from lorem ipsum content.
+    ty.contains("char")
+        || ty.contains("text")
+        || ty == "json"
+        || ty == "uuid"
+        || ty == "enum"
+        || ty == "set"
 }
 
 fn sample_integer_value(column: &ColumnSchema, override_cfg: Option<&ColumnOverride>) -> String {
@@ -1253,6 +1311,8 @@ fn lorem_text(max_len: usize) -> String {
     if max_len == 0 {
         return String::new();
     }
+    // We use a deterministic-ish lorem word bag so results are readable yet
+    // still look random when rendered in the UI.
     let mut out = String::new();
     while out.len() < max_len {
         if !out.is_empty() {
@@ -1285,11 +1345,19 @@ pub fn totp_token(
     period: u32,
     digits: u32,
 ) -> Result<JsValue, JsValue> {
+    // Implements RFC 6238 (TOTP). The frontend exposes SHA1/SHA256/SHA512 per
+    // the requirement list, so we keep the API narrow and deterministic.
     totp_token_internal(secret, algorithm, period, digits)
         .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
         .map_err(|err| JsValue::from_str(&err))
 }
 
+/// Computes a TOTP code for a Base32 secret.
+///
+/// Whitespace in the input is ignored, so both `6BDRT7ATRRCZV5ISFLOHAHQLYF4ZORG7`
+/// and `6BDR T7AT RRCZ V5IS FLOH AHQL YF4Z ORG7` map to the same key. The
+/// `algorithm` parameter accepts `SHA1`, `SHA256` (preferred), or `SHA512`. Both
+/// the `period` (seconds) and number of digits follow the UI inputs.
 fn totp_token_internal(
     secret: &str,
     algorithm: &str,
@@ -1576,6 +1644,12 @@ fn format_bigint(value: &BigInt, radix: u32, uppercase: bool) -> String {
     out
 }
 
+// === Converter helpers ===
+//
+// Each converter mirrors a specific section of the original Go tool. The goal is
+// to keep the data model deterministic so the web UI can show live previews for
+// every format the specification calls out (JSON↔TOON, timestamp, units, etc.).
+
 #[wasm_bindgen]
 pub fn convert_units(unit: &str, value: &str) -> Result<JsValue, JsValue> {
     convert_units_internal(unit, value)
@@ -1584,6 +1658,8 @@ pub fn convert_units(unit: &str, value: &str) -> Result<JsValue, JsValue> {
 }
 
 fn convert_units_internal(unit: &str, value: &str) -> Result<BTreeMap<String, String>, String> {
+    // Every value is normalized to bits so we can convert between bit/byte and
+    // their binary multiples (definitions borrowed from the spec discussion).
     let factor = find_unit_factor(unit).ok_or_else(|| format!("unsupported unit: {}", unit))?;
     let parsed = parse_unit_value(value)?;
     let total_bits = parsed * factor;
@@ -1648,6 +1724,9 @@ fn convert_timestamp_internal(
     source: &str,
     value: &str,
 ) -> Result<BTreeMap<String, String>, String> {
+    // Normalize any supported representation (RFC3339, SQL datetime, or the
+    // different epoch precisions) into a UTC DateTime so we can fan out into
+    // all of the formats surfaced in the UI/spec.
     let dt = parse_timestamp_from_source(source, value)?;
     let mut map = BTreeMap::new();
     map.insert("iso8601".into(), dt.to_rfc3339());
@@ -1728,6 +1807,8 @@ fn parse_numeric_timestamp(value: &str, unit: TimestampUnit) -> Result<DateTime<
 }
 
 fn parse_textual_timestamp(value: &str) -> Result<DateTime<Utc>, String> {
+    // Accept multiple canonical textual formats because the spec documents
+    // RFC3339, RFC2822, and ISO 8601 partials (SQL date/datetime).
     if let Ok(dt) = DateTime::parse_from_rfc3339(value) {
         return Ok(dt.with_timezone(&Utc));
     }
@@ -1752,6 +1833,8 @@ fn parse_textual_timestamp(value: &str) -> Result<DateTime<Utc>, String> {
 }
 
 fn parse_sql_datetime(value: &str) -> Result<DateTime<Utc>, String> {
+    // The UI allows pasting arbitrary SQL DATETIME strings; reject early so we
+    // can surface validation errors near the input box.
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Err("input is empty".into());
@@ -2498,6 +2581,8 @@ fn append_required_chars(
     count: u32,
     label: &str,
 ) -> Result<(), String> {
+    // Used by the random string generator to guarantee minimum counts for each
+    // selected character family (digits/upper/lower/symbols).
     if count == 0 {
         return Ok(());
     }
@@ -2522,6 +2607,8 @@ fn random_char_from_pool(pool: &[char]) -> Result<char, String> {
 }
 
 fn shuffle_chars(chars: &mut [char]) {
+    // Fisher-Yates shuffle so each password candidate looks random even if the
+    // caller requested minimum counts for specific sets.
     if chars.len() < 2 {
         return;
     }

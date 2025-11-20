@@ -1,3 +1,6 @@
+// Front-end controller for the Rust/Wasm toolkit. Each workspace (converter,
+// coder, IPv4, SQL inserts, etc.) communicates with wasm exports so the UI can
+// stay deterministic and reflect the behaviors described in the spec session.
 import initWasm, {
   generate_uuids,
   generate_user_agents,
@@ -482,6 +485,8 @@ const workspaceIds = [
 
 const defaultDecoder = allEncodingVariants[0]?.key || "";
 
+// Single source of truth for UI state/timers. Most handlers only mutate this
+// object, then re-render the relevant panel.
 const state = {
   currentTool: "format",
   wasmReady: false,
@@ -525,7 +530,7 @@ const state = {
   dataOverrides: {},
   dataTables: [],
   dataSchemaTimer: null,
-  dataGenerateTimer: null,
+  dataDirty: false,
   formatKey: null,
 };
 
@@ -699,7 +704,6 @@ function cacheElements() {
   elements.totpPeriodLabel = document.getElementById("totpPeriodLabel");
   elements.totpRemainingLabel = document.getElementById("totpRemainingLabel");
   elements.totpError = document.getElementById("totpError");
-  elements.totpCopy = document.getElementById("totpCopy");
   elements.dataSchema = document.getElementById("dataSchema");
   elements.dataRows = document.getElementById("dataRows");
   elements.dataGenerate = document.getElementById("dataGenerate");
@@ -933,7 +937,7 @@ function bindUI() {
   elements.totpAlgorithm?.addEventListener("change", handleTotpFieldChange);
   elements.totpPeriod?.addEventListener("input", handleTotpFieldChange);
   elements.totpDigits?.addEventListener("input", handleTotpFieldChange);
-  elements.totpCopy?.addEventListener("click", copyTotpCode);
+  elements.totpCode?.addEventListener("click", copyTotpCode);
   elements.dataSchema?.addEventListener("input", handleDataSchemaInput);
   elements.dataRows?.addEventListener("input", handleDataRowsChange);
   elements.dataGenerate?.addEventListener("click", () => runDataGenerator());
@@ -2350,24 +2354,11 @@ function handleTimestampPreset(event) {
 }
 
 function buildTimestampPreset(kind) {
-  const now = new Date();
-  const pad = (num) => String(num).padStart(2, "0");
-  const iso = now.toISOString();
-  const rfc2822 = now.toUTCString();
-  const sqlDate = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
-  const sqlDateTime = `${sqlDate} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
-  switch (kind) {
-    case "now":
-      return { field: "timestamp_seconds", value: Math.floor(Date.now() / 1000).toString() };
-    case "rfc3339":
-      return { field: "iso8601", value: iso };
-    case "rfc2822":
-      return { field: "rfc2822", value: rfc2822 };
-    case "sql-datetime":
-      return { field: "sql_datetime", value: sqlDateTime };
-    default:
-      return null;
+  if (kind !== "now") {
+    return null;
   }
+  const iso = new Date().toISOString();
+  return { field: "iso8601", value: iso };
 }
 
 function activateTimestampTool() {
@@ -2479,6 +2470,7 @@ function handleTotpFieldChange() {
 }
 
 function refreshTotp(silent = false) {
+  // Runs RFC 6238 logic in wasm. We refresh every second while the workspace is active.
   if (!elements.totpSecret) return;
   const secret = elements.totpSecret.value || "";
   if (!secret.trim()) {
@@ -2553,28 +2545,45 @@ function activateDataTool() {
 }
 
 function handleDataRowsChange() {
-  if (!elements.dataRows) return;
-  let value = parseInt(elements.dataRows.value, 10);
-  if (!Number.isFinite(value)) value = 1;
-  value = Math.min(Math.max(value, 1), 100);
+  getClampedDataRows();
+  if (isDataTool(state.currentTool)) {
+    markDataDirty("Rows updated. Click Generate to refresh.");
+  }
+}
+
+function getClampedDataRows() {
+  let value = state.dataRows;
+  if (elements.dataRows) {
+    const parsed = parseInt(elements.dataRows.value, 10);
+    if (Number.isFinite(parsed)) {
+      value = parsed;
+    }
+  }
+  value = Math.min(Math.max(value || 1, 1), 100);
   state.dataRows = value;
-  elements.dataRows.value = value;
-  scheduleDataGeneration();
+  if (elements.dataRows) {
+    elements.dataRows.value = value;
+  }
+  return value;
 }
 
 function handleDataSchemaInput() {
+  // Debounce schema parsing to keep typing snappy on large CREATE TABLE blobs.
   if (!elements.dataSchema) return;
+  if (!isDataTool(state.currentTool)) return;
   const schema = elements.dataSchema.value || "";
   clearTimeout(state.dataSchemaTimer);
   state.dataSchemaTimer = setTimeout(() => parseDataSchema(schema), 400);
 }
 
 function parseDataSchema(schemaText) {
+  // Let the wasm helper crunch the schema and mirror whatever it finds in the editor UI.
   if (!state.wasmReady) return;
   const trimmed = schemaText.trim();
   if (!trimmed) {
     state.dataTables = [];
     state.dataOverrides = {};
+    state.dataDirty = false;
     renderDataColumnEditor();
     if (elements.dataOutput) elements.dataOutput.value = "";
     return;
@@ -2585,14 +2594,16 @@ function parseDataSchema(schemaText) {
       state.dataTables = tables;
       pruneDataOverrides();
       renderDataColumnEditor();
-      runDataGenerator();
+      markDataDirty("Schema parsed. Click Generate to refresh.");
     } else {
       state.dataTables = [];
+      state.dataDirty = false;
       renderDataColumnEditor();
       setStatus("No tables detected", true);
     }
   } catch (err) {
     console.error(err);
+    state.dataDirty = false;
     setStatus(`⚠️ ${err?.message || err}`, true);
   }
 }
@@ -2623,6 +2634,7 @@ function pruneDataOverrides() {
 }
 
 function renderDataColumnEditor() {
+  // Rebuild the column cards every time so include/override controls stay aligned with the schema snapshot.
   if (!elements.dataColumnEditor) return;
   if (!state.dataTables?.length) {
     elements.dataColumnEditor.innerHTML = '<div class="muted">Paste a schema to configure column ranges.</div>';
@@ -2640,8 +2652,12 @@ function renderDataColumnEditor() {
 }
 
 function renderDataColumnCard(tableName, column) {
+  // Numeric fields get min/max/allowed inputs; textual fields surface metadata only.
   const kind = column.kind || "string";
   const overrides = state.dataOverrides?.[tableName]?.[column.name] || {};
+  const include = overrides.exclude !== true;
+  const disabledAttr = include ? "" : " disabled";
+  const cardClass = include ? "data-column-card" : "data-column-card excluded";
   const isNumeric = ["integer", "decimal", "float", "boolean"].includes(kind);
   const defaultValue = column.default_value ? escapeHTML(column.default_value) : "—";
   const minPlaceholder = column.min_value || "";
@@ -2653,24 +2669,30 @@ function renderDataColumnCard(tableName, column) {
     ? `<div class="data-override-row">
         <label>
           <span>Min</span>
-          <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(column.name)}" data-field="min" value="${escapeAttr(minValue)}" placeholder="${escapeAttr(minPlaceholder)}" />
+          <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(column.name)}" data-field="min" value="${escapeAttr(minValue)}" placeholder="${escapeAttr(minPlaceholder)}"${disabledAttr} />
         </label>
         <label>
           <span>Max</span>
-          <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(column.name)}" data-field="max" value="${escapeAttr(maxValue)}" placeholder="${escapeAttr(maxPlaceholder)}" />
+          <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(column.name)}" data-field="max" value="${escapeAttr(maxValue)}" placeholder="${escapeAttr(maxPlaceholder)}"${disabledAttr} />
         </label>
         <label>
           <span>Allowed (comma)</span>
-          <input type="text" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(column.name)}" data-field="allowed" value="${escapeAttr(allowedValue)}" placeholder="e.g. 10,20" />
+          <input type="text" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(column.name)}" data-field="allowed" value="${escapeAttr(allowedValue)}" placeholder="e.g. 10,20"${disabledAttr} />
         </label>
       </div>`
     : column.enum_values?.length
       ? `<div class="muted">Enum values: ${escapeHTML(column.enum_values.join(", "))}</div>`
       : '<div class="muted">Text columns use lorem ipsum</div>';
-  return `<div class="data-column-card">
+  return `<div class="${cardClass}">
     <header>
-      <strong>${escapeHTML(column.name)}</strong>
-      <span>${escapeHTML(column.data_type || "")}</span>
+      <div class="data-column-header-info">
+        <strong>${escapeHTML(column.name)}</strong>
+        <span>${escapeHTML(column.data_type || "")}</span>
+      </div>
+      <label class="data-include-toggle">
+        <input type="checkbox" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(column.name)}" data-field="include" ${include ? "checked" : ""} />
+        <span>Include</span>
+      </label>
     </header>
     <div class="muted">Default: ${defaultValue}</div>
     ${controls}
@@ -2678,6 +2700,7 @@ function renderDataColumnCard(tableName, column) {
 }
 
 function handleDataOverrideInput(event) {
+  // Persist override tweaks so Generate can replay the exact same numbers.
   const input = event.target.closest('[data-field]');
   if (!input) return;
   const table = input.dataset.table;
@@ -2686,24 +2709,53 @@ function handleDataOverrideInput(event) {
   if (!table || !column || !field) return;
   if (!state.dataOverrides[table]) state.dataOverrides[table] = {};
   if (!state.dataOverrides[table][column]) state.dataOverrides[table][column] = {};
+  const entry = state.dataOverrides[table][column];
+  if (field === "include") {
+    const include = input.checked !== false;
+    if (!include) {
+      entry.exclude = true;
+    } else {
+      delete entry.exclude;
+    }
+    cleanupDataOverrideEntry(table, column);
+    syncDataColumnCardState(input.closest('.data-column-card'), include);
+    markDataDirty("Column selection updated. Click Generate to refresh.");
+    return;
+  }
   const value = input.value || "";
   if (!value.trim()) {
-    delete state.dataOverrides[table][column][field];
+    delete entry[field];
   } else {
-    state.dataOverrides[table][column][field] = value;
+    entry[field] = value;
   }
-  if (!Object.keys(state.dataOverrides[table][column]).length) {
+  cleanupDataOverrideEntry(table, column);
+  markDataDirty("Overrides updated. Click Generate to refresh.");
+}
+
+function cleanupDataOverrideEntry(table, column) {
+  if (!state.dataOverrides[table]) return;
+  if (column && state.dataOverrides[table][column] && !Object.keys(state.dataOverrides[table][column]).length) {
     delete state.dataOverrides[table][column];
   }
   if (!Object.keys(state.dataOverrides[table]).length) {
     delete state.dataOverrides[table];
   }
-  scheduleDataGeneration();
 }
 
-function scheduleDataGeneration() {
-  clearTimeout(state.dataGenerateTimer);
-  state.dataGenerateTimer = setTimeout(() => runDataGenerator(), 250);
+function markDataDirty(message) {
+  state.dataDirty = true;
+  if (message && isDataTool(state.currentTool)) {
+    setStatus(message, false);
+  }
+}
+
+function syncDataColumnCardState(card, include) {
+  if (!card) return;
+  card.classList.toggle('excluded', !include);
+  const inputs = card.querySelectorAll('input[data-field]:not([data-field="include"])');
+  inputs.forEach((el) => {
+    el.disabled = !include;
+  });
 }
 
 function buildDataOverrides() {
@@ -2712,6 +2764,9 @@ function buildDataOverrides() {
     const tableOverrides = {};
     Object.entries(columns).forEach(([columnName, config]) => {
       const entry = {};
+      if (config.exclude === true) {
+        entry.exclude = true;
+      }
       const min = parseFloat(config.min);
       if (Number.isFinite(min)) entry.min = min;
       const max = parseFloat(config.max);
@@ -2747,19 +2802,32 @@ function runDataGenerator() {
     return;
   }
   if (!elements.dataSchema) return;
-  handleDataRowsChange();
+  const rows = getClampedDataRows();
   const schema = elements.dataSchema.value || "";
   if (!schema.trim()) {
     setStatus("Schema is empty", true);
+    state.dataDirty = false;
+    return;
+  }
+  if (state.dataSchemaTimer) {
+    clearTimeout(state.dataSchemaTimer);
+    state.dataSchemaTimer = null;
+    parseDataSchema(schema);
+  } else if (!state.dataTables?.length) {
+    parseDataSchema(schema);
+  }
+  if (!state.dataTables?.length) {
+    setStatus("No tables detected", true);
     return;
   }
   try {
     const overrides = buildDataOverrides();
     const result =
-      generate_insert_statements(schema, state.dataRows, overrides) || "";
+      generate_insert_statements(schema, rows, overrides) || "";
     if (elements.dataOutput) {
       elements.dataOutput.value = result;
     }
+    state.dataDirty = false;
     setStatus("Generated INSERT statements", false);
   } catch (err) {
     console.error(err);

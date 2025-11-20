@@ -273,10 +273,7 @@
                             </div>
                         </div>
                         <div class="timestamp-presets" id="timestampPresets">
-                            <button type="button" data-preset="now">Now (Unix sec)</button>
-                            <button type="button" data-preset="rfc3339">Now (RFC3339)</button>
-                            <button type="button" data-preset="rfc2822">Now (RFC2822)</button>
-                            <button type="button" data-preset="sql-datetime">Now (SQL datetime)</button>
+                            <button type="button" data-preset="now">Now</button>
                         </div>
                         <div class="timestamp-grid">
                             <label>
@@ -500,15 +497,13 @@
 					</section>
 				</div>
 
+				<!-- TOTP workspace: computes RFC 6238 codes based on user-selected algorithm/period/digits. -->
 				<div id="totpWorkspace" class="tool-view hidden">
 					<section class="panel">
 						<div class="panel-header">
 							<div>
 								<h2>TOTP</h2>
 								<p>Compute time-based OTP codes from a Base32 secret.</p>
-							</div>
-							<div class="generator-actions">
-								<button id="totpCopy">Copy code</button>
 							</div>
 						</div>
 						<div class="totp-form">
@@ -533,8 +528,8 @@
 								<input type="number" id="totpDigits" min="4" max="10" value="6" />
 							</label>
 						</div>
-						<div class="totp-result" id="totpResult">
-							<code id="totpCode"></code>
+					<div class="totp-result" id="totpResult">
+						<code id="totpCode" title="Click to copy"></code>
 							<div class="totp-meta">
 								<span id="totpPeriodLabel"></span>
 								<span id="totpRemainingLabel"></span>

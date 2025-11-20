@@ -1,3 +1,26 @@
+//! Format conversion helpers.
+//!
+//! This module mirrors the "Format Converter" workspace from the Go version.
+//! Every format exposed in the UI (JSON, YAML, TOON, MsgPack, GraphQL schema,
+//! etc.) is normalized through JSON so we can deterministically round-trip
+//! between representations. The implementation intentionally sticks to the
+//! concrete syntax described in the spec excerpt shared earlier in the session.
+//!
+//! # Examples
+//!
+//! ```rust
+//! use wasm_core::convert::formats::convert_formats;
+//!
+//! let toon = convert_formats("JSON", "TOON", r#"{"name":"Ada"}"#)?;
+//! assert_eq!(toon.trim(), "name: Ada");
+//! ```
+//!
+//! ```rust
+//! use wasm_core::convert::formats::format_content;
+//!
+//! let pretty = format_content("JSON", "{\"a\":1}", false)?;
+//! assert_eq!(pretty, "{\n  \"a\": 1\n}\n");
+//! ```
 use crate::convert::json_utils::{
     encode_json, json_to_toml, parse_json, toml_to_json, yaml_to_json,
 };
@@ -15,6 +38,12 @@ const FORMAT_MSGPACK: &str = "MsgPack";
 const FORMAT_GRAPHQL: &str = "GraphQL Schema";
 const FORMAT_PROTO: &str = "Protobuf";
 
+/// Converts user input from one supported format to another.
+///
+/// All formats funnel through JSON as an intermediate representation so that
+/// lossy conversions are easy to reason about (e.g., GraphQL schema → JSON →
+/// Protobuf text). Unsupported format pairs yield a descriptive `Err` message
+/// that the frontend surfaces inline.
 pub fn convert_formats(from: &str, to: &str, input: &str) -> Result<String, String> {
     if from == to {
         return Ok(input.to_string());
@@ -90,6 +119,11 @@ pub fn convert_formats(from: &str, to: &str, input: &str) -> Result<String, Stri
     }
 }
 
+/// Pretty-prints or minifies supported textual formats.
+///
+/// JSON/YAML/TOML are normalized through JSON to guarantee deterministic
+/// spacing, while XML/Go Struct are handed back verbatim since the spec only
+/// requires round-tripping for the first three.
 pub fn format_content(format_name: &str, input: &str, minify: bool) -> Result<String, String> {
     match format_name {
         FORMAT_JSON => {
