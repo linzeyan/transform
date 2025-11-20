@@ -618,6 +618,9 @@ async function boot() {
 }
 
 function cacheElements() {
+  elements.sidebar = document.getElementById("sidebar");
+  elements.sidebarToggle = document.getElementById("sidebarToggle");
+  elements.sidebarBackdrop = document.getElementById("sidebarBackdrop");
   elements.toolGroups = document.getElementById("toolGroups");
   elements.toolName = document.getElementById("toolName");
   elements.toolDesc = document.getElementById("toolDesc");
@@ -710,7 +713,7 @@ function cacheElements() {
   elements.dataOutput = document.getElementById("dataOutput");
   elements.dataCopy = document.getElementById("dataCopy");
   elements.dataColumnEditor = document.getElementById("dataColumnEditor");
-
+  elements.appShell = document.querySelector(".app-shell");
 }
 
 function renderSidebar() {
@@ -729,7 +732,10 @@ function renderSidebar() {
       btn.type = "button";
       btn.dataset.toolId = tool.id;
       btn.textContent = tool.label;
-      btn.addEventListener("click", () => selectTool(tool.id));
+      btn.addEventListener("click", () => {
+        selectTool(tool.id);
+        closeSidebarOnMobile();
+      });
       wrapper.appendChild(btn);
     });
     details.appendChild(wrapper);
@@ -756,6 +762,8 @@ function initCoderControls() {
 }
 
 function bindUI() {
+  elements.sidebarToggle?.addEventListener("click", toggleSidebar);
+  elements.sidebarBackdrop?.addEventListener("click", closeSidebar);
   elements.swap?.addEventListener("click", () => {
     if (state.currentTool !== "format") return;
     const from = elements.from?.value || "";
@@ -945,6 +953,26 @@ function bindUI() {
   elements.dataColumnEditor?.addEventListener("input", handleDataOverrideInput);
 }
 
+function toggleSidebar() {
+  document.body.classList.toggle("sidebar-open");
+}
+
+function closeSidebar() {
+  document.body.classList.remove("sidebar-open");
+}
+
+function closeSidebarOnMobile() {
+  if (window.matchMedia("(max-width: 900px)").matches) {
+    closeSidebar();
+  }
+}
+
+window.addEventListener("resize", () => {
+  if (window.innerWidth > 900) {
+    closeSidebar();
+  }
+});
+
 function ensureConverterMode() {
   if (state.currentTool !== "format") return false;
   const from = elements.from?.value || "";
@@ -1034,6 +1062,7 @@ function selectTool(toolId) {
   showWorkspace(workspaceId);
   toggleConverterControls(toolId === "format");
   updateToolButtons();
+  closeSidebarOnMobile();
   if (previousTool && isTotpTool(previousTool) && !isTotpTool(toolId)) {
     stopTotpTimer();
   }
