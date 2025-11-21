@@ -95,20 +95,43 @@
 					</section>
 				</div>
 
-				<div id="coderWorkspace" class="tool-view hidden">
-					<section class="panel">
-						<div class="panel-header coder-header">
-							<div>
-								<h2 id="coderWorkspaceTitle">Encode</h2>
-								<p id="coderModeHint">Encode text into multiple bases.</p>
-							</div>
-							<label class="decode-select hidden" id="decodeVariantWrap">
-								<span>Decoder</span>
-								<select id="decodeVariant"></select>
-							</label>
+			<div id="coderWorkspace" class="tool-view hidden">
+				<section class="panel">
+					<div class="panel-header coder-header">
+						<div>
+							<h2 id="coderWorkspaceTitle">Encode</h2>
+							<p id="coderModeHint">Encode text into multiple bases.</p>
 						</div>
-						<textarea
-							id="coderInput"
+						<label class="decode-select hidden" id="decodeVariantWrap">
+							<span>Decoder</span>
+							<select id="decodeVariant"></select>
+						</label>
+						<div class="hash-controls hidden" id="hashControls">
+							<label>
+								<span>Digest Output</span>
+							<select id="hashEncoding">
+									<option value="base16">Base16</option>
+									<option value="base64">Base64</option>
+									<option value="base64_raw">Base64 (no padding)</option>
+									<option value="base64_url">Base64 URL</option>
+									<option value="base64_url_raw">Base64 URL (no padding)</option>
+								</select>
+							</label>
+							<label class="hash-hmac-toggle">
+								<input type="checkbox" id="hashUseHmac" />
+								<span>Use HMAC</span>
+							</label>
+							<input
+								type="password"
+								id="hashHmacSecret"
+								class="hidden"
+								placeholder="Secret key"
+								spellcheck="false"
+							/>
+						</div>
+					</div>
+					<textarea
+						id="coderInput"
 							spellcheck="false"
 							placeholder="Type or paste text..."
 						></textarea>

@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha1::Sha1;
 use sha2::{Digest, Sha224, Sha256, Sha384, Sha512, Sha512_224, Sha512_256};
+use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
 use uuid as uuid_crate;
 use uuid_crate::{Context, NoContext, Timestamp};
 use wasm_bindgen::prelude::*;
@@ -1492,6 +1493,12 @@ pub fn hash_content(input: &str) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
+pub fn hash_content_hmac(input: &str, key: &str) -> Result<JsValue, JsValue> {
+    let map = hash_hmac_map(input.as_bytes(), key.as_bytes());
+    serde_wasm_bindgen::to_value(&map).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+#[wasm_bindgen]
 pub fn transform_format(from: &str, to: &str, input: &str) -> Result<String, JsValue> {
     convert::convert_formats(from, to, input).map_err(|err| JsValue::from_str(&err))
 }
@@ -1521,6 +1528,10 @@ fn hash_content_map(data: &[u8]) -> BTreeMap<String, String> {
     map.insert("sha512".into(), hex::encode(Sha512::digest(data)));
     map.insert("sha512_224".into(), hex::encode(Sha512_224::digest(data)));
     map.insert("sha512_256".into(), hex::encode(Sha512_256::digest(data)));
+    map.insert("sha3_224".into(), hex::encode(Sha3_224::digest(data)));
+    map.insert("sha3_256".into(), hex::encode(Sha3_256::digest(data)));
+    map.insert("sha3_384".into(), hex::encode(Sha3_384::digest(data)));
+    map.insert("sha3_512".into(), hex::encode(Sha3_512::digest(data)));
 
     let crc32_value = crc32fast::hash(data);
     map.insert("crc32_ieee".into(), format!("{:08x}", crc32_value));
@@ -1552,6 +1563,44 @@ fn hash_content_map(data: &[u8]) -> BTreeMap<String, String> {
     map.insert("fnv128a".into(), format!("{:032x}", fnv1a_128(data)));
 
     map
+}
+
+fn hash_hmac_map(data: &[u8], key: &[u8]) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+
+    map.insert("sha1".into(), hmac_hex_generic::<Hmac<Sha1>>(key, data));
+    map.insert("sha224".into(), hmac_hex_generic::<Hmac<Sha224>>(key, data));
+    map.insert("sha256".into(), hmac_hex_generic::<Hmac<Sha256>>(key, data));
+    map.insert("sha384".into(), hmac_hex_generic::<Hmac<Sha384>>(key, data));
+    map.insert("sha512".into(), hmac_hex_generic::<Hmac<Sha512>>(key, data));
+    map.insert(
+        "sha3_224".into(),
+        hmac_hex_generic::<Hmac<Sha3_224>>(key, data),
+    );
+    map.insert(
+        "sha3_256".into(),
+        hmac_hex_generic::<Hmac<Sha3_256>>(key, data),
+    );
+    map.insert(
+        "sha3_384".into(),
+        hmac_hex_generic::<Hmac<Sha3_384>>(key, data),
+    );
+    map.insert(
+        "sha3_512".into(),
+        hmac_hex_generic::<Hmac<Sha3_512>>(key, data),
+    );
+
+    map
+}
+
+fn hmac_hex_generic<M>(key: &[u8], data: &[u8]) -> String
+where
+    M: Mac + KeyInit,
+{
+    let mut mac: M = <M as KeyInit>::new_from_slice(key)
+        .unwrap_or_else(|_| <M as KeyInit>::new_from_slice(b"").unwrap());
+    mac.update(data);
+    hex::encode(mac.finalize().into_bytes())
 }
 
 #[derive(Serialize, Default)]

@@ -14,6 +14,7 @@ import initWasm, {
   encode_content,
   decode_content,
   hash_content,
+  hash_content_hmac,
   transform_format,
   format_content_text,
   markdown_to_html_text,
@@ -194,9 +195,9 @@ const encodingGroups = [
     label: "Base32",
     variants: [
       { key: "base32_standard", label: "Standard" },
-      { key: "base32_standard_no_padding", label: "Standard · No padding" },
+      { key: "base32_standard_no_padding", label: "Standard(no padding)" },
       { key: "base32_hex", label: "Hex" },
-      { key: "base32_hex_no_padding", label: "Hex · No padding" },
+      { key: "base32_hex_no_padding", label: "Hex(no padding)" },
     ],
   },
   {
@@ -204,9 +205,9 @@ const encodingGroups = [
     label: "Base64",
     variants: [
       { key: "base64_standard", label: "Standard" },
-      { key: "base64_raw_standard", label: "Standard · Raw" },
+      { key: "base64_raw_standard", label: "Standard(no padding)" },
       { key: "base64_url", label: "URL-safe" },
-      { key: "base64_raw_url", label: "URL-safe · Raw" },
+      { key: "base64_raw_url", label: "URL-safe(no padding)" },
     ],
   },
   {
@@ -238,6 +239,10 @@ const hashGroups = [
   {
     label: "SHA-2",
     keys: ["sha224", "sha256", "sha384", "sha512", "sha512_224", "sha512_256"],
+  },
+  {
+    label: "SHA-3",
+    keys: ["sha3_224", "sha3_256", "sha3_384", "sha3_512"],
   },
   {
     label: "Checksums",
@@ -275,6 +280,10 @@ const hashLabels = {
   fnv64a: "FNV-1a 64",
   fnv128: "FNV-1 128",
   fnv128a: "FNV-1a 128",
+  sha3_224: "SHA3-224",
+  sha3_256: "SHA3-256",
+  sha3_384: "SHA3-384",
+  sha3_512: "SHA3-512",
 };
 
 const coderModeDescriptions = {
@@ -519,6 +528,9 @@ const state = {
   coderMode: "encode",
   selectedDecoder: defaultDecoder,
   hashUppercase: false,
+  hashEncoding: "base16",
+  hashUseHmac: false,
+  hashHmacSecret: "",
   lastEncodeResults: null,
   lastHashResults: null,
   encodeCaseMap: { base16: true, base32: true },
@@ -554,6 +566,10 @@ const state = {
   dataDirty: false,
   formatKey: null,
   fingerprintFacts: [],
+  hashUppercase: false,
+  hashEncoding: "base16",
+  hashUseHmac: false,
+  hashHmacSecret: "",
 };
 
 let coderTimer = null;
@@ -671,6 +687,10 @@ function cacheElements() {
   elements.decodeVariant = document.getElementById("decodeVariant");
   elements.coderResultActions = document.getElementById("coderResultActions");
   elements.hashToggleCase = document.getElementById("hashToggleCase");
+  elements.hashEncoding = document.getElementById("hashEncoding");
+  elements.hashControls = document.getElementById("hashControls");
+  elements.hashUseHmac = document.getElementById("hashUseHmac");
+  elements.hashHmacSecret = document.getElementById("hashHmacSecret");
   elements.coderResultHeading = document.getElementById("coderResultHeading");
   elements.coderResultHint = document.getElementById("coderResultHint");
   elements.pairWorkspace = document.getElementById("pairWorkspace");
@@ -723,6 +743,10 @@ function cacheElements() {
   elements.timestampInputs = document.querySelectorAll(
     "#timestampWorkspace input[data-field]",
   );
+  elements.hashEncoding = document.getElementById("hashEncoding");
+  elements.hashControls = document.getElementById("hashControls");
+  elements.hashUseHmac = document.getElementById("hashUseHmac");
+  elements.hashHmacSecret = document.getElementById("hashHmacSecret");
   elements.timestampPresets = document.getElementById("timestampPresets");
   elements.totpSecret = document.getElementById("totpSecret");
   elements.totpAlgorithm = document.getElementById("totpAlgorithm");
@@ -886,6 +910,18 @@ function bindUI() {
   elements.pairOutput?.addEventListener("input", () =>
     handlePairInput("output"),
   );
+  elements.hashToggleCase?.addEventListener("click", () => {
+    state.hashUppercase = !state.hashUppercase;
+    elements.hashToggleCase.dataset.upper = state.hashUppercase
+      ? "true"
+      : "false";
+    if (state.lastHashResults) {
+      renderHashResults(state.lastHashResults);
+    }
+  });
+  elements.hashEncoding?.addEventListener("change", handleHashEncodingChange);
+  elements.hashUseHmac?.addEventListener("change", handleHashModeToggle);
+  elements.hashHmacSecret?.addEventListener("input", handleHashSecretInput);
   elements.jwtAlgorithm?.addEventListener("change", () => {
     if (state.currentTool === "coder-jwt") {
       runPairConversion("input");
@@ -976,6 +1012,9 @@ function bindUI() {
     runRandomGenerator(),
   );
   elements.randomResults?.addEventListener("click", handleRandomResultsClick);
+  elements.hashEncoding?.addEventListener("change", handleHashEncodingChange);
+  elements.hashUseHmac?.addEventListener("change", handleHashModeToggle);
+  elements.hashHmacSecret?.addEventListener("input", handleHashSecretInput);
   elements.timestampInputs?.forEach((input) =>
     input.addEventListener("input", handleTimestampInput),
   );
@@ -1255,7 +1294,9 @@ function runCoder() {
       setStatus("Done", false);
       return;
     }
-    const hashes = hash_content(text);
+    const hashes = state.hashUseHmac
+      ? hash_content_hmac(text, state.hashHmacSecret || "")
+      : hash_content(text);
     const map = normalizeMapResult(hashes);
     state.lastHashResults = map;
     renderHashResults(map);
@@ -1313,6 +1354,18 @@ function updateCoderTexts() {
         : "false";
     }
   }
+  if (elements.hashControls) {
+    const show = state.coderMode === "hash";
+    elements.hashControls.classList.toggle("hidden", !show);
+    if (show) {
+      if (elements.hashEncoding) elements.hashEncoding.value = state.hashEncoding;
+      if (elements.hashUseHmac) elements.hashUseHmac.checked = state.hashUseHmac;
+      if (elements.hashHmacSecret) {
+        elements.hashHmacSecret.classList.toggle("hidden", !state.hashUseHmac);
+        elements.hashHmacSecret.value = state.hashHmacSecret;
+      }
+    }
+  }
   if (elements.coderInput) {
     elements.coderInput.placeholder =
       coderPlaceholders[state.coderMode] || coderPlaceholders.encode;
@@ -1337,10 +1390,51 @@ function renderCoderEmpty() {
 
 function updateCoderActionsVisibility() {
   if (!elements.coderResultActions) return;
-  const show =
-    state.coderMode === "hash" &&
-    !elements.hashToggleCase?.classList.contains("hidden");
+  const show = state.coderMode === "hash";
   elements.coderResultActions.classList.toggle("hidden", !show);
+  if (elements.hashToggleCase) {
+    elements.hashToggleCase.classList.toggle("hidden", !show);
+  }
+}
+
+function encodeDigest(hexValue) {
+  const lower = state.hashUppercase ? hexValue.toUpperCase() : hexValue.toLowerCase();
+  if (state.hashEncoding === "base16") return lower;
+  const bytes = hexToUint8(lower);
+  if (!bytes) return lower;
+  if (state.hashEncoding === "base64") {
+    return toBase64(bytes, false);
+  }
+  if (state.hashEncoding === "base64_raw") {
+    return toBase64(bytes, true);
+  }
+  if (state.hashEncoding === "base64_url") {
+    return toBase64(bytes, false).replace(/\+/g, "-").replace(/\//g, "_");
+  }
+  if (state.hashEncoding === "base64_url_raw") {
+    return toBase64(bytes, true).replace(/\+/g, "-").replace(/\//g, "_");
+  }
+  return lower;
+}
+
+function hexToUint8(hex) {
+  if (!hex || hex.length % 2 !== 0) return null;
+  const arr = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < arr.length; i++) {
+    const byte = Number.parseInt(hex.substr(i * 2, 2), 16);
+    if (Number.isNaN(byte)) return null;
+    arr[i] = byte;
+  }
+  return arr;
+}
+
+function toBase64(bytes, stripPadding) {
+  let binary = "";
+  bytes.forEach((b) => {
+    binary += String.fromCharCode(b);
+  });
+  const encoded = btoa(binary);
+  return stripPadding ? encoded.replace(/=+$/, "") : encoded;
 }
 
 function renderEncodeResults(map) {
@@ -1424,9 +1518,7 @@ function renderHashResults(map) {
             return null;
           }
           const label = hashLabels[key] || key;
-          const value = state.hashUppercase
-            ? raw.toUpperCase()
-            : raw.toLowerCase();
+          const value = encodeDigest(raw);
           return {
             label,
             value,
@@ -3071,6 +3163,28 @@ function handleRandomResultsClick(event) {
   const value = row.dataset.randomValue || "";
   if (!value) return;
   copyText(value, "Random string");
+}
+
+function handleHashEncodingChange(event) {
+  const value = event?.target?.value || "base16";
+  state.hashEncoding = value;
+  if (state.lastHashResults) renderHashResults(state.lastHashResults);
+}
+
+function handleHashModeToggle(event) {
+  state.hashUseHmac = Boolean(event?.target?.checked);
+  if (elements.hashHmacSecret) {
+    elements.hashHmacSecret.classList.toggle("hidden", !state.hashUseHmac);
+  }
+  if (state.lastHashResults) renderHashResults(state.lastHashResults);
+  scheduleCoder(true);
+}
+
+function handleHashSecretInput(event) {
+  state.hashHmacSecret = event?.target?.value || "";
+  if (state.hashUseHmac) {
+    scheduleCoder(true);
+  }
 }
 
 function handleTimestampPreset(event) {
