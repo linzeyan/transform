@@ -1,3 +1,4 @@
+// Core Wasm entry: binds Rust helpers (converters, encoders, generators) into JS via wasm_bindgen.
 use std::collections::{BTreeMap, HashSet};
 use std::convert::TryInto;
 use std::net::{Ipv4Addr, Ipv6Addr};

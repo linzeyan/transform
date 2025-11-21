@@ -155,3 +155,28 @@ pub fn format_content(format_name: &str, input: &str, minify: bool) -> Result<St
         _ => Err("Formatting is not available for this format".into()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn json_to_yaml_and_back() {
+        let yaml = convert_formats("JSON", "YAML", "{\"a\":1}").unwrap();
+        let back = convert_formats("YAML", "JSON", &yaml).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&back).unwrap();
+        assert_eq!(v["a"], 1);
+    }
+
+    #[test]
+    fn go_struct_generation() {
+        let go = convert_formats("JSON", "Go Struct", "{\"id\":1}").unwrap();
+        assert!(go.contains("struct"));
+    }
+
+    #[test]
+    fn format_content_minifies() {
+        let min = format_content("JSON", "{\n  \"a\": 1\n}\n", true).unwrap();
+        assert_eq!(min, "{\"a\":1}");
+    }
+}

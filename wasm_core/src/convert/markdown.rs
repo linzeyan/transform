@@ -1,3 +1,4 @@
+// Minimal Markdown ↔ HTML helpers for the converter pair tool (no external crates to keep wasm light).
 use regex::Regex;
 use std::sync::OnceLock;
 
@@ -74,6 +75,25 @@ pub fn markdown_to_html(input: &str) -> Result<String, String> {
         result.push_str("</code></pre>\n");
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn converts_markdown_list() {
+        let html = markdown_to_html("- item").unwrap();
+        assert!(html.contains("<ul>"));
+        assert!(html.contains("<li>item</li>"));
+    }
+
+    #[test]
+    fn converts_html_back_to_markdown() {
+        let md = html_to_markdown("<h1>Title</h1>");
+        let text = md.unwrap_or_default();
+        assert!(text.to_lowercase().contains("# title"));
+    }
 }
 
 fn markdown_heading_level(line: &str) -> usize {

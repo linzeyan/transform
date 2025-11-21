@@ -1,3 +1,4 @@
+// Lightweight JSON ↔ XML converter to keep the formatter predictable and dependency-light.
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Map, Value};
@@ -39,6 +40,18 @@ fn build_xml(buf: &mut String, name: &str, value: &Value, depth: usize) {
             };
             buf.push_str(&format!("{indent}<{name}>{}</{name}>\n", xml_escape(&text)));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn json_to_xml_wraps_root() {
+        let xml = json_to_xml(r#"{"name":"Ada"}"#).unwrap();
+        assert!(xml.contains("<root>"));
+        assert!(xml.contains("<name>Ada</name>"));
     }
 }
 

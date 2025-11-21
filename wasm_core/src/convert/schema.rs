@@ -1,3 +1,4 @@
+// Bidirectional helpers for JSON Schema generation and sampling.
 use serde_json::{Map, Value, json};
 
 use crate::convert::json_utils::ordered_keys;
@@ -71,5 +72,28 @@ pub fn schema_to_sample(schema: &Value) -> Value {
             }
         }
         _ => Value::Null,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builds_object_schema_and_sample() {
+        let src = json!({"name": "Ada", "age": 30});
+        let schema = json_to_schema(&src);
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"].get("name").is_some());
+        let sample = schema_to_sample(&schema);
+        let text = sample.to_string();
+        assert!(text.contains("\"name\""));
+    }
+
+    #[test]
+    fn builds_array_schema() {
+        let src = json!([1, 2, 3]);
+        let schema = json_to_schema(&src);
+        assert_eq!(schema["type"], "array");
     }
 }

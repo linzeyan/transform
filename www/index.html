@@ -8,6 +8,7 @@
 		<link rel="stylesheet" href="style.css" />
 	</head>
 	<body>
+		<!-- Single-page toolbox driven by wasm_core exports. Sidebar selects a workspace panel on the right. -->
 		<div class="app-shell">
 			<aside id="sidebar">
 				<div class="sidebar-brand">
@@ -360,16 +361,16 @@
 					</section>
 				</div>
 
-				<div id="userAgentWorkspace" class="tool-view hidden">
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2>User-Agent</h2>
-								<p>Pick a browser and OS to fetch realistic strings</p>
-							</div>
-							<div class="generator-actions">
-								<select id="uaBrowser">
-									<option value="">All Browsers</option>
+			<div id="userAgentWorkspace" class="tool-view hidden">
+				<section class="panel">
+					<div class="panel-header">
+						<div>
+							<h2>User-Agent</h2>
+							<p>Pick a browser and OS to fetch realistic strings</p>
+						</div>
+						<div class="generator-actions">
+							<select id="uaBrowser">
+								<option value="">All Browsers</option>
 									<option value="chrome">Chrome</option>
 									<option value="firefox">Firefox</option>
 									<option value="opera">Opera</option>
@@ -391,8 +392,26 @@
 						<div id="uaResults" class="ua-results">
 							<div class="muted">Choose filters to generate user agents</div>
 						</div>
-					</section>
-				</div>
+				</section>
+			</div>
+
+			<!-- Browser Fingerprint surface: shows passive signals we can read without permissions. -->
+			<div id="fingerprintWorkspace" class="tool-view hidden">
+				<section class="panel">
+					<div class="panel-header">
+						<div>
+							<h2>Browser Fingerprint</h2>
+							<p>Inspect what the browser exposes without permissions</p>
+						</div>
+					</div>
+					<div id="fingerprintSummary" class="fingerprint-summary">
+						Showing values available via standard Web APIs.
+					</div>
+					<div id="fingerprintGrid" class="fingerprint-grid">
+						<div class="muted">Loading…</div>
+					</div>
+				</section>
+			</div>
 
 				<div id="randomWorkspace" class="tool-view hidden">
 					<section class="panel">

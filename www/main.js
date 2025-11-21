@@ -117,7 +117,7 @@ const specialCharacters = [
   "{",
   "}",
   "'",
-  "\"",
+  '"',
   ".",
   ",",
   ":",
@@ -241,7 +241,13 @@ const hashGroups = [
   },
   {
     label: "Checksums",
-    keys: ["crc32_ieee", "crc32_castagnoli", "crc64_iso", "crc64_ecma", "adler32"],
+    keys: [
+      "crc32_ieee",
+      "crc32_castagnoli",
+      "crc64_iso",
+      "crc64_ecma",
+      "adler32",
+    ],
   },
   {
     label: "FNV",
@@ -308,7 +314,8 @@ const pairToolConfigs = {
   "coder-jwt": {
     type: "jwt",
     inputLabel: "JWT Payload (JSON)",
-    inputHint: "Enter payload JSON; token is generated using the selected algorithm.",
+    inputHint:
+      "Enter payload JSON; token is generated using the selected algorithm.",
     inputPlaceholder: '{\n  "sub": "1234567890",\n  "name": "John Doe"\n}',
     outputLabel: "JWT Token",
     outputHint: "Paste a JWT token to decode.",
@@ -399,6 +406,16 @@ const toolGroups = [
       },
     ],
   },
+  {
+    name: "Fingerprint",
+    tools: [
+      {
+        id: "fingerprint-browser",
+        label: "Browser Fingerprint",
+        description: "Show readable browser/device hints.",
+      },
+    ],
+  },
 ];
 
 const workspaceByTool = {
@@ -418,6 +435,7 @@ const workspaceByTool = {
   "generator-random": "randomWorkspace",
   "generator-totp": "totpWorkspace",
   "generator-sql": "dataWorkspace",
+  "fingerprint-browser": "fingerprintWorkspace",
 };
 
 const coderMainTools = new Set(["coder-encode", "coder-decode", "coder-hash"]);
@@ -433,6 +451,7 @@ const generatorTools = new Set([
   "generator-totp",
   "generator-sql",
 ]);
+const fingerprintTools = new Set(["fingerprint-browser"]);
 const uuidToolSet = new Set(["generator-uuid"]);
 const userAgentToolSet = new Set(["generator-useragent"]);
 const randomToolSet = new Set(["generator-random"]);
@@ -455,6 +474,7 @@ const implementedTools = new Set([
   "generator-random",
   "generator-totp",
   "generator-sql",
+  "fingerprint-browser",
 ]);
 
 const toolInfo = {};
@@ -481,6 +501,7 @@ const workspaceIds = [
   "randomWorkspace",
   "totpWorkspace",
   "dataWorkspace",
+  "fingerprintWorkspace",
 ];
 
 const defaultDecoder = allEncodingVariants[0]?.key || "";
@@ -532,6 +553,7 @@ const state = {
   dataSchemaTimer: null,
   dataDirty: false,
   formatKey: null,
+  fingerprintFacts: [],
 };
 
 let coderTimer = null;
@@ -597,7 +619,10 @@ async function boot() {
     if (isIPv4Tool(state.currentTool) && elements.ipv4Input?.value.trim()) {
       runIPv4Conversion();
     }
-    if (isTimestampTool(state.currentTool) && elements.timestampInputs?.length) {
+    if (
+      isTimestampTool(state.currentTool) &&
+      elements.timestampInputs?.length
+    ) {
       const filled = Array.from(elements.timestampInputs).find((input) =>
         input?.value?.trim(),
       );
@@ -714,6 +739,8 @@ function cacheElements() {
   elements.dataCopy = document.getElementById("dataCopy");
   elements.dataColumnEditor = document.getElementById("dataColumnEditor");
   elements.appShell = document.querySelector(".app-shell");
+  elements.fingerprintGrid = document.getElementById("fingerprintGrid");
+  elements.fingerprintSummary = document.getElementById("fingerprintSummary");
 }
 
 function renderSidebar() {
@@ -734,7 +761,7 @@ function renderSidebar() {
       btn.textContent = tool.label;
       btn.addEventListener("click", () => {
         selectTool(tool.id);
-        closeSidebarOnMobile();
+        closeSidebar();
       });
       wrapper.appendChild(btn);
     });
@@ -820,7 +847,9 @@ function bindUI() {
   });
   elements.hashToggleCase?.addEventListener("click", () => {
     state.hashUppercase = !state.hashUppercase;
-    elements.hashToggleCase.dataset.upper = state.hashUppercase ? "true" : "false";
+    elements.hashToggleCase.dataset.upper = state.hashUppercase
+      ? "true"
+      : "false";
     if (state.lastHashResults) {
       renderHashResults(state.lastHashResults);
     }
@@ -854,7 +883,9 @@ function bindUI() {
     }
   });
   elements.pairInput?.addEventListener("input", () => handlePairInput("input"));
-  elements.pairOutput?.addEventListener("input", () => handlePairInput("output"));
+  elements.pairOutput?.addEventListener("input", () =>
+    handlePairInput("output"),
+  );
   elements.jwtAlgorithm?.addEventListener("change", () => {
     if (state.currentTool === "coder-jwt") {
       runPairConversion("input");
@@ -878,9 +909,7 @@ function bindUI() {
   elements.numberDecimal?.addEventListener("input", () =>
     handleNumberInput("decimal"),
   );
-  elements.numberHex?.addEventListener("input", () =>
-    handleNumberInput("hex"),
-  );
+  elements.numberHex?.addEventListener("input", () => handleNumberInput("hex"));
   unitKeys.forEach((key) => {
     const id = `unit${capitalize(key)}`;
     elements[id]?.addEventListener("input", () => handleUnitInput(key));
@@ -899,7 +928,9 @@ function bindUI() {
   elements.uuidToggleCase?.addEventListener("click", () => {
     state.uuidUppercase = !state.uuidUppercase;
     if (elements.uuidToggleCase) {
-      elements.uuidToggleCase.dataset.upper = state.uuidUppercase ? "true" : "false";
+      elements.uuidToggleCase.dataset.upper = state.uuidUppercase
+        ? "true"
+        : "false";
     }
     renderUUIDs();
   });
@@ -912,7 +943,10 @@ function bindUI() {
   );
   elements.randomLength?.addEventListener("input", handleRandomLengthChange);
   elements.randomCount?.addEventListener("input", handleRandomCountChange);
-  elements.randomAllowZero?.addEventListener("change", handleRandomLeadingToggle);
+  elements.randomAllowZero?.addEventListener(
+    "change",
+    handleRandomLeadingToggle,
+  );
   elements.randomIncludeLower?.addEventListener(
     "change",
     handleRandomIncludeLowerChange,
@@ -934,8 +968,13 @@ function bindUI() {
   elements.randomMinSymbols?.addEventListener("input", () =>
     handleRandomMinChange("symbols"),
   );
-  elements.randomSymbolToggles?.addEventListener("click", handleRandomSymbolToggle);
-  elements.randomGenerate?.addEventListener("click", () => runRandomGenerator());
+  elements.randomSymbolToggles?.addEventListener(
+    "click",
+    handleRandomSymbolToggle,
+  );
+  elements.randomGenerate?.addEventListener("click", () =>
+    runRandomGenerator(),
+  );
   elements.randomResults?.addEventListener("click", handleRandomResultsClick);
   elements.timestampInputs?.forEach((input) =>
     input.addEventListener("input", handleTimestampInput),
@@ -1042,7 +1081,11 @@ function handleFormatField(target, formatName, minify) {
     return;
   }
   try {
-    const updated = format_content_text(formatName, target.value, Boolean(minify));
+    const updated = format_content_text(
+      formatName,
+      target.value,
+      Boolean(minify),
+    );
     target.value = updated || "";
     setStatus(minify ? "Minified" : "Formatted", false);
   } catch (err) {
@@ -1117,6 +1160,8 @@ function selectTool(toolId) {
     activateTotpTool();
   } else if (isDataTool(toolId)) {
     activateDataTool();
+  } else if (isFingerprintTool(toolId)) {
+    activateFingerprintTool();
   }
 }
 
@@ -1128,6 +1173,7 @@ function updateBodyClasses(toolId) {
   document.body.classList.toggle("tool-unit", unitTools.has(toolId));
   document.body.classList.toggle("tool-ipv4", ipv4Tools.has(toolId));
   document.body.classList.toggle("tool-generator", generatorTools.has(toolId));
+  document.body.classList.toggle("tool-fingerprint", isFingerprintTool(toolId));
   document.body.classList.toggle("tool-uuid", isUUIDTool(toolId));
   document.body.classList.toggle("tool-useragent", isUserAgentTool(toolId));
   document.body.classList.toggle("tool-random", isRandomTool(toolId));
@@ -1204,9 +1250,7 @@ function runCoder() {
         decoderKey === "hex_upper" ? text.toUpperCase() : text;
       const decoded = decode_content(decoderKey, decodeInput);
       const info = encodingVariantMap.get(decoderKey);
-      const displayLabel = info
-        ? `${info.group} · ${info.label}`
-        : "Decoded";
+      const displayLabel = info ? `${info.group} · ${info.label}` : "Decoded";
       renderDecodeResult(decoded, displayLabel);
       setStatus("Done", false);
       return;
@@ -1293,7 +1337,9 @@ function renderCoderEmpty() {
 
 function updateCoderActionsVisibility() {
   if (!elements.coderResultActions) return;
-  const show = state.coderMode === "hash" && !elements.hashToggleCase?.classList.contains("hidden");
+  const show =
+    state.coderMode === "hash" &&
+    !elements.hashToggleCase?.classList.contains("hidden");
   elements.coderResultActions.classList.toggle("hidden", !show);
 }
 
@@ -1378,7 +1424,9 @@ function renderHashResults(map) {
             return null;
           }
           const label = hashLabels[key] || key;
-          const value = state.hashUppercase ? raw.toUpperCase() : raw.toLowerCase();
+          const value = state.hashUppercase
+            ? raw.toUpperCase()
+            : raw.toLowerCase();
           return {
             label,
             value,
@@ -1484,6 +1532,10 @@ function isTotpTool(toolId) {
 
 function isDataTool(toolId) {
   return dataToolSet.has(toolId);
+}
+
+function isFingerprintTool(toolId) {
+  return fingerprintTools.has(toolId);
 }
 
 function activatePairTool(toolId) {
@@ -1682,11 +1734,14 @@ function updatePairMeta(info) {
 
 function activateNumberTool() {
   state.numberSyncing = true;
-  [elements.numberBinary, elements.numberOctal, elements.numberDecimal, elements.numberHex].forEach(
-    (field) => {
-      if (field) field.value = "";
-    },
-  );
+  [
+    elements.numberBinary,
+    elements.numberOctal,
+    elements.numberDecimal,
+    elements.numberHex,
+  ].forEach((field) => {
+    if (field) field.value = "";
+  });
   state.numberSyncing = false;
   setStatus("Ready", false);
 }
@@ -1707,11 +1762,14 @@ function runNumberConversion(base) {
   const value = field.value;
   if (!value.trim()) {
     state.numberSyncing = true;
-    [elements.numberBinary, elements.numberOctal, elements.numberDecimal, elements.numberHex].forEach(
-      (input) => {
-        if (input) input.value = "";
-      },
-    );
+    [
+      elements.numberBinary,
+      elements.numberOctal,
+      elements.numberDecimal,
+      elements.numberHex,
+    ].forEach((input) => {
+      if (input) input.value = "";
+    });
     state.numberSyncing = false;
     setStatus("Cleared");
     return;
@@ -2032,6 +2090,656 @@ function renderUserAgents(list) {
   });
 }
 
+// Fingerprint workspace: collect passive browser/device signals (no external calls or permissions).
+function activateFingerprintTool() {
+  refreshFingerprint(true);
+}
+
+function refreshFingerprint(silent = false) {
+  if (!isFingerprintTool(state.currentTool)) return;
+  const facts = collectFingerprintFacts();
+  state.fingerprintFacts = facts;
+  renderFingerprintFacts(facts);
+  runFingerprintAsyncEnrichments();
+  if (!silent) setStatus("Fingerprint refreshed", false);
+}
+
+function collectFingerprintFacts() {
+  const facts = [];
+  const add = (group, label, value) => {
+    if (value === undefined || value === null || value === "") return;
+    facts.push({ group, label, value: String(value) });
+  };
+  const upsert = (group, label, value) =>
+    upsertFact(group, label, value, facts);
+  // Categories roughly mirror how the UI nests the list for readability.
+  const nav = typeof navigator !== "undefined" ? navigator : {};
+  const uaData = nav.userAgentData;
+  // Identity & Browser
+  add("Identity", "User-Agent", nav.userAgent || "");
+  add(
+    "Identity",
+    "UA-CH Brands",
+    uaData?.brands?.map((b) => `${b.brand} ${b.version}`).join(", "),
+  );
+  add("Identity", "UA-CH Mobile", uaData?.mobile);
+  add("Identity", "UA-CH Platform", uaData?.platform || "");
+  add("Identity", "Platform", nav.platform || "");
+  add("Identity", "Vendor", nav.vendor || "");
+  add("Identity", "Product", nav.product || "");
+  add("Identity", "App Version", nav.appVersion || "");
+  add("Identity", "WebDriver", nav.webdriver === true ? "Yes" : "No");
+  add("Identity", "On Line", nav.onLine === false ? "No" : "Yes");
+  add(
+    "Identity",
+    "Window Properties",
+    typeof window !== "undefined"
+      ? Object.getOwnPropertyNames(window).length
+      : "",
+  );
+  const stackProbe = (() => {
+    try {
+      throw new Error("fp-stack-probe");
+    } catch (err) {
+      const msg =
+        typeof err?.stack === "string" ? err.stack.split("\n")[1]?.trim() : "";
+      return msg || err?.message || "";
+    }
+  })();
+  add("Identity", "Error Stack Sig", stackProbe);
+  add("Identity", "WebDriver", nav.webdriver === true ? "Yes" : "No");
+  add("Identity", "On Line", nav.onLine === false ? "No" : "Yes");
+
+  // Locale / Time
+  const langList = Array.isArray(nav.languages) ? nav.languages : [];
+  add("Locale & Time", "Primary Language", nav.language || "");
+  add("Locale & Time", "Languages", langList.join(", "));
+  const tz = Intl?.DateTimeFormat?.().resolvedOptions?.().timeZone;
+  if (tz) add("Locale & Time", "Time Zone", tz);
+  const offset = formatTimezoneOffset(new Date().getTimezoneOffset());
+  add("Locale & Time", "UTC Offset", offset);
+  add(
+    "Locale & Time",
+    "Calendar",
+    Intl?.DateTimeFormat?.().resolvedOptions?.().calendar || "",
+  );
+  add(
+    "Locale & Time",
+    "Numbering System",
+    Intl?.DateTimeFormat?.().resolvedOptions?.().numberingSystem || "",
+  );
+  add(
+    "Locale & Time",
+    "Calendar",
+    Intl?.DateTimeFormat?.().resolvedOptions?.().calendar || "",
+  );
+  add(
+    "Locale & Time",
+    "Numbering System",
+    Intl?.DateTimeFormat?.().resolvedOptions?.().numberingSystem || "",
+  );
+
+  // Hardware
+  if (typeof nav.hardwareConcurrency === "number") {
+    add("Hardware", "Logical CPUs", nav.hardwareConcurrency);
+  }
+  if (typeof nav.deviceMemory === "number") {
+    add("Hardware", "Device Memory", `${nav.deviceMemory} GB`);
+  }
+  add("Hardware", "Max Touch Points", nav.maxTouchPoints ?? "");
+  if (typeof window !== "undefined") {
+    add("Hardware", "Device Pixel Ratio", window.devicePixelRatio || "");
+  }
+  add("Hardware", "WebDriver", nav.webdriver === true ? "Yes" : "No");
+
+  // Screen
+  const screenObj = typeof window !== "undefined" ? window.screen : null;
+  if (screenObj) {
+    add("Screen", "Size", `${screenObj.width} × ${screenObj.height}`);
+    add(
+      "Screen",
+      "Available",
+      `${screenObj.availWidth} × ${screenObj.availHeight}`,
+    );
+    add("Screen", "Color Depth", `${screenObj.colorDepth}-bit`);
+    if (screenObj.orientation?.type) {
+      add("Screen", "Orientation", screenObj.orientation.type);
+      if (typeof screenObj.orientation.angle === "number") {
+        add("Screen", "Orientation Angle", `${screenObj.orientation.angle}°`);
+      }
+    }
+    if (typeof screenObj.pixelDepth === "number") {
+      add("Screen", "Pixel Depth", `${screenObj.pixelDepth}-bit`);
+    }
+  }
+  if (typeof window !== "undefined") {
+    add("Screen", "Inner Size", `${window.innerWidth} × ${window.innerHeight}`);
+    add("Screen", "Outer Size", `${window.outerWidth} × ${window.outerHeight}`);
+    const scrollbar =
+      window.innerWidth && document?.documentElement?.clientWidth
+        ? window.innerWidth - document.documentElement.clientWidth
+        : "";
+    if (scrollbar !== "") add("Screen", "Scrollbar Width", `${scrollbar}px`);
+  }
+
+  // Storage / Capabilities
+  add("Capabilities", "Cookies Enabled", nav.cookieEnabled ? "Yes" : "No");
+  add(
+    "Capabilities",
+    "LocalStorage",
+    storageAvailable("localStorage") ? "Yes" : "No",
+  );
+  add(
+    "Capabilities",
+    "SessionStorage",
+    storageAvailable("sessionStorage") ? "Yes" : "No",
+  );
+  add("Capabilities", "IndexedDB", "indexedDB" in window ? "Yes" : "No");
+  add(
+    "Capabilities",
+    "Service Worker",
+    "serviceWorker" in navigator ? "Yes" : "No",
+  );
+  add(
+    "Capabilities",
+    "Notifications",
+    typeof Notification !== "undefined"
+      ? Notification.permission
+      : "Unavailable",
+  );
+  add(
+    "Capabilities",
+    "PDF Viewer Plugins",
+    typeof nav.plugins?.length === "number" ? nav.plugins.length : "",
+  );
+  add("Capabilities", "Save-Data", nav.connection?.saveData ? "Yes" : "No");
+  add("Capabilities", "Clipboard API", "clipboard" in navigator ? "Yes" : "No");
+  add("Capabilities", "Gamepad API", !!navigator.getGamepads ? "Yes" : "No");
+  add("Capabilities", "MediaDevices", !!navigator.mediaDevices ? "Yes" : "No");
+  add(
+    "Capabilities",
+    "share()",
+    typeof navigator.share === "function" ? "Yes" : "No",
+  );
+  add(
+    "Capabilities",
+    "canShare()",
+    typeof navigator.canShare === "function" ? "Yes" : "No",
+  );
+  add(
+    "Capabilities",
+    "Protocol Handler",
+    typeof navigator.registerProtocolHandler === "function" ? "Yes" : "No",
+  );
+  add(
+    "Capabilities",
+    "Content Handler",
+    typeof navigator.registerContentHandler === "function" ? "Yes" : "No",
+  );
+  add(
+    "Capabilities",
+    "Storage Access API",
+    typeof document?.hasStorageAccess === "function" ? "Yes" : "No",
+  );
+  add(
+    "Capabilities",
+    "Cache API",
+    typeof caches !== "undefined" ? "Yes" : "No",
+  );
+  add(
+    "Capabilities",
+    "Secure Context",
+    typeof window !== "undefined" && window.isSecureContext ? "Yes" : "No",
+  );
+
+  // Network
+  const connection =
+    nav.connection || nav.mozConnection || nav.webkitConnection || null;
+  if (connection) {
+    add("Network", "Effective Type", connection.effectiveType || "");
+    if (typeof connection.downlink === "number") {
+      add("Network", "Downlink", `${connection.downlink} Mb/s`);
+    }
+    if (typeof connection.rtt === "number") {
+      add("Network", "RTT", `${connection.rtt} ms`);
+    }
+    if (typeof connection.downlinkMax === "number") {
+      add("Network", "Downlink Max", `${connection.downlinkMax} Mb/s`);
+    }
+  }
+
+  // Graphics
+  const webgl = getWebGLInfo();
+  add("Graphics", "WebGL Vendor", webgl.vendor || "");
+  add("Graphics", "WebGL Renderer", webgl.renderer || "");
+  add("Graphics", "WebGL Version", webgl.version || "");
+  if (webgl.extensions) {
+    add(
+      "Graphics",
+      "WebGL Extensions",
+      webgl.extensions.slice(0, 6).join(", ") +
+        (webgl.extensions.length > 6 ? " …" : ""),
+    );
+  }
+  if (webgl.limits) {
+    add("Graphics", "Max Texture Size", webgl.limits.maxTextureSize);
+    add("Graphics", "Max Vertex Attribs", webgl.limits.maxVertexAttribs);
+  }
+  const canvasHash = generateCanvasHash();
+  if (canvasHash) add("Graphics", "Canvas Fingerprint", canvasHash);
+  const audioInfo = getAudioContextInfo();
+  add("Graphics", "AudioContext", audioInfo.context);
+  add("Graphics", "Audio Hash", audioInfo.hash);
+  add(
+    "Graphics",
+    "PointerEvent Support",
+    typeof window !== "undefined" && "PointerEvent" in window ? "Yes" : "No",
+  );
+
+  // Performance
+  const perf = typeof performance !== "undefined" ? performance : null;
+  if (perf?.memory) {
+    add(
+      "Performance",
+      "JS Heap Limit",
+      formatBytes(perf.memory.jsHeapSizeLimit),
+    );
+    add("Performance", "JS Heap Used", formatBytes(perf.memory.usedJSHeapSize));
+  }
+  const resolution = measureTimeResolution();
+  if (resolution) add("Performance", "Timer Resolution", resolution);
+
+  const media = detectMediaFeatures();
+  Object.entries(media).forEach(([key, value]) =>
+    add("Media Queries", key, value),
+  );
+
+  const feature = detectFeatureSupport();
+  Object.entries(feature).forEach(([key, value]) =>
+    add("Feature Support", key, value),
+  );
+
+  // Authentication / Security
+  add(
+    "Auth",
+    "WebAuthn",
+    typeof window !== "undefined" && "PublicKeyCredential" in window
+      ? "Yes"
+      : "No",
+  );
+
+  // XR placeholder; async probe will refine.
+  add(
+    "XR",
+    "WebXR",
+    typeof navigator !== "undefined" && "xr" in navigator ? "Probing…" : "No",
+  );
+
+  // WebGPU placeholder; async probe will refine.
+  add(
+    "Graphics",
+    "WebGPU",
+    typeof navigator !== "undefined" && navigator.gpu ? "Probing…" : "No",
+  );
+
+  return dedupeFacts(facts);
+}
+
+function renderFingerprintFacts(facts = []) {
+  if (elements.fingerprintSummary) {
+    const total = facts.length || 0;
+    elements.fingerprintSummary.textContent = total
+      ? `${total} signals collected from this browser`
+      : "No data available";
+  }
+  if (!elements.fingerprintGrid) return;
+  if (!facts.length) {
+    elements.fingerprintGrid.innerHTML =
+      '<div class="muted">No data detected.</div>';
+    return;
+  }
+  const groups = facts.reduce((acc, fact) => {
+    const key = fact.group || "Other";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(fact);
+    return acc;
+  }, {});
+  const sections = Object.keys(groups)
+    .sort()
+    .map((group) => {
+      const items = groups[group]
+        .map((entry) => {
+          const label = escapeHTML(entry.label || "");
+          const value = escapeHTML(entry.value || "");
+          return `<li><span class="fp-label">${label}</span><code>${value}</code></li>`;
+        })
+        .join("");
+      return `<div class="fingerprint-group"><h3>${escapeHTML(group)}</h3><ul class="fingerprint-list">${items}</ul></div>`;
+    })
+    .join("");
+  elements.fingerprintGrid.innerHTML = sections;
+}
+
+function storageAvailable(type) {
+  try {
+    const storage = window[type];
+    const test = "__transform_fp__";
+    storage.setItem(test, "1");
+    storage.removeItem(test);
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
+function formatTimezoneOffset(offsetMinutes) {
+  if (!Number.isFinite(offsetMinutes)) return "";
+  const total = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(total / 60)).padStart(2, "0");
+  const minutes = String(total % 60).padStart(2, "0");
+  const sign = offsetMinutes <= 0 ? "+" : "-";
+  return `${sign}${hours}:${minutes}`;
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes)) return "";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(1)} ${units[unit]}`;
+}
+
+function measureTimeResolution() {
+  if (
+    typeof performance === "undefined" ||
+    typeof performance.now !== "function"
+  )
+    return "";
+  let min = Infinity;
+  let last = performance.now();
+  for (let i = 0; i < 40; i++) {
+    const now = performance.now();
+    const delta = now - last;
+    if (delta > 0 && delta < min) {
+      min = delta;
+    }
+    last = now;
+  }
+  if (!Number.isFinite(min) || min === Infinity) return "";
+  return `${min.toFixed(3)} ms (min delta)`;
+}
+
+function detectMediaFeatures() {
+  const query = (q) =>
+    typeof window !== "undefined" && window.matchMedia
+      ? window.matchMedia(q).matches
+      : "Unknown";
+  return {
+    "prefers-color-scheme: dark": query("(prefers-color-scheme: dark)")
+      ? "Yes"
+      : "No",
+    "prefers-reduced-motion": query("(prefers-reduced-motion: reduce)")
+      ? "Reduce"
+      : "No",
+    "pointer: fine": query("(pointer: fine)") ? "Yes" : "No",
+    "hover: hover": query("(hover: hover)") ? "Yes" : "No",
+  };
+}
+
+function detectFeatureSupport() {
+  if (typeof document === "undefined") return {};
+  const supports = (prop, value) =>
+    typeof CSS !== "undefined" && CSS.supports
+      ? CSS.supports(prop, value)
+      : false;
+  return {
+    "CSS Backdrop Filter": supports("backdrop-filter", "blur(4px)")
+      ? "Yes"
+      : "No",
+    "CSS Subgrid": supports("display", "subgrid") ? "Yes" : "No",
+    IntersectionObserver: "IntersectionObserver" in window ? "Yes" : "No",
+    "Clipboard API": "clipboard" in navigator ? "Yes" : "No",
+    "Gamepad API": "getGamepads" in navigator ? "Yes" : "No",
+  };
+}
+
+function generateCanvasHash() {
+  try {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+    canvas.width = 240;
+    canvas.height = 60;
+    ctx.textBaseline = "top";
+    ctx.font = "16px 'Arial'";
+    ctx.fillStyle = "#f60";
+    ctx.fillRect(125, 1, 62, 20);
+    ctx.fillStyle = "#069";
+    ctx.fillText("transform-fp", 2, 10);
+    ctx.strokeStyle = "#fff";
+    ctx.strokeText("transform-fp", 2, 10);
+    const data = canvas.toDataURL();
+    return hashString(data).slice(0, 16);
+  } catch (_err) {
+    return "";
+  }
+}
+
+function getWebGLInfo() {
+  try {
+    const canvas = document.createElement("canvas");
+    const gl =
+      canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+    if (!gl) return {};
+    const debugInfo = gl.getExtension("WEBGL_debug_renderer_info");
+    const vendor = debugInfo
+      ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)
+      : gl.getParameter(gl.VENDOR);
+    const renderer = debugInfo
+      ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+      : gl.getParameter(gl.RENDERER);
+    const version = gl.getParameter(gl.VERSION);
+    const extensions = gl.getSupportedExtensions() || [];
+    const limits = {
+      maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+      maxVertexAttribs: gl.getParameter(gl.MAX_VERTEX_ATTRIBS),
+    };
+    return {
+      vendor,
+      renderer,
+      version,
+      extensions,
+      limits,
+    };
+  } catch (_err) {
+    return {};
+  }
+}
+
+function getAudioContextInfo() {
+  try {
+    const AudioCtx =
+      window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!AudioCtx) {
+      return { context: "Unavailable", hash: "" };
+    }
+    const context = new AudioCtx(1, 512, 44100);
+    const osc = context.createOscillator();
+    const compressor = context.createDynamicsCompressor();
+    osc.type = "triangle";
+    osc.frequency.value = 1000;
+    compressor.threshold.value = -50;
+    compressor.knee.value = 40;
+    compressor.ratio.value = 12;
+    compressor.attack.value = 0;
+    compressor.release.value = 0.25;
+    osc.connect(compressor);
+    compressor.connect(context.destination);
+    osc.start(0);
+    const bufferPromise = context.startRendering();
+    // OfflineAudioContext renders async; we expose a stable hash string when ready.
+    bufferPromise.then((buffer) => {
+      const channel = buffer.getChannelData(0) || new Float32Array(0);
+      const hash = hashArray(channel);
+      state.fingerprintFacts = state.fingerprintFacts.map((entry) =>
+        entry.label === "Audio Hash" ? { ...entry, value: hash } : entry,
+      );
+      renderFingerprintFacts(state.fingerprintFacts);
+    });
+    return { context: "OfflineAudioContext", hash: "Rendering…" };
+  } catch (_err) {
+    return { context: "Error", hash: "" };
+  }
+}
+
+function runFingerprintAsyncEnrichments() {
+  probeUAHighEntropy();
+  probeWebGPU();
+  probeWebXR();
+  probeWebAuthn();
+}
+
+async function probeUAHighEntropy() {
+  try {
+    const nav = typeof navigator !== "undefined" ? navigator : {};
+    if (!nav.userAgentData?.getHighEntropyValues) return;
+    const fields = [
+      "architecture",
+      "model",
+      "platformVersion",
+      "uaFullVersion",
+      "bitness",
+      "wow64",
+      "formFactor",
+    ];
+    const info = await nav.userAgentData.getHighEntropyValues(fields);
+    fields.forEach((key) => {
+      if (info[key]) {
+        upsertFact("Identity", `UA-CH ${capitalize(key)}`, info[key]);
+      }
+    });
+    renderFingerprintFacts(state.fingerprintFacts);
+  } catch (_err) {
+    // ignore; some browsers deny access
+  }
+}
+
+async function probeWebGPU() {
+  try {
+    if (typeof navigator === "undefined" || !navigator.gpu) return;
+    upsertFact("Graphics", "WebGPU", "Supported (probing adapter)");
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) {
+      upsertFact("Graphics", "WebGPU", "No adapter");
+      renderFingerprintFacts(state.fingerprintFacts);
+      return;
+    }
+    upsertFact("Graphics", "WebGPU Adapter", adapter.name || "");
+    const features = adapter.features ? Array.from(adapter.features) : [];
+    if (features.length) {
+      upsertFact(
+        "Graphics",
+        "WebGPU Features",
+        features.slice(0, 6).join(", ") + (features.length > 6 ? " …" : ""),
+      );
+    }
+    const limits = adapter.limits || {};
+    if (limits.maxTextureDimension2D) {
+      upsertFact(
+        "Graphics",
+        "WebGPU MaxTexture2D",
+        limits.maxTextureDimension2D,
+      );
+    }
+    renderFingerprintFacts(state.fingerprintFacts);
+  } catch (_err) {
+    // ignore
+  }
+}
+
+async function probeWebXR() {
+  try {
+    if (typeof navigator === "undefined" || !navigator.xr) return;
+    upsertFact("XR", "WebXR", "Supported (probing)");
+    const modes = ["immersive-vr", "immersive-ar", "inline"];
+    for (const mode of modes) {
+      try {
+        const supported = await navigator.xr.isSessionSupported(mode);
+        upsertFact("XR", `${mode} supported`, supported ? "Yes" : "No");
+      } catch (_err) {
+        // continue
+      }
+    }
+    renderFingerprintFacts(state.fingerprintFacts);
+  } catch (_err) {
+    // ignore
+  }
+}
+
+async function probeWebAuthn() {
+  try {
+    if (typeof window === "undefined" || !("PublicKeyCredential" in window))
+      return;
+    if (
+      typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable !==
+      "function"
+    )
+      return;
+    const available =
+      await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    upsertFact("Auth", "Platform Authenticator", available ? "Yes" : "No");
+    renderFingerprintFacts(state.fingerprintFacts);
+  } catch (_err) {
+    // ignore
+  }
+}
+
+function upsertFact(group, label, value, targetFacts = state.fingerprintFacts) {
+  if (value === undefined || value === null || value === "") return;
+  const idx = targetFacts.findIndex(
+    (entry) => entry.group === group && entry.label === label,
+  );
+  const payload = { group, label, value: String(value) };
+  if (idx >= 0) {
+    targetFacts[idx] = payload;
+  } else {
+    targetFacts.push(payload);
+  }
+}
+
+function dedupeFacts(list = []) {
+  const seen = new Set();
+  return list.filter((entry) => {
+    const key = `${entry.group}::${entry.label}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function hashArray(arr) {
+  let hash = 0;
+  for (let i = 0; i < arr.length; i += 16) {
+    hash = (hash << 5) - hash + Math.floor(arr[i] * 1e6);
+    hash |= 0;
+  }
+  return `a${Math.abs(hash).toString(16)}`;
+}
+
+function hashString(input) {
+  let hash = 0;
+  if (!input) return "";
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash << 5) - hash + input.charCodeAt(i);
+    hash |= 0;
+  }
+  return `h${Math.abs(hash).toString(16)}`;
+}
+
 function renderSymbolButtons() {
   if (!elements.randomSymbolToggles) return;
   const buttons = specialCharacters
@@ -2185,12 +2893,7 @@ function updateSymbolMinState() {
 }
 
 function validateMinimumTotals(showWarning = false) {
-  const {
-    minDigits,
-    minLower,
-    minUpper,
-    minSymbols,
-  } = getMinimumCounts();
+  const { minDigits, minLower, minUpper, minSymbols } = getMinimumCounts();
   const total = minDigits + minLower + minUpper + minSymbols;
   if (total > state.randomLength) {
     if (showWarning) {
@@ -2376,7 +3079,9 @@ function handleTimestampPreset(event) {
   const preset = button.dataset.preset;
   const entry = buildTimestampPreset(preset);
   if (!entry) return;
-  const target = document.querySelector(`#timestampWorkspace input[data-field="${entry.field}"]`);
+  const target = document.querySelector(
+    `#timestampWorkspace input[data-field="${entry.field}"]`,
+  );
   if (!target) return;
   target.value = entry.value;
   runTimestampConversion(entry.field, entry.value);
@@ -2428,7 +3133,7 @@ function runTimestampConversion(field, value, silent = false) {
       const input = document.getElementById(id);
       if (!input) return;
       const nextValue = record[key] ?? "";
-      input.value = key === field ? (nextValue || value) : nextValue;
+      input.value = key === field ? nextValue || value : nextValue;
     });
     state.timestampUpdating = false;
     if (!silent) {
@@ -2666,7 +3371,8 @@ function renderDataColumnEditor() {
   // Rebuild the column cards every time so include/override controls stay aligned with the schema snapshot.
   if (!elements.dataColumnEditor) return;
   if (!state.dataTables?.length) {
-    elements.dataColumnEditor.innerHTML = '<div class="muted">Paste a schema to configure column ranges.</div>';
+    elements.dataColumnEditor.innerHTML =
+      '<div class="muted">Paste a schema to configure column ranges.</div>';
     return;
   }
   const groups = state.dataTables
@@ -2688,7 +3394,9 @@ function renderDataColumnCard(tableName, column) {
   const disabledAttr = include ? "" : " disabled";
   const cardClass = include ? "data-column-card" : "data-column-card excluded";
   const isNumeric = ["integer", "decimal", "float", "boolean"].includes(kind);
-  const defaultValue = column.default_value ? escapeHTML(column.default_value) : "—";
+  const defaultValue = column.default_value
+    ? escapeHTML(column.default_value)
+    : "—";
   const minPlaceholder = column.min_value || "";
   const maxPlaceholder = column.max_value || "";
   const minValue = overrides.min ?? "";
@@ -2730,14 +3438,15 @@ function renderDataColumnCard(tableName, column) {
 
 function handleDataOverrideInput(event) {
   // Persist override tweaks so Generate can replay the exact same numbers.
-  const input = event.target.closest('[data-field]');
+  const input = event.target.closest("[data-field]");
   if (!input) return;
   const table = input.dataset.table;
   const column = input.dataset.column;
   const field = input.dataset.field;
   if (!table || !column || !field) return;
   if (!state.dataOverrides[table]) state.dataOverrides[table] = {};
-  if (!state.dataOverrides[table][column]) state.dataOverrides[table][column] = {};
+  if (!state.dataOverrides[table][column])
+    state.dataOverrides[table][column] = {};
   const entry = state.dataOverrides[table][column];
   if (field === "include") {
     const include = input.checked !== false;
@@ -2747,7 +3456,7 @@ function handleDataOverrideInput(event) {
       delete entry.exclude;
     }
     cleanupDataOverrideEntry(table, column);
-    syncDataColumnCardState(input.closest('.data-column-card'), include);
+    syncDataColumnCardState(input.closest(".data-column-card"), include);
     markDataDirty("Column selection updated. Click Generate to refresh.");
     return;
   }
@@ -2763,7 +3472,11 @@ function handleDataOverrideInput(event) {
 
 function cleanupDataOverrideEntry(table, column) {
   if (!state.dataOverrides[table]) return;
-  if (column && state.dataOverrides[table][column] && !Object.keys(state.dataOverrides[table][column]).length) {
+  if (
+    column &&
+    state.dataOverrides[table][column] &&
+    !Object.keys(state.dataOverrides[table][column]).length
+  ) {
     delete state.dataOverrides[table][column];
   }
   if (!Object.keys(state.dataOverrides[table]).length) {
@@ -2780,8 +3493,10 @@ function markDataDirty(message) {
 
 function syncDataColumnCardState(card, include) {
   if (!card) return;
-  card.classList.toggle('excluded', !include);
-  const inputs = card.querySelectorAll('input[data-field]:not([data-field="include"])');
+  card.classList.toggle("excluded", !include);
+  const inputs = card.querySelectorAll(
+    'input[data-field]:not([data-field="include"])',
+  );
   inputs.forEach((el) => {
     el.disabled = !include;
   });
@@ -2816,7 +3531,7 @@ function buildDataOverrides() {
 function parseAllowedNumbers(value) {
   if (!value) return [];
   return value
-    .split(',')
+    .split(",")
     .map((part) => parseFloat(part.trim()))
     .filter((num) => Number.isFinite(num));
 }
@@ -2851,8 +3566,7 @@ function runDataGenerator() {
   }
   try {
     const overrides = buildDataOverrides();
-    const result =
-      generate_insert_statements(schema, rows, overrides) || "";
+    const result = generate_insert_statements(schema, rows, overrides) || "";
     if (elements.dataOutput) {
       elements.dataOutput.value = result;
     }
@@ -2876,7 +3590,6 @@ function copyDataOutput() {
   copyText(value, "INSERT statements");
   setStatus("Copied", false);
 }
-
 
 function sanitizeRandomExclude(value) {
   if (!value) return "";

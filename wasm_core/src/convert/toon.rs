@@ -1,3 +1,4 @@
+// TOON (table oriented object notation) bridge so the converter can round-trip spreadsheet-shaped data.
 use json2toon_rs::{DecoderOptions, EncoderOptions, decode as toon_decode, encode as toon_encode};
 use serde_json::Value;
 #[cfg(test)]

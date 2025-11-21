@@ -1,3 +1,4 @@
+// Lightweight JSON/TOML/YAML helpers used by multiple format converters.
 use serde_json::{Map, Number, Value};
 
 pub fn parse_json(input: &str) -> Result<Value, String> {
@@ -26,6 +27,28 @@ pub fn ordered_keys(map: &Map<String, Value>) -> Vec<String> {
     let mut keys: Vec<String> = map.keys().cloned().collect();
     keys.sort();
     keys
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn looks_integer_detects_non_float() {
+        let int_num = Number::from(42);
+        let float_num: Number = serde_json::from_str("42.1").unwrap();
+        assert!(looks_integer(&int_num));
+        assert!(!looks_integer(&float_num));
+    }
+
+    #[test]
+    fn ordered_keys_sorts_consistently() {
+        let mut map = Map::new();
+        map.insert("b".into(), Value::Null);
+        map.insert("a".into(), Value::Null);
+        map.insert("c".into(), Value::Null);
+        assert_eq!(ordered_keys(&map), vec!["a", "b", "c"]);
+    }
 }
 
 pub fn yaml_to_json(value: serde_yaml::Value) -> Value {

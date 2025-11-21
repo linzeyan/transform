@@ -1,3 +1,4 @@
+// Shared name-shaping helpers used by multiple format converters (Structs, GraphQL, Protobuf).
 pub fn export_name(key: &str) -> String {
     let mut runes = Vec::new();
     let mut cap_next = true;
@@ -51,6 +52,22 @@ pub fn lower_first(s: &str) -> String {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn export_name_cleans_symbols() {
+        // Leading non-letters are stripped; underscores preserve next-capital behavior.
+        assert_eq!(export_name("123foo_bar"), "foo_Bar");
+    }
+
+    #[test]
+    fn lower_first_handles_pascal_case() {
+        assert_eq!(lower_first("UserName"), "userName");
+    }
 }
 
 pub fn split_words(s: &str) -> Vec<String> {

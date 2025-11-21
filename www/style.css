@@ -17,7 +17,12 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font: 14px/1.5 "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font:
+    14px/1.5 "JetBrains Mono",
+    "SFMono-Regular",
+    Menlo,
+    Consolas,
+    monospace;
   background: var(--bg);
   color: var(--fg);
 }
@@ -186,7 +191,9 @@ button {
   color: var(--fg);
   background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
 }
 
 select:focus,
@@ -893,6 +900,64 @@ body.tool-generator .converter-only {
   color: var(--fg);
 }
 
+.fingerprint-summary {
+  padding: 0 18px 12px;
+  color: var(--muted);
+}
+
+.fingerprint-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 18px 18px;
+}
+
+.fingerprint-group {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.fingerprint-group h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+
+.fingerprint-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fingerprint-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+  padding-bottom: 6px;
+}
+
+.fingerprint-list li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.fp-label {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.fingerprint-list code {
+  font-size: 13px;
+  word-break: break-word;
+}
+
 @media (max-width: 960px) {
   .app-shell {
     grid-template-columns: minmax(200px, 220px) 4px 1fr;
@@ -907,7 +972,6 @@ body.tool-generator .converter-only {
     align-items: flex-start;
   }
 }
-
 
 .timestamp-grid {
   display: grid;
