@@ -352,8 +352,7 @@ static USER_AGENTS: &[UserAgentEntry] = &[
 
 /// Returns up to ten fixture user-agent strings filtered by browser and OS names (case-insensitive),
 /// e.g., `generate_user_agents("chrome", "macos")` yields the latest Chrome-on-macOS entries.
-#[wasm_bindgen]
-pub fn generate_user_agents(browser: &str, os: &str) -> JsValue {
+fn filter_user_agents(browser: &str, os: &str) -> Vec<UserAgentEntry> {
     let browser = browser.trim().to_lowercase();
     let os = os.trim().to_lowercase();
 
@@ -370,7 +369,12 @@ pub fn generate_user_agents(browser: &str, os: &str) -> JsValue {
             break;
         }
     }
-    serde_wasm_bindgen::to_value(&results).unwrap()
+    results
+}
+
+#[wasm_bindgen]
+pub fn generate_user_agents(browser: &str, os: &str) -> JsValue {
+    serde_wasm_bindgen::to_value(&filter_user_agents(browser, os)).unwrap()
 }
 
 #[wasm_bindgen]
@@ -1347,7 +1351,7 @@ fn escape_sql_string(value: &str) -> String {
     format!("'{}'", escaped)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 struct TotpResponse {
     code: String,
     period: u32,

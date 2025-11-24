@@ -168,6 +168,15 @@ fn convert_number_base_internal_hex() {
 }
 
 #[test]
+fn convert_number_base_internal_decimal_100() {
+    let bases = convert_number_base_internal("decimal", "100").unwrap();
+    assert_eq!(bases.binary, "1100100");
+    assert_eq!(bases.octal, "144");
+    assert_eq!(bases.decimal, "100");
+    assert_eq!(bases.hex, "64");
+}
+
+#[test]
 fn parse_number_by_base_handles_negative_binary() {
     let num = parse_number_by_base("binary", "-0b1010").unwrap();
     assert_eq!(format_bigint(&num, 10, false), "-10");
@@ -232,4 +241,112 @@ fn fnv_hashes_match_reference() {
 fn find_matching_paren_locates_closing_index() {
     let src = "fn(a(b)c)d";
     assert_eq!(find_matching_paren(src, 2), Some(8));
+}
+
+#[test]
+fn generate_user_agents_filters_and_limits_results() {
+    let all = filter_user_agents("", "");
+    assert!(
+        all.len() <= 10,
+        "expected at most 10 results, got {}",
+        all.len()
+    );
+
+    let filtered = filter_user_agents("ChRoMe", "MACOS");
+    assert!(!filtered.is_empty(), "expected filtered results");
+    for ua in filtered {
+        assert_eq!(ua.browser_name, "chrome");
+        assert_eq!(ua.os_name, "macos");
+    }
+}
+
+#[test]
+fn hash_content_map_produces_known_digests() {
+    let map = hash_content_map(b"abc");
+    assert_eq!(
+        map.get("md5"),
+        Some(&"900150983cd24fb0d6963f7d28e17f72".into())
+    );
+    assert_eq!(
+        map.get("sha1"),
+        Some(&"a9993e364706816aba3e25717850c26c9cd0d89d".into())
+    );
+    assert_eq!(map.get("crc32_ieee"), Some(&"352441c2".into()));
+}
+
+#[test]
+fn hash_content_hmac_matches_reference() {
+    let map = hash_hmac_map(b"message", b"secret");
+    assert_eq!(
+        map.get("sha256"),
+        Some(&"8b5f48702995c1598c573db1e21866a9b825d4a794d169d7060a03605796360b".into())
+    );
+    assert_eq!(
+        map.get("sha1"),
+        Some(&"0caf649feee4953d87bf903ac1176c45e028df16".into())
+    );
+}
+
+#[test]
+fn convert_timestamp_internal_parses_epoch_millis() {
+    let map = convert_timestamp_internal("timestamp_milliseconds", "1735689600000").unwrap();
+    assert_eq!(map.get("sql_date").unwrap(), "2025-01-01");
+    assert_eq!(map.get("timestamp_seconds").unwrap(), "1735689600");
+}
+
+#[test]
+fn convert_timestamp_internal_accepts_rfc2822() {
+    let map = convert_timestamp_internal("rfc2822", "Wed, 02 Oct 2002 13:00:00 GMT").unwrap();
+    assert_eq!(map.get("sql_date").unwrap(), "2002-10-02");
+    assert_eq!(map.get("timestamp_seconds").unwrap(), "1033563600");
+}
+
+#[test]
+fn ipv4_info_parses_cidr_and_calculates_hosts() {
+    let info = ip_info_internal("10.0.0.1/30").unwrap();
+    assert_eq!(info.kind.unwrap(), "network");
+    assert_eq!(info.range_start.unwrap(), "10.0.0.0");
+    assert_eq!(info.range_end.unwrap(), "10.0.0.3");
+    assert_eq!(info.total.unwrap(), "4");
+}
+
+#[test]
+fn ipv6_with_prefix_sets_host_bits() {
+    let info = ip_info_internal("2001:db8::1/64").unwrap();
+    assert_eq!(info.version.unwrap(), "IPv6");
+    assert_eq!(info.host_bits.unwrap(), "64");
+    assert_eq!(info.range_start.unwrap(), "2001:db8::");
+}
+
+#[test]
+fn random_sequences_internal_rejects_excessive_minimums() {
+    let err =
+        random_sequences_internal(3, 1, true, "123", false, false, "", "", 2, 2, 0, 0).unwrap_err();
+    assert!(err.contains("Minimum character counts exceed requested length"));
+}
+
+#[test]
+fn random_sequences_internal_disallows_leading_zero_only_pool() {
+    let err =
+        random_sequences_internal(2, 1, false, "0", false, false, "", "", 0, 0, 0, 0).unwrap_err();
+    assert!(err.contains("No valid leading character available"));
+}
+
+#[test]
+fn random_sequences_internal_requires_digits_when_requested() {
+    let err =
+        random_sequences_internal(4, 1, true, "", false, false, "", "", 1, 0, 0, 0).unwrap_err();
+    assert!(err.contains("No digits available to satisfy minimum requirement"));
+}
+
+#[test]
+fn totp_token_internal_validates_inputs() {
+    let err = totp_token_internal("", "SHA256", 30, 6).unwrap_err();
+    assert!(err.contains("secret cannot be empty"));
+
+    let err = totp_token_internal("JBSWY3DPEHPK3PXP", "SHA256", 0, 6).unwrap_err();
+    assert!(err.contains("period must be between 1 and 300"));
+
+    let err = totp_token_internal("JBSWY3DPEHPK3PXP", "SHA256", 30, 3).unwrap_err();
+    assert!(err.contains("digits must be between 4 and 10"));
 }

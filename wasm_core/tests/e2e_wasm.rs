@@ -1,0 +1,211 @@
+#![cfg(target_arch = "wasm32")]
+
+use base64::engine::general_purpose::STANDARD as B64_STD;
+use base64::Engine;
+use bcrypt::BASE_64;
+use serde_json::Value as JsonValue;
+use wasm_bindgen::JsValue;
+use wasm_bindgen_test::*;
+
+use wasm_core::{
+    argon2_hash, argon2_verify, bcrypt_hash, bcrypt_verify, convert_number_base, convert_timestamp,
+    convert_units, decode_content, encode_content, generate_insert_statements,
+    generate_user_agents, generate_uuids, hash_content, html_to_markdown_text, ipv4_info,
+    jwt_decode, jwt_encode, markdown_to_html_text, random_number_sequences, totp_token,
+    transform_format, url_decode, url_encode,
+};
+
+wasm_bindgen_test_configure!(run_in_browser);
+
+fn js_to_json(value: JsValue) -> JsonValue {
+    serde_wasm_bindgen::from_value(value).expect("JsValue -> JSON map")
+}
+
+fn field<'a>(map: &'a JsonValue, key: &str) -> &'a str {
+    map.get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| panic!("missing string field {key}"))
+}
+
+#[wasm_bindgen_test]
+fn landing_page_shows_converter_by_default() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    assert!(
+        INDEX_HTML.contains("id=\"converterWorkspace\" class=\"tool-view\""),
+        "converter workspace should be visible by default"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"numberWorkspace\" class=\"tool-view hidden\""),
+        "number converter workspace should start hidden"
+    );
+    assert!(
+        INDEX_HTML.contains("<h1 id=\"toolName\">Format Converter</h1>"),
+        "landing title should be Format Converter"
+    );
+}
+
+#[wasm_bindgen_test]
+fn number_bases_decimal_100_flow() {
+    let map = js_to_json(convert_number_base("decimal", "100").expect("convert number base"));
+    assert_eq!(field(&map, "binary"), "1100100");
+    assert_eq!(field(&map, "octal"), "144");
+    assert_eq!(field(&map, "decimal"), "100");
+    assert_eq!(field(&map, "hex"), "64");
+}
+
+#[wasm_bindgen_test]
+fn format_converter_json_to_yaml() {
+    let yaml = transform_format("JSON", "YAML", r#"{"name":"Ada","age":27}"#)
+        .expect("json -> yaml transform");
+    assert!(
+        yaml.contains("name: Ada") && yaml.contains("age: 27"),
+        "yaml output should contain converted fields"
+    );
+}
+
+#[wasm_bindgen_test]
+fn markdown_html_roundtrip() {
+    let html =
+        markdown_to_html_text("# Title\n\n- item").expect("markdown to html conversion works");
+    assert!(html.contains("<h1>Title</h1>"));
+    let markdown = html_to_markdown_text("<h1>Title</h1>").expect("html to markdown conversion");
+    assert!(markdown.to_lowercase().contains("# title"));
+}
+
+#[wasm_bindgen_test]
+fn unit_converter_bits_and_bytes() {
+    let map = js_to_json(convert_units("byte", "1024").expect("unit conversion"));
+    assert_eq!(field(&map, "bit"), "8192");
+    assert_eq!(field(&map, "kilobit"), "8");
+    assert_eq!(field(&map, "byte"), "1024");
+}
+
+#[wasm_bindgen_test]
+fn timestamp_sql_datetime_to_epoch() {
+    let map = js_to_json(
+        convert_timestamp("sql_datetime", "2025-01-02 03:04:05")
+            .expect("timestamp conversion"),
+    );
+    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05+00:00");
+    assert_eq!(field(&map, "timestamp_seconds"), "1735787045");
+    assert_eq!(field(&map, "timestamp_milliseconds"), "1735787045000");
+}
+
+#[wasm_bindgen_test]
+fn ipv4_range_reports_total_hosts() {
+    let map = js_to_json(ipv4_info("192.168.0.1-192.168.0.3").expect("ipv4 range info"));
+    assert_eq!(field(&map, "type"), "range");
+    assert_eq!(field(&map, "total"), "3");
+}
+
+#[wasm_bindgen_test]
+fn coder_encode_and_decode_cycle() {
+    let enc = js_to_json(encode_content("rust").expect("encode content"));
+    assert_eq!(field(&enc, "base64_standard"), "cnVzdA==");
+
+    let decoded = decode_content("base64_standard", "cnVzdA==").expect("decode content");
+    assert_eq!(decoded, "rust");
+}
+
+#[wasm_bindgen_test]
+fn hash_content_sha256_matches_known_value() {
+    let map = js_to_json(hash_content("abc").expect("hash content"));
+    assert_eq!(
+        field(&map, "sha256"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+}
+
+#[wasm_bindgen_test]
+fn url_encode_and_decode_roundtrip() {
+    let encoded = url_encode("a b+c");
+    assert_eq!(encoded, "a+b%2Bc");
+    let decoded = url_decode(&encoded).expect("url decode");
+    assert_eq!(decoded, "a b+c");
+}
+
+#[wasm_bindgen_test]
+fn jwt_encode_and_decode_roundtrip() {
+    let payload = r#"{"sub":"1234567890","name":"John Doe"}"#;
+    let token = jwt_encode(payload, "secret", "").expect("jwt encode");
+    let decoded = js_to_json(jwt_decode(&token).expect("jwt decode"));
+    let payload_text = field(&decoded, "payload");
+    let payload_json: JsonValue =
+        serde_json::from_str(payload_text).expect("payload should be valid json");
+    assert_eq!(payload_json["sub"], "1234567890");
+}
+
+#[wasm_bindgen_test]
+fn bcrypt_and_argon2_deterministic_hashes() {
+    let bcrypt_salt = BASE_64.encode([0u8; 16]);
+    let bcrypt_hash_val =
+        bcrypt_hash("apple111", 10, Some(bcrypt_salt)).expect("bcrypt hash generation");
+    assert!(bcrypt_hash_val.starts_with("$2b$10$"));
+    assert!(bcrypt_verify("apple111", &bcrypt_hash_val).expect("bcrypt verify true"));
+
+    let argon_salt = B64_STD.encode([1u8; 16]);
+    let argon_hash_val = argon2_hash("apple111", Some(argon_salt), 2, 4096, 1, 16, "argon2id")
+        .expect("argon2 hash generation");
+    assert!(argon_hash_val.starts_with("$argon2id$"));
+    assert!(argon2_verify("apple111", &argon_hash_val).expect("argon2 verify true"));
+}
+
+#[wasm_bindgen_test]
+fn uuid_and_user_agent_generators_return_values() {
+    let uuid_map = js_to_json(generate_uuids());
+    for key in ["v1", "v4", "ulid"] {
+        assert!(
+            uuid_map.get(key).and_then(|v| v.as_str()).is_some(),
+            "missing {key} in uuid map"
+        );
+    }
+
+    let uas = js_to_json(generate_user_agents("chrome", "macos"));
+    assert!(
+        uas.as_array().map(|arr| !arr.is_empty()).unwrap_or(false),
+        "user agent list should not be empty"
+    );
+    if let Some(first) = uas.as_array().and_then(|arr| arr.first()) {
+        assert_eq!(field(first, "browserName"), "chrome");
+        assert_eq!(field(first, "osName"), "macos");
+    }
+}
+
+#[wasm_bindgen_test]
+fn random_sequences_respect_length_and_charset() {
+    let results = js_to_json(
+        random_number_sequences(8, 3, true, "01", true, true, "!@", "", 1, 1, 1, 1)
+            .expect("random sequences"),
+    );
+    let arr = results.as_array().expect("results array");
+    assert_eq!(arr.len(), 3);
+    for entry in arr {
+        let s = entry.as_str().expect("string entry");
+        assert_eq!(s.len(), 8);
+        assert!(
+            s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '!' || c == '@'),
+            "unexpected character in {s}"
+        );
+    }
+}
+
+#[wasm_bindgen_test]
+fn totp_token_has_expected_length() {
+    let res = js_to_json(
+        totp_token("JBSWY3DPEHPK3PXP", "SHA256", 30, 6).expect("totp token"),
+    );
+    let code = field(&res, "code");
+    assert_eq!(code.len(), 6);
+    assert!(code.chars().all(|c| c.is_ascii_digit()));
+}
+
+#[wasm_bindgen_test]
+fn sql_insert_generator_includes_table_name() {
+    let schema = "CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(10));";
+    let inserts = generate_insert_statements(schema, 2, JsValue::NULL)
+        .expect("generate insert statements");
+    assert!(inserts.contains("INSERT INTO `users`"));
+    assert!(inserts.contains("VALUES"));
+}
