@@ -24,6 +24,10 @@ import initWasm, {
   inspect_schema,
   convert_timestamp,
   totp_token,
+  bcrypt_hash,
+  bcrypt_verify,
+  argon2_hash,
+  argon2_verify,
 } from "./pkg/wasm_core.js";
 
 const formats = [
@@ -175,6 +179,12 @@ const coderTools = [
     pair: "jwt",
     label: "JWT Encode/Decode",
     description: "Sign JSON payloads and inspect JWT tokens.",
+  },
+  {
+    id: "coder-kdf",
+    mode: "kdf",
+    label: "Password Hashers",
+    description: "Bcrypt / Argon2 generate and verify.",
   },
 ];
 
@@ -439,6 +449,7 @@ const workspaceByTool = {
   "coder-hash": "coderWorkspace",
   "coder-url": "pairWorkspace",
   "coder-jwt": "pairWorkspace",
+  "coder-kdf": "kdfWorkspace",
   "generator-uuid": "uuidWorkspace",
   "generator-useragent": "userAgentWorkspace",
   "generator-random": "randomWorkspace",
@@ -449,6 +460,7 @@ const workspaceByTool = {
 
 const coderMainTools = new Set(["coder-encode", "coder-decode", "coder-hash"]);
 const pairTools = new Set(["converter-html-md", "coder-url", "coder-jwt"]);
+const kdfTools = new Set(["coder-kdf"]);
 const numberTools = new Set(["converter-number-bases"]);
 const unitTools = new Set(["converter-units"]);
 const timestampTools = new Set(["converter-timestamp"]);
@@ -480,6 +492,7 @@ const implementedTools = new Set([
   "coder-hash",
   "coder-url",
   "coder-jwt",
+  "coder-kdf",
   "generator-random",
   "generator-totp",
   "generator-sql",
@@ -505,6 +518,7 @@ const workspaceIds = [
   "unitWorkspace",
   "timestampWorkspace",
   "ipv4Workspace",
+  "kdfWorkspace",
   "uuidWorkspace",
   "userAgentWorkspace",
   "randomWorkspace",
@@ -570,6 +584,16 @@ const state = {
   hashEncoding: "base16",
   hashUseHmac: false,
   hashHmacSecret: "",
+  kdf: {
+    active: "bcrypt",
+    bcryptCost: 10,
+  argonTime: 3,
+  argonMem: 65536,
+  argonParallelism: 1,
+  argonType: "argon2id",
+  argonHashLen: 32,
+    salts: {},
+  },
 };
 
 let coderTimer = null;
@@ -704,6 +728,30 @@ function cacheElements() {
   elements.jwtAlgorithm = document.getElementById("jwtAlgorithm");
   elements.jwtSecret = document.getElementById("jwtSecret");
   elements.pairOutputMeta = document.getElementById("pairOutputMeta");
+  elements.kdfWorkspace = document.getElementById("kdfWorkspace");
+  elements.kdfAlgoSelect = document.getElementById("kdfAlgoSelect");
+  elements.kdfCards = document.querySelectorAll(".kdf-card");
+  elements.kdfRefreshSalts = document.getElementById("kdfRefreshSalts");
+  elements.bcryptPassword = document.getElementById("bcryptPassword");
+  elements.bcryptCost = document.getElementById("bcryptCost");
+  elements.bcryptSalt = document.getElementById("bcryptSalt");
+  elements.bcryptOutput = document.getElementById("bcryptOutput");
+  elements.bcryptVerifyHash = document.getElementById("bcryptVerifyHash");
+  elements.bcryptHashBtn = document.getElementById("bcryptHashBtn");
+  elements.bcryptVerifyBtn = document.getElementById("bcryptVerifyBtn");
+  elements.bcryptStatus = document.getElementById("bcryptStatus");
+  elements.argonPassword = document.getElementById("argonPassword");
+  elements.argonSalt = document.getElementById("argonSalt");
+  elements.argonTime = document.getElementById("argonTime");
+  elements.argonMem = document.getElementById("argonMem");
+  elements.argonParallelism = document.getElementById("argonParallelism");
+  elements.argonType = document.getElementById("argonType");
+  elements.argonHashLen = document.getElementById("argonHashLen");
+  elements.argonOutput = document.getElementById("argonOutput");
+  elements.argonVerifyHash = document.getElementById("argonVerifyHash");
+  elements.argonHashBtn = document.getElementById("argonHashBtn");
+  elements.argonVerifyBtn = document.getElementById("argonVerifyBtn");
+  elements.argonStatus = document.getElementById("argonStatus");
   elements.numberWorkspace = document.getElementById("numberWorkspace");
   elements.numberBinary = document.getElementById("numberBinary");
   elements.numberOctal = document.getElementById("numberOctal");
@@ -1012,6 +1060,28 @@ function bindUI() {
     runRandomGenerator(),
   );
   elements.randomResults?.addEventListener("click", handleRandomResultsClick);
+  elements.kdfAlgoSelect = document.getElementById("kdfAlgoSelect");
+  elements.kdfCards = document.querySelectorAll(".kdf-card");
+  elements.kdfAlgoSelect?.addEventListener("change", (ev) => {
+    setKdfAlgorithm(ev.target.value);
+  });
+  elements.kdfRefreshSalts?.addEventListener("click", refreshKdfSalts);
+  elements.bcryptHashBtn?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    runBcryptHash();
+  });
+  elements.bcryptVerifyBtn?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    verifyBcrypt();
+  });
+  elements.argonHashBtn?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    runArgonHash();
+  });
+  elements.argonVerifyBtn?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    verifyArgon();
+  });
   elements.hashEncoding?.addEventListener("change", handleHashEncodingChange);
   elements.hashUseHmac?.addEventListener("change", handleHashModeToggle);
   elements.hashHmacSecret?.addEventListener("input", handleHashSecretInput);
@@ -1173,6 +1243,10 @@ function selectTool(toolId) {
     activatePairTool(toolId);
     return;
   }
+  if (isKdfTool(toolId)) {
+    activateKdfTool();
+    return;
+  }
   if (isNumberTool(toolId)) {
     activateNumberTool();
     return;
@@ -1208,6 +1282,7 @@ function updateBodyClasses(toolId) {
   document.body.classList.toggle("tool-format", toolId === "format");
   document.body.classList.toggle("tool-coder", coderMainTools.has(toolId));
   document.body.classList.toggle("tool-pair", pairTools.has(toolId));
+  document.body.classList.toggle("tool-kdf", isKdfTool(toolId));
   document.body.classList.toggle("tool-number", numberTools.has(toolId));
   document.body.classList.toggle("tool-unit", unitTools.has(toolId));
   document.body.classList.toggle("tool-ipv4", ipv4Tools.has(toolId));
@@ -1596,6 +1671,10 @@ function isUserAgentTool(toolId) {
 
 function isPairTool(toolId) {
   return pairTools.has(toolId);
+}
+
+function isKdfTool(toolId) {
+  return kdfTools.has(toolId);
 }
 
 function isNumberTool(toolId) {
@@ -3703,6 +3782,301 @@ function copyDataOutput() {
   }
   copyText(value, "INSERT statements");
   setStatus("Copied", false);
+}
+
+function activateKdfTool() {
+  seedKdfInputs();
+  setKdfAlgorithm(state.kdf.active || "bcrypt");
+  clearKdfStatuses();
+  if (!state.wasmReady) {
+    setStatus("Waiting for WebAssembly...", true);
+  } else {
+    setStatus("Ready", false);
+  }
+}
+
+function refreshKdfSalts() {
+  seedKdfInputs(true);
+  setStatus("已重新產生鹽值", false);
+}
+
+function setKdfAlgorithm(algo) {
+  state.kdf.active = algo;
+  if (elements.kdfAlgoSelect) {
+    elements.kdfAlgoSelect.value = algo;
+  }
+  const cards = elements.kdfCards || [];
+  cards.forEach((card) => {
+    const match = card.dataset.algo === algo;
+    card.classList.toggle("hidden", !match);
+  });
+}
+
+function seedKdfInputs(forceSalt = false) {
+  if (elements.argonSalt) {
+    if (forceSalt || !elements.argonSalt.value.trim()) {
+      state.kdf.salts.argon = randomSaltBase64(16);
+      elements.argonSalt.value = state.kdf.salts.argon;
+    } else {
+      state.kdf.salts.argon = elements.argonSalt.value.trim();
+    }
+  }
+  if (forceSalt && elements.bcryptSalt) {
+    elements.bcryptSalt.value = "";
+  }
+}
+
+// KDF flows:
+// - Hash: uses wasm functions to generate hashes. Output field stays editable so users can tweak/replace.
+// - Verify: if input starts with scheme ($2... or $argon2...), verify via wasm; otherwise treat input as plain text and compare to password (utility for quick equality checks like "apple111").
+// - Salts: empty salt triggers secure random generation; "Random salt" button clears bcrypt salt and regenerates Argon2/S crypt salts.
+async function runBcryptHash() {
+  if (!state.wasmReady) {
+    setKdfStatus("bcryptStatus", "Wasm not loaded", true);
+    return;
+  }
+  const password = readPassword(elements.bcryptPassword, "bcryptStatus");
+  if (!password) return;
+  const cost = clampNumber(elements.bcryptCost?.value, 4, 31, state.kdf.bcryptCost);
+  state.kdf.bcryptCost = cost;
+  if (elements.bcryptCost) elements.bcryptCost.value = cost;
+  try {
+    setKdfStatus("bcryptStatus", "產生中…");
+    const saltInput = getInputValue(elements.bcryptSalt);
+    const hash = await bcrypt_hash(password, cost, saltInput || undefined);
+    if (elements.bcryptSalt) {
+      const salt = bcryptSaltFromHash(hash);
+      if (salt) elements.bcryptSalt.value = salt;
+    }
+    if (elements.bcryptOutput) elements.bcryptOutput.value = hash || "";
+    if (elements.bcryptVerifyHash) {
+      elements.bcryptVerifyHash.value = hash || "";
+    }
+    setKdfStatus("bcryptStatus", "Hash generated", "ok");
+  } catch (err) {
+    console.error(err);
+    setKdfStatus("bcryptStatus", err?.message || "Generate failed", true);
+  }
+}
+
+async function verifyBcrypt() {
+  if (!state.wasmReady) {
+    setKdfStatus("bcryptStatus", "Wasm not loaded", true);
+    return;
+  }
+  const password = readPassword(elements.bcryptPassword, "bcryptStatus");
+  const verifyInput = getInputValue(elements.bcryptVerifyHash);
+  const outputHash = getInputValue(elements.bcryptOutput);
+  const hash = verifyInput || outputHash;
+
+  // If password is empty, allow direct comparison between the two lower fields.
+  if (!password) {
+    if (!verifyInput || !outputHash) {
+      setKdfStatus("bcryptStatus", "Fill both fields to compare", true);
+      setStatus("Fill both fields to compare", true);
+      return;
+    }
+    let ok = false;
+    const topIsHash = outputHash.startsWith("$2");
+    const bottomIsHash = verifyInput.startsWith("$2");
+    if (topIsHash && bottomIsHash) {
+      // Both are hashes; direct equality
+      ok = verifyInput === outputHash;
+    } else if (topIsHash) {
+      // Top is hash, bottom plain
+      ok = await bcrypt_verify(verifyInput, outputHash);
+    } else if (bottomIsHash) {
+      // Bottom is hash, top plain
+      ok = await bcrypt_verify(outputHash, verifyInput);
+    } else {
+      // both plain strings
+      ok = verifyInput === outputHash;
+    }
+    setKdfStatus("bcryptStatus", ok ? "Match" : "Mismatch", ok ? "ok" : true);
+    setStatus(ok ? "Match" : "Mismatch", !ok);
+    return;
+  }
+
+  if (!hash) {
+    setKdfStatus("bcryptStatus", "Please paste or generate a bcrypt hash", true);
+    return;
+  }
+  try {
+    setKdfStatus("bcryptStatus", "Verifying…");
+    let ok = false;
+    if (hash.startsWith("$2")) {
+      ok = await bcrypt_verify(password, hash);
+    } else {
+      ok = hash === password;
+    }
+    setKdfStatus("bcryptStatus", ok ? "Match" : "Mismatch", ok ? "ok" : true);
+  } catch (err) {
+    console.error(err);
+    setKdfStatus("bcryptStatus", err?.message || "Verify failed", true);
+  }
+}
+
+async function runArgonHash() {
+  if (!state.wasmReady) {
+    setKdfStatus("argonStatus", "Wasm not loaded", true);
+    return;
+  }
+  const password = readPassword(elements.argonPassword, "argonStatus");
+  if (!password) {
+    setKdfStatus("argonStatus", "Please enter password", true);
+    return;
+  }
+  const time = clampNumber(elements.argonTime?.value, 1, 12, state.kdf.argonTime);
+  const mem = clampNumber(elements.argonMem?.value, 4096, 1048576, state.kdf.argonMem);
+  const parallelism = clampNumber(elements.argonParallelism?.value, 1, 8, state.kdf.argonParallelism);
+  const hashLen = clampNumber(elements.argonHashLen?.value, 8, 128, state.kdf.argonHashLen);
+  state.kdf.argonTime = time;
+  state.kdf.argonMem = mem;
+  state.kdf.argonParallelism = parallelism;
+  state.kdf.argonHashLen = hashLen;
+  const saltInput = getInputValue(elements.argonSalt);
+  const salt = saltInput || randomSaltBase64(16);
+  if (!saltInput && elements.argonSalt) elements.argonSalt.value = salt;
+  try {
+    setKdfStatus("argonStatus", "Generating…");
+    const variant = elements.argonType?.value || "argon2id";
+    const encoded = await argon2_hash(password, salt, time, mem, parallelism, hashLen, variant);
+    if (elements.argonOutput) elements.argonOutput.value = encoded || "";
+    if (elements.argonVerifyHash) {
+      elements.argonVerifyHash.value = encoded || "";
+    }
+    setKdfStatus("argonStatus", "Hash generated", "ok");
+  } catch (err) {
+    console.error(err);
+    setKdfStatus("argonStatus", err?.message || "Generate failed", true);
+  }
+}
+
+async function verifyArgon() {
+  if (!state.wasmReady) {
+    setKdfStatus("argonStatus", "Wasm not loaded", true);
+    return;
+  }
+  const password = readPassword(elements.argonPassword, "argonStatus");
+  const verifyInput = getInputValue(elements.argonVerifyHash);
+  const outputHash = getInputValue(elements.argonOutput);
+  const encoded = verifyInput || outputHash;
+
+  if (!password) {
+    if (!verifyInput || !outputHash) {
+      setKdfStatus("argonStatus", "Fill both fields to compare", true);
+      setStatus("Fill both fields to compare", true);
+      return;
+    }
+    let ok = false;
+    const topIsHash = outputHash.startsWith("$argon2");
+    const bottomIsHash = verifyInput.startsWith("$argon2");
+    if (topIsHash && bottomIsHash) {
+      ok = verifyInput === outputHash;
+    } else if (topIsHash) {
+      ok = await argon2_verify(verifyInput, outputHash);
+    } else if (bottomIsHash) {
+      ok = await argon2_verify(outputHash, verifyInput);
+    } else {
+      ok = verifyInput === outputHash;
+    }
+    setKdfStatus("argonStatus", ok ? "Match" : "Mismatch", ok ? "ok" : true);
+    setStatus(ok ? "Match" : "Mismatch", !ok);
+    return;
+  }
+
+  if (!encoded) {
+    setKdfStatus("argonStatus", "Please paste or generate Argon2 PHC string", true);
+    return;
+  }
+  try {
+    setKdfStatus("argonStatus", "Verifying…");
+    let ok = false;
+    if (encoded.startsWith("$argon2")) {
+      ok = await argon2_verify(password, encoded);
+    } else {
+      ok = encoded === password;
+    }
+    setKdfStatus("argonStatus", ok ? "Match" : "Mismatch", ok ? "ok" : true);
+  } catch (err) {
+    console.error(err);
+    setKdfStatus("argonStatus", err?.message || "Verify failed", true);
+  }
+}
+
+function setKdfStatus(key, message, intent = "") {
+  const el = elements[key];
+  if (!el) return;
+  el.textContent = message;
+  el.classList.remove("ok", "error");
+  if (intent === "ok") el.classList.add("ok");
+  else if (intent) el.classList.add("error");
+}
+
+function clearKdfStatuses() {
+  setKdfStatus("bcryptStatus", "Idle");
+  setKdfStatus("argonStatus", "Idle");
+}
+
+function getInputValue(el) {
+  return el?.value?.trim() || "";
+}
+
+function readPassword(el, statusKey) {
+  const value = el?.value || "";
+  return value;
+}
+
+function clampNumber(value, min, max, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, num));
+}
+
+function clampToPowerOfTwo(value, min, max, fallback) {
+  let num = clampNumber(value, min, max, fallback || min);
+  num = 2 ** Math.round(Math.log2(num));
+  if (num < min) num = min;
+  if (num > max) num = max;
+  return num;
+}
+
+function base64ToBytes(b64) {
+  try {
+    const bin = atob(b64 || "");
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  } catch (err) {
+    return new Uint8Array();
+  }
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function utf8ToBytes(text) {
+  if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(text);
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i += 1) bytes[i] = text.charCodeAt(i);
+  return bytes;
+}
+
+function randomSaltBase64(byteLength = 16) {
+  const arr = new Uint8Array(byteLength);
+  crypto.getRandomValues(arr);
+  return bytesToBase64(arr);
+}
+
+function bcryptSaltFromHash(hash) {
+  if (!hash || !hash.startsWith("$")) return "";
+  const parts = hash.split("$");
+  if (parts.length < 4) return "";
+  const saltAndHash = parts[3] || "";
+  return saltAndHash.slice(0, 22);
 }
 
 function sanitizeRandomExclude(value) {

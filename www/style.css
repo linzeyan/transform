@@ -1178,6 +1178,107 @@ body.tool-generator .converter-only {
   font: inherit;
 }
 
+/* KDF workspace */
+.kdf-note {
+  margin: 0 0 14px;
+}
+
+.kdf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.kdf-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kdf-card.hidden {
+  display: none;
+}
+
+.kdf-card textarea,
+.kdf-card input,
+.kdf-card select {
+  width: 100%;
+}
+
+.kdf-card textarea,
+.kdf-card input {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--fg);
+  font: inherit;
+}
+
+.kdf-card textarea {
+  min-height: 96px;
+}
+
+.kdf-card input:focus,
+.kdf-card textarea:focus,
+.kdf-card select:focus {
+  outline: 1px solid var(--accent);
+  border-color: transparent;
+}
+
+.kdf-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.kdf-inline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.kdf-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kdf-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.kdf-verify {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kdf-status {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.kdf-status.ok {
+  color: #86e1a8;
+}
+
+.kdf-status.error {
+  color: var(--danger);
+}
+
+.flex-1 {
+  flex: 1;
+}
+
 @media (max-width: 800px) {
   .timestamp-grid,
   .totp-form {

@@ -1,10 +1,30 @@
 // Lightweight JSON/TOML/YAML helpers used by multiple format converters.
 use serde_json::{Map, Number, Value};
 
+/// Parses a JSON string into `serde_json::Value`, returning a human-readable error string.
+///
+/// # Example
+/// ```
+/// use wasm_core::convert::json_utils::parse_json;
+/// let value = parse_json("{\"id\":1}")?;
+/// assert_eq!(value["id"], 1);
+/// # Ok::<(), String>(())
+/// ```
 pub fn parse_json(input: &str) -> Result<Value, String> {
     serde_json::from_str(input).map_err(|err| err.to_string())
 }
 
+/// Encodes a JSON `Value` with optional minification, trimming trailing newlines
+/// so the output is UI-friendly.
+///
+/// # Example
+/// ```
+/// use serde_json::json;
+/// use wasm_core::convert::json_utils::encode_json;
+/// let text = encode_json(&json!({"a":1}), true)?;
+/// assert_eq!(text, "{\"a\":1}");
+/// # Ok::<(), String>(())
+/// ```
 pub fn encode_json(value: &Value, minify: bool) -> Result<String, String> {
     let serialized = if minify {
         serde_json::to_string(value)
@@ -15,6 +35,7 @@ pub fn encode_json(value: &Value, minify: bool) -> Result<String, String> {
     Ok(serialized.trim_end().to_string())
 }
 
+/// Detects whether a JSON number textually represents an integer (no dot/exponent).
 pub fn looks_integer(num: &Number) -> bool {
     if num.is_i64() || num.is_u64() {
         return true;
@@ -23,34 +44,14 @@ pub fn looks_integer(num: &Number) -> bool {
     !(text.contains('.') || text.contains('e') || text.contains('E'))
 }
 
+/// Returns keys of a JSON object sorted alphabetically for deterministic output.
 pub fn ordered_keys(map: &Map<String, Value>) -> Vec<String> {
     let mut keys: Vec<String> = map.keys().cloned().collect();
     keys.sort();
     keys
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn looks_integer_detects_non_float() {
-        let int_num = Number::from(42);
-        let float_num: Number = serde_json::from_str("42.1").unwrap();
-        assert!(looks_integer(&int_num));
-        assert!(!looks_integer(&float_num));
-    }
-
-    #[test]
-    fn ordered_keys_sorts_consistently() {
-        let mut map = Map::new();
-        map.insert("b".into(), Value::Null);
-        map.insert("a".into(), Value::Null);
-        map.insert("c".into(), Value::Null);
-        assert_eq!(ordered_keys(&map), vec!["a", "b", "c"]);
-    }
-}
-
+/// Converts a `serde_yaml::Value` into a JSON `Value`, normalizing tagged values too.
 pub fn yaml_to_json(value: serde_yaml::Value) -> Value {
     match value {
         serde_yaml::Value::Null => Value::Null,
@@ -94,6 +95,7 @@ pub fn yaml_to_json(value: serde_yaml::Value) -> Value {
     }
 }
 
+/// Converts a TOML value into JSON so other converters can reuse the same pipeline.
 pub fn toml_to_json(value: toml::Value) -> Value {
     match value {
         toml::Value::String(s) => Value::String(s),
@@ -117,6 +119,16 @@ pub fn toml_to_json(value: toml::Value) -> Value {
     }
 }
 
+/// Converts JSON into TOML, returning a `toml::Value` so callers can render with their own style.
+///
+/// # Example
+/// ```
+/// use serde_json::json;
+/// use wasm_core::convert::json_utils::json_to_toml;
+/// let toml = json_to_toml(&json!({"name":"Ada"}))?;
+/// assert_eq!(toml.to_string(), "name = \"Ada\"\\n");
+/// # Ok::<(), String>(())
+/// ```
 pub fn json_to_toml(value: &Value) -> Result<toml::Value, String> {
     match value {
         Value::Null => Ok(toml::Value::String(String::new())),

@@ -5,6 +5,7 @@ use serde_json::{Map, Value};
 
 use crate::convert::json_utils::{ordered_keys, parse_json};
 
+/// Converts JSON into a minimal, predictable XML document with a `<root>` wrapper.
 pub fn json_to_xml(input: &str) -> Result<String, String> {
     let value = parse_json(input)?;
     let mut out = String::new();
@@ -43,18 +44,6 @@ fn build_xml(buf: &mut String, name: &str, value: &Value, depth: usize) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn json_to_xml_wraps_root() {
-        let xml = json_to_xml(r#"{"name":"Ada"}"#).unwrap();
-        assert!(xml.contains("<root>"));
-        assert!(xml.contains("<name>Ada</name>"));
-    }
-}
-
 fn xml_escape(input: &str) -> String {
     input
         .replace('&', "&amp;")
@@ -62,6 +51,7 @@ fn xml_escape(input: &str) -> String {
         .replace('>', "&gt;")
 }
 
+/// Parses a small XML fragment into pretty-printed JSON, grouping repeated tags into arrays.
 pub fn xml_to_json(input: &str) -> Result<String, String> {
     let mut reader = Reader::from_str(input);
     reader.trim_text(true);

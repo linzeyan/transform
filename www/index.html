@@ -158,6 +158,130 @@
 					</section>
 				</div>
 
+			<div id="kdfWorkspace" class="tool-view hidden">
+				<section class="panel">
+					<div class="panel-header">
+						<div>
+							<h2>Password Hashers</h2>
+							<p>Bcrypt / Argon2 — generate and verify.</p>
+						</div>
+						<div class="panel-actions">
+							<button id="kdfRefreshSalts">Random salt</button>
+							<select id="kdfAlgoSelect">
+								<option value="bcrypt">Bcrypt</option>
+								<option value="argon2">Argon2</option>
+							</select>
+						</div>
+					</div>
+						<p class="muted kdf-note">
+							Enter a password to hash. Paste an existing hash (or plain text) to verify against the password. Empty salt will be auto-generated.
+						</p>
+						<div class="kdf-grid">
+							<div class="kdf-card" data-algo="bcrypt">
+							<div class="kdf-card-head">
+								<div>
+									<h3>Bcrypt</h3>
+									<p class="muted">Good for login flows, cost 4–31</p>
+								</div>
+								<span id="bcryptStatus" class="kdf-status muted">Idle</span>
+							</div>
+							<label>
+								<span>Password</span>
+								<input id="bcryptPassword" type="password" spellcheck="false" placeholder="Enter password" />
+							</label>
+							<div class="kdf-inline">
+								<label>
+									<span>Cost</span>
+									<input id="bcryptCost" type="number" min="4" max="31" value="10" />
+								</label>
+								<label class="flex-1">
+									<span>Salt (leave blank for random)</span>
+									<input id="bcryptSalt" spellcheck="false" placeholder="Auto-generate salt when empty" />
+								</label>
+							</div>
+							<div class="kdf-actions">
+								<button id="bcryptHashBtn">Generate</button>
+							</div>
+							<textarea
+								id="bcryptOutput"
+								spellcheck="false"
+								placeholder="Bcrypt hash will appear here (editable)"
+							></textarea>
+								<div class="kdf-verify">
+									<input
+										id="bcryptVerifyHash"
+										spellcheck="false"
+										placeholder="Paste bcrypt hash OR plain text to verify"
+									/>
+									<button class="ghost-btn" id="bcryptVerifyBtn">Verify</button>
+								</div>
+							</div>
+
+							<div class="kdf-card" data-algo="argon2">
+							<div class="kdf-card-head">
+								<div>
+									<h3>Argon2</h3>
+									<p class="muted">Default Argon2id, modern password hashing</p>
+								</div>
+								<span id="argonStatus" class="kdf-status muted">Idle</span>
+							</div>
+							<label>
+								<span>Password</span>
+								<input id="argonPassword" type="password" spellcheck="false" placeholder="Enter password" />
+							</label>
+							<div class="kdf-inline">
+								<label>
+									<span>Time cost (t)</span>
+									<input id="argonTime" type="number" min="1" value="3" />
+								</label>
+								<label>
+									<span>Memory (KiB)</span>
+									<input id="argonMem" type="number" min="4096" step="1024" value="65536" />
+								</label>
+							</div>
+							<div class="kdf-inline">
+								<label>
+									<span>Parallelism</span>
+									<input id="argonParallelism" type="number" min="1" max="8" value="1" />
+								</label>
+								<label>
+									<span>Hash length</span>
+									<input id="argonHashLen" type="number" min="16" max="64" value="32" />
+								</label>
+								<label class="flex-1">
+									<span>Variant</span>
+									<select id="argonType">
+										<option value="argon2id">Argon2id</option>
+										<option value="argon2i">Argon2i</option>
+										<option value="argon2d">Argon2d</option>
+									</select>
+								</label>
+							</div>
+							<label>
+								<span>Salt (Base64)</span>
+								<input id="argonSalt" spellcheck="false" placeholder="Leave blank to auto-generate 16-byte salt" />
+							</label>
+							<div class="kdf-actions">
+								<button id="argonHashBtn">Generate</button>
+							</div>
+							<textarea
+								id="argonOutput"
+								spellcheck="false"
+								placeholder="Argon2 PHC string will appear here (editable)"
+							></textarea>
+							<div class="kdf-verify">
+								<input
+									id="argonVerifyHash"
+									spellcheck="false"
+									placeholder="Paste Argon2 PHC string OR plain text to verify"
+								/>
+								<button class="ghost-btn" id="argonVerifyBtn">Verify</button>
+							</div>
+						</div>
+						</div>
+					</section>
+			</div>
+
 				<div id="pairWorkspace" class="tool-view hidden">
 					<section class="panel">
 						<div class="panel-header">

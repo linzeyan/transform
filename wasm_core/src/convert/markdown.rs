@@ -2,6 +2,15 @@
 use regex::Regex;
 use std::sync::OnceLock;
 
+/// Converts a subset of Markdown into simple HTML, keeping output deterministic for previews.
+///
+/// # Example
+/// ```
+/// use wasm_core::convert::markdown::markdown_to_html;
+/// let html = markdown_to_html("# Title")?;
+/// assert!(html.contains("<h1>Title</h1>"));
+/// # Ok::<(), String>(())
+/// ```
 pub fn markdown_to_html(input: &str) -> Result<String, String> {
     let normalized = input.replace("\r\n", "\n");
     let lines: Vec<&str> = normalized.lines().collect();
@@ -75,25 +84,6 @@ pub fn markdown_to_html(input: &str) -> Result<String, String> {
         result.push_str("</code></pre>\n");
     }
     Ok(result)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn converts_markdown_list() {
-        let html = markdown_to_html("- item").unwrap();
-        assert!(html.contains("<ul>"));
-        assert!(html.contains("<li>item</li>"));
-    }
-
-    #[test]
-    fn converts_html_back_to_markdown() {
-        let md = html_to_markdown("<h1>Title</h1>");
-        let text = md.unwrap_or_default();
-        assert!(text.to_lowercase().contains("# title"));
-    }
 }
 
 fn markdown_heading_level(line: &str) -> usize {
@@ -183,6 +173,15 @@ fn html_unescape(input: &str) -> String {
         .replace("&amp;", "&")
 }
 
+/// Converts basic HTML back into Markdown headings/paragraphs/lists used by the UI.
+///
+/// # Example
+/// ```
+/// use wasm_core::convert::markdown::html_to_markdown;
+/// let md = html_to_markdown("<ul><li>Item</li></ul>")?;
+/// assert!(md.contains("- Item"));
+/// # Ok::<(), String>(())
+/// ```
 pub fn html_to_markdown(input: &str) -> Result<String, String> {
     let mut text = input.replace("\r\n", "\n");
     text = regex_script().replace_all(&text, "").to_string();

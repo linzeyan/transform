@@ -13,7 +13,7 @@ uuid = { version = "1", features = ["v1", "v3", "v4", "v5", "v6", "v7", "v8", "s
 serde = { version = "1", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 js-sys = "0.3"
-getrandom = { version = "0.3.4", features = ["wasm_js"] }
+getrandom = { version = "0.2.16", features = ["js"] }
 console_error_panic_hook = "0.1"
 serde_json = "1"
 chrono = "0.4"
@@ -40,3 +40,6 @@ serde_bytes = "0.11"
 regex = "1"
 json2toon_rs = "0.2"
 rmpv = "1"
+bcrypt = "0.15"
+argon2 = { version = "0.5", features = ["std"] }
+password-hash = "0.5"

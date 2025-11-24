@@ -6,9 +6,11 @@ use std::str::FromStr;
 use std::sync::OnceLock;
 
 use adler::Adler32;
+use argon2::{Algorithm as ArgonAlgorithm, Argon2, Version as ArgonVersion};
 use ascii85::{decode as ascii85_decode, encode as ascii85_encode};
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
+use bcrypt::{hash_with_salt as bcrypt_hash_with_salt, verify as bcrypt_verify_fn};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use console_error_panic_hook::set_once as set_panic_hook;
 use crc::{CRC_32_ISCSI, CRC_64_ECMA_182, CRC_64_GO_ISO, Crc};
@@ -18,6 +20,7 @@ use hmac::{Hmac, Mac};
 use js_sys::Date;
 use md5::Md5;
 use num_bigint::BigInt;
+use password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -30,6 +33,7 @@ use wasm_bindgen::prelude::*;
 
 mod convert;
 
+/// Wasm entry point that installs a panic hook so Rust panics appear in the browser console.
 #[wasm_bindgen(start)]
 pub fn wasm_start() {
     set_panic_hook();
@@ -192,6 +196,8 @@ fn generate_ulid() -> String {
     encode_ulid(timestamp, randomness)
 }
 
+/// Generates UUID-style identifiers across all supported variants (v1-v8, GUID, ULID).
+/// Returns a JS map keyed by the variant name so the UI can render every example side by side.
 #[wasm_bindgen]
 pub fn generate_uuids() -> JsValue {
     let mut map = BTreeMap::new();
@@ -344,6 +350,8 @@ static USER_AGENTS: &[UserAgentEntry] = &[
     },
 ];
 
+/// Returns up to ten fixture user-agent strings filtered by browser and OS names (case-insensitive),
+/// e.g., `generate_user_agents("chrome", "macos")` yields the latest Chrome-on-macOS entries.
 #[wasm_bindgen]
 pub fn generate_user_agents(browser: &str, os: &str) -> JsValue {
     let browser = browser.trim().to_lowercase();
@@ -367,6 +375,8 @@ pub fn generate_user_agents(browser: &str, os: &str) -> JsValue {
 
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
+/// Generates `count` random strings with per-class minimums (digits/upper/lower/symbols),
+/// exclusion lists, and optional leading-zero guard—mirrors the "password / random string" UI.
 pub fn random_number_sequences(
     length: u32,
     count: u32,
@@ -534,6 +544,8 @@ fn sanitize_exclusions(input: &str) -> HashSet<char> {
 }
 
 #[wasm_bindgen]
+/// Encodes the given text into multiple bases (Base32/64/85/91, hex) and returns a JS map keyed
+/// by the encoding name—handy for previewing many encodings from a single input.
 pub fn encode_content(input: &str) -> Result<JsValue, JsValue> {
     let map = encode_content_map(input);
     serde_wasm_bindgen::to_value(&map).map_err(|err| JsValue::from_str(&err.to_string()))
@@ -560,6 +572,8 @@ fn encode_content_map(input: &str) -> BTreeMap<String, String> {
 }
 
 #[wasm_bindgen]
+/// Parses MySQL `CREATE TABLE` DDL and emits deterministic sample `INSERT` statements,
+/// letting the frontend show plausible rows without connecting to a database.
 pub fn generate_insert_statements(
     schema: &str,
     rows: u32,
@@ -579,6 +593,8 @@ pub fn generate_insert_statements(
 }
 
 #[wasm_bindgen]
+/// Parses MySQL DDL and returns column-level metadata (type, default, enum values, min/max)
+/// so the UI can surface validation hints next to each field.
 pub fn inspect_schema(schema: &str) -> Result<JsValue, JsValue> {
     let tables = parse_mysql_tables(schema);
     let inspections: Vec<TableInspection> = tables
@@ -1341,6 +1357,8 @@ struct TotpResponse {
 }
 
 #[wasm_bindgen]
+/// Computes a TOTP value following RFC 6238 for the supplied Base32 secret and parameters.
+/// Example: `totp_token("JBSWY3DPEHPK3PXP", "SHA256", 30, 6)` returns a code plus metadata.
 pub fn totp_token(
     secret: &str,
     algorithm: &str,
@@ -1446,6 +1464,8 @@ fn dynamic_truncate(payload: &[u8]) -> u32 {
 }
 
 #[wasm_bindgen]
+/// Decodes a text payload using the specified format (Base32/64/85/91 or hex) and returns UTF-8 text.
+/// On failure the error message matches the variant, making it easier to surface in the UI.
 pub fn decode_content(kind: &str, input: &str) -> Result<String, JsValue> {
     decode_content_internal(kind, input)
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
@@ -1487,33 +1507,128 @@ fn decode_content_internal(kind: &str, input: &str) -> Result<Vec<u8>, String> {
 }
 
 #[wasm_bindgen]
+/// Hashes input bytes with common digests (MD5, SHA1/2/3, CRC32/64, FNV, Adler) and
+/// returns a JS map keyed by algorithm name so callers can render many digests at once.
 pub fn hash_content(input: &str) -> Result<JsValue, JsValue> {
     let map = hash_content_map(input.as_bytes());
     serde_wasm_bindgen::to_value(&map).map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
 #[wasm_bindgen]
+/// Computes HMAC digests (SHA1/2/3 families) for the provided key+message and
+/// returns them as a JS map, keeping the UI preview in sync with the plain-hash output.
 pub fn hash_content_hmac(input: &str, key: &str) -> Result<JsValue, JsValue> {
     let map = hash_hmac_map(input.as_bytes(), key.as_bytes());
     serde_wasm_bindgen::to_value(&map).map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
 #[wasm_bindgen]
+/// Produces a bcrypt hash with an optional pre-specified salt; errors if the cost is outside 4-31.
+/// Example: providing your own 22-char bcrypt-base64 salt keeps results reproducible in tests.
+pub fn bcrypt_hash(password: &str, cost: u32, salt_b64: Option<String>) -> Result<String, JsValue> {
+    if !(4..=31).contains(&cost) {
+        return Err(JsValue::from_str("cost must be between 4 and 31"));
+    }
+    let salt_bytes = match salt_b64 {
+        Some(s) if !s.trim().is_empty() => decode_bcrypt_salt(&s)
+            .map_err(|err| JsValue::from_str(&format!("invalid bcrypt salt: {}", err)))?,
+        _ => {
+            let mut buf = [0u8; 16];
+            fill_random(&mut buf);
+            buf
+        }
+    };
+    bcrypt_hash_with_salt(password, cost, salt_bytes)
+        .map(|parts| parts.format_for_version(bcrypt::Version::TwoB))
+        .map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+#[wasm_bindgen]
+/// Verifies a plaintext password against a bcrypt hash, returning `true` on success without panics.
+pub fn bcrypt_verify(password: &str, hash: &str) -> Result<bool, JsValue> {
+    bcrypt_verify_fn(password, hash).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+#[wasm_bindgen]
+/// Hashes a password with Argon2 (i/d/id) using caller-supplied parameters; generates a random salt
+/// when one is not provided and returns the encoded PHC string ready for verification elsewhere.
+pub fn argon2_hash(
+    password: &str,
+    salt_b64: Option<String>,
+    time_cost: u32,
+    memory_kib: u32,
+    parallelism: u32,
+    hash_len: u32,
+    variant: &str,
+) -> Result<String, JsValue> {
+    let salt_bytes = match salt_b64 {
+        Some(val) => decode_b64(&val).map_err(|err| JsValue::from_str(&err))?,
+        None => random_bytes(16),
+    };
+    let salt =
+        SaltString::encode_b64(&salt_bytes).map_err(|err| JsValue::from_str(&err.to_string()))?;
+
+    let algorithm = match variant.to_lowercase().as_str() {
+        "argon2i" => ArgonAlgorithm::Argon2i,
+        "argon2d" => ArgonAlgorithm::Argon2d,
+        _ => ArgonAlgorithm::Argon2id,
+    };
+
+    let params = argon2::Params::new(memory_kib, time_cost, parallelism, Some(hash_len as usize))
+        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+
+    let argon2 = Argon2::new(algorithm, ArgonVersion::V0x13, params);
+    argon2
+        .hash_password(password.as_bytes(), &salt)
+        .map(|ph| ph.to_string())
+        .map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+#[wasm_bindgen]
+/// Verifies a password against an Argon2 PHC string, returning `false` for mismatches
+/// and bubbling up malformed encodings as JavaScript errors for clearer UI messaging.
+pub fn argon2_verify(password: &str, encoded: &str) -> Result<bool, JsValue> {
+    let hash = PasswordHash::new(encoded).map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let algorithm = match hash.algorithm.as_str() {
+        "argon2i" => ArgonAlgorithm::Argon2i,
+        "argon2d" => ArgonAlgorithm::Argon2d,
+        _ => ArgonAlgorithm::Argon2id,
+    };
+    let params =
+        argon2::Params::try_from(&hash).map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let argon2 = Argon2::new(algorithm, ArgonVersion::V0x13, params);
+    argon2
+        .verify_password(password.as_bytes(), &hash)
+        .map(|_| true)
+        .or_else(|err| match err {
+            password_hash::Error::Password => Ok(false),
+            other => Err(JsValue::from_str(&other.to_string())),
+        })
+}
+
+#[wasm_bindgen]
+/// Converts between structured-text formats (JSON, YAML, TOML, XML, etc.) using the shared
+/// `convert` helpers so the web UI can provide format-to-format transforms in one call.
 pub fn transform_format(from: &str, to: &str, input: &str) -> Result<String, JsValue> {
     convert::convert_formats(from, to, input).map_err(|err| JsValue::from_str(&err))
 }
 
 #[wasm_bindgen]
+/// Formats or minifies structured content (JSON, XML, YAML, TOML) while preserving semantics,
+/// mirroring the "Prettify / Minify" buttons in the UI.
 pub fn format_content_text(format: &str, input: &str, minify: bool) -> Result<String, JsValue> {
     convert::format_content(format, input, minify).map_err(|err| JsValue::from_str(&err))
 }
 
 #[wasm_bindgen]
+/// Converts Markdown to HTML using the same rules as the web playground so previews
+/// look identical between Rust tests and the browser.
 pub fn markdown_to_html_text(input: &str) -> Result<String, JsValue> {
     convert::markdown::markdown_to_html(input).map_err(|err| JsValue::from_str(&err))
 }
 
 #[wasm_bindgen]
+/// Converts HTML snippets back into Markdown, enabling round-trip formatting checks in tests/UI.
 pub fn html_to_markdown_text(input: &str) -> Result<String, JsValue> {
     convert::markdown::html_to_markdown(input).map_err(|err| JsValue::from_str(&err))
 }
@@ -1612,6 +1727,8 @@ struct NumberBases {
 }
 
 #[wasm_bindgen]
+/// Parses a number expressed in binary/octal/decimal/hex and returns all four representations,
+/// making it easy for the UI to cross-display values (e.g., `0x10` → `"16"` and `"10000"`).
 pub fn convert_number_base(base: &str, value: &str) -> Result<JsValue, JsValue> {
     convert_number_base_internal(base, value)
         .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
@@ -1701,6 +1818,8 @@ fn format_bigint(value: &BigInt, radix: u32, uppercase: bool) -> String {
 // every format the specification calls out (JSON↔TOON, timestamp, units, etc.).
 
 #[wasm_bindgen]
+/// Converts a numeric value between bit/byte units (bit, byte, kilo/mega/giga/tera in both)
+/// returning a JS map so the UI can show every unit side-by-side.
 pub fn convert_units(unit: &str, value: &str) -> Result<JsValue, JsValue> {
     convert_units_internal(unit, value)
         .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
@@ -1764,6 +1883,8 @@ fn format_unit_value(value: f64) -> String {
 }
 
 #[wasm_bindgen]
+/// Normalizes timestamps supplied as epoch seconds/millis/micros/nanos or textual dates
+/// into a map of common formats (ISO8601, RFC2822, SQL datetime/date, multiple epoch precisions).
 pub fn convert_timestamp(source: &str, value: &str) -> Result<JsValue, JsValue> {
     convert_timestamp_internal(source, value)
         .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
@@ -1962,6 +2083,8 @@ struct IpInfoResult {
 }
 
 #[wasm_bindgen]
+/// Inspects IPv4/IPv6 strings, CIDR blocks, or IPv4 ranges and returns a rich
+/// breakdown (network, broadcast, total hosts, binary masks) for display in the UI.
 pub fn ipv4_info(input: &str) -> Result<JsValue, JsValue> {
     ip_info_internal(input)
         .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
@@ -2356,11 +2479,14 @@ struct JwtDecodeResult {
 }
 
 #[wasm_bindgen]
+/// Percent-encodes a string for URL query contexts while keeping spaces as `+`
+/// to match the browser form-encoding convention.
 pub fn url_encode(input: &str) -> String {
     urlencoding::encode(input).replace("%20", "+")
 }
 
 #[wasm_bindgen]
+/// Decodes URL-encoded strings, treating `+` as space to align with form submissions.
 pub fn url_decode(input: &str) -> Result<String, JsValue> {
     let normalized = input.replace('+', " ");
     urlencoding::decode(&normalized)
@@ -2369,11 +2495,15 @@ pub fn url_decode(input: &str) -> Result<String, JsValue> {
 }
 
 #[wasm_bindgen]
+/// Builds an HMAC-signed JWT from a JSON payload and secret, defaulting to HS256 when
+/// the algorithm input is empty; returns the compact token string.
 pub fn jwt_encode(payload_input: &str, secret: &str, algorithm: &str) -> Result<String, JsValue> {
     jwt_encode_internal(payload_input, secret, algorithm).map_err(|err| JsValue::from_str(&err))
 }
 
 #[wasm_bindgen]
+/// Decodes a JWT without verifying the signature, returning pretty-printed header/payload
+/// text plus the algorithm and raw signature segment for inspection.
 pub fn jwt_decode(token: &str) -> Result<JsValue, JsValue> {
     jwt_decode_internal(token)
         .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
@@ -2668,7 +2798,54 @@ fn shuffle_chars(chars: &mut [char]) {
     }
 }
 fn fill_random(buf: &mut [u8]) {
-    getrandom::fill(buf).expect("randomness available");
+    getrandom::getrandom(buf).expect("randomness available");
+}
+
+fn random_bytes(len: usize) -> Vec<u8> {
+    let mut buf = vec![0u8; len];
+    fill_random(&mut buf);
+    buf
+}
+
+fn decode_b64(input: &str) -> Result<Vec<u8>, String> {
+    base64::engine::general_purpose::STANDARD
+        .decode(input)
+        .map_err(|err| err.to_string())
+}
+
+fn decode_bcrypt_salt(input: &str) -> Result<[u8; 16], String> {
+    const ALPHABET: &[u8] = b"./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    if input.len() != 22 {
+        return Err(format!(
+            "22 chars required for bcrypt-base64 salt, got {}",
+            input.len()
+        ));
+    }
+    let mut decode_map = [u8::MAX; 256];
+    for (i, ch) in ALPHABET.iter().enumerate() {
+        decode_map[*ch as usize] = i as u8;
+    }
+    let mut buffer: u32 = 0;
+    let mut bits: u8 = 0;
+    let mut out = Vec::with_capacity(16);
+    for byte in input.bytes() {
+        let val = decode_map[byte as usize];
+        if val == u8::MAX {
+            return Err(format!("invalid character '{}'", byte as char));
+        }
+        buffer = (buffer << 6) | val as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push(((buffer >> bits) & 0xFF) as u8);
+        }
+    }
+    if out.len() != 16 {
+        return Err(format!("decoded salt must be 16 bytes, got {}", out.len()));
+    }
+    let mut salt = [0u8; 16];
+    salt.copy_from_slice(&out);
+    Ok(salt)
 }
 
 fn random_index(max: usize) -> usize {
@@ -2701,3 +2878,6 @@ fn find_matching_paren(src: &str, open_idx: usize) -> Option<usize> {
     }
     None
 }
+
+#[cfg(test)]
+mod lib_tests;

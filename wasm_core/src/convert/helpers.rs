@@ -1,4 +1,5 @@
 // Shared name-shaping helpers used by multiple format converters (Structs, GraphQL, Protobuf).
+/// Converts an arbitrary key into an exported Go-style identifier (leading letter, camel-cased).
 pub fn export_name(key: &str) -> String {
     let mut runes = Vec::new();
     let mut cap_next = true;
@@ -27,6 +28,7 @@ pub fn export_name(key: &str) -> String {
     out
 }
 
+/// Lower-cases the first word of a camel/pascal string while preserving acronyms.
 pub fn lower_first(s: &str) -> String {
     if s.is_empty() {
         return String::new();
@@ -54,22 +56,7 @@ pub fn lower_first(s: &str) -> String {
     result
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn export_name_cleans_symbols() {
-        // Leading non-letters are stripped; underscores preserve next-capital behavior.
-        assert_eq!(export_name("123foo_bar"), "foo_Bar");
-    }
-
-    #[test]
-    fn lower_first_handles_pascal_case() {
-        assert_eq!(lower_first("UserName"), "userName");
-    }
-}
-
+/// Splits a string into word-like segments using case changes, digits, and underscores.
 pub fn split_words(s: &str) -> Vec<String> {
     if s.is_empty() {
         return Vec::new();
@@ -123,6 +110,7 @@ pub fn split_words(s: &str) -> Vec<String> {
     parts
 }
 
+/// Returns true when the entire string is uppercase (non-letters ignored).
 pub fn is_all_upper(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|ch| !ch.is_alphabetic() || ch.is_uppercase())
 }

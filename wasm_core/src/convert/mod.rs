@@ -18,3 +18,6 @@ pub mod toon;
 pub mod xml;
 
 pub use formats::{convert_formats, format_content};
+
+#[cfg(test)]
+mod convert_tests;

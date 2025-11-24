@@ -38,12 +38,21 @@ const FORMAT_MSGPACK: &str = "MsgPack";
 const FORMAT_GRAPHQL: &str = "GraphQL Schema";
 const FORMAT_PROTO: &str = "Protobuf";
 
-/// Converts user input from one supported format to another.
+/// Converts between supported structured-text formats (JSON, YAML, TOML, XML, JSON Schema,
+/// Go structs, TOON, MsgPack, GraphQL schema, and Protobuf).
 ///
-/// All formats funnel through JSON as an intermediate representation so that
-/// lossy conversions are easy to reason about (e.g., GraphQL schema → JSON →
-/// Protobuf text). Unsupported format pairs yield a descriptive `Err` message
-/// that the frontend surfaces inline.
+/// All conversions pass through JSON internally so failures surface early with a single
+/// error type. Handy for the web UI where users paste arbitrary snippets.
+///
+/// # Examples
+/// ```
+/// use wasm_core::convert::formats::convert_formats;
+///
+/// let yaml = convert_formats("JSON", "YAML", "{\"id\":1}")?;
+/// let back = convert_formats("YAML", "JSON", &yaml)?;
+/// assert!(back.contains("\"id\": 1"));
+/// # Ok::<(), String>(())
+/// ```
 pub fn convert_formats(from: &str, to: &str, input: &str) -> Result<String, String> {
     if from == to {
         return Ok(input.to_string());
@@ -119,11 +128,18 @@ pub fn convert_formats(from: &str, to: &str, input: &str) -> Result<String, Stri
     }
 }
 
-/// Pretty-prints or minifies supported textual formats.
+/// Pretty-prints or minifies textual formats exposed in the converter UI.
 ///
-/// JSON/YAML/TOML are normalized through JSON to guarantee deterministic
-/// spacing, while XML/Go Struct are handed back verbatim since the spec only
-/// requires round-tripping for the first three.
+/// JSON/YAML/TOML are normalized via JSON to keep spacing deterministic. XML and
+/// Go structs are returned trimmed. Unsupported formats yield an `Err`.
+///
+/// # Examples
+/// ```
+/// use wasm_core::convert::formats::format_content;
+/// let minified = format_content("JSON", "{ \"a\": 1 }", true)?;
+/// assert_eq!(minified, "{\"a\":1}");
+/// # Ok::<(), String>(())
+/// ```
 pub fn format_content(format_name: &str, input: &str, minify: bool) -> Result<String, String> {
     match format_name {
         FORMAT_JSON => {
@@ -153,30 +169,5 @@ pub fn format_content(format_name: &str, input: &str, minify: bool) -> Result<St
         }
         FORMAT_GO_STRUCT => Ok(input.trim().to_string()),
         _ => Err("Formatting is not available for this format".into()),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn json_to_yaml_and_back() {
-        let yaml = convert_formats("JSON", "YAML", "{\"a\":1}").unwrap();
-        let back = convert_formats("YAML", "JSON", &yaml).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&back).unwrap();
-        assert_eq!(v["a"], 1);
-    }
-
-    #[test]
-    fn go_struct_generation() {
-        let go = convert_formats("JSON", "Go Struct", "{\"id\":1}").unwrap();
-        assert!(go.contains("struct"));
-    }
-
-    #[test]
-    fn format_content_minifies() {
-        let min = format_content("JSON", "{\n  \"a\": 1\n}\n", true).unwrap();
-        assert_eq!(min, "{\"a\":1}");
     }
 }

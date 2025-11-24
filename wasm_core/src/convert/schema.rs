@@ -3,6 +3,7 @@ use serde_json::{Map, Value, json};
 
 use crate::convert::json_utils::ordered_keys;
 
+/// Generates a JSON Schema fragment that mirrors the structure of the provided JSON value.
 pub fn json_to_schema(value: &Value) -> Value {
     match value {
         Value::Object(map) => {
@@ -38,6 +39,7 @@ pub fn json_to_schema(value: &Value) -> Value {
     }
 }
 
+/// Builds a representative JSON sample from a JSON Schema fragment (best-effort).
 pub fn schema_to_sample(schema: &Value) -> Value {
     match schema {
         Value::Object(map) => match map.get("type").and_then(|v| v.as_str()) {
@@ -72,28 +74,5 @@ pub fn schema_to_sample(schema: &Value) -> Value {
             }
         }
         _ => Value::Null,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn builds_object_schema_and_sample() {
-        let src = json!({"name": "Ada", "age": 30});
-        let schema = json_to_schema(&src);
-        assert_eq!(schema["type"], "object");
-        assert!(schema["properties"].get("name").is_some());
-        let sample = schema_to_sample(&schema);
-        let text = sample.to_string();
-        assert!(text.contains("\"name\""));
-    }
-
-    #[test]
-    fn builds_array_schema() {
-        let src = json!([1, 2, 3]);
-        let schema = json_to_schema(&src);
-        assert_eq!(schema["type"], "array");
     }
 }
