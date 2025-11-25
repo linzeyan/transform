@@ -213,6 +213,17 @@ button {
   font-weight: 600;
 }
 
+button.ghost-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  font-weight: 500;
+}
+
+button.ghost-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
 button#clear {
   background: rgba(255, 255, 255, 0.08);
   color: var(--fg);
@@ -327,6 +338,106 @@ button#swap {
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
+}
+
+.query-panel {
+  margin: 0 18px 18px;
+  padding: 14px 14px 6px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.query-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.query-panel-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.query-panel-head p {
+  margin: 2px 0 0;
+}
+
+.query-panel-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.query-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.query-row {
+  display: grid;
+  grid-template-columns: 20px 1fr 16px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.query-handle {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.query-equals {
+  text-align: center;
+  color: var(--muted);
+}
+
+.query-row input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--fg);
+  font: inherit;
+}
+
+.query-row input:focus {
+  outline: 1px solid var(--accent);
+  border-color: transparent;
+}
+
+.query-row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.query-row-actions button {
+  padding: 6px 8px;
+  min-width: 32px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+
+.query-row-actions .danger {
+  background: rgba(255, 123, 123, 0.12);
+  color: #ff9d9d;
+}
+
+.query-empty {
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  text-align: center;
+  margin-top: 4px;
 }
 
 .jwt-controls {

@@ -181,7 +181,7 @@
 							<div class="kdf-card-head">
 								<div>
 									<h3>Bcrypt</h3>
-									<p class="muted">Good for login flows, cost 4–31</p>
+									<p class="muted">Good for login flows, cost 4-31</p>
 								</div>
 								<span id="bcryptStatus" class="kdf-status muted">Idle</span>
 							</div>
@@ -283,18 +283,18 @@
 			</div>
 
 				<div id="pairWorkspace" class="tool-view hidden">
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2 id="pairInputLabel">Encode</h2>
-								<p id="pairInputHint">Enter text to encode</p>
-							</div>
-							<div class="pair-controls">
-								<div id="jwtControls" class="jwt-controls hidden">
-									<label>
-											<span>Algorithm</span>
-										<select id="jwtAlgorithm">
-											<option value="HS256">HS256</option>
+			<section class="panel">
+				<div class="panel-header">
+					<div>
+						<h2 id="pairInputLabel">Encode</h2>
+						<p id="pairInputHint">Enter text to encode</p>
+					</div>
+					<div class="pair-controls">
+						<div id="jwtControls" class="jwt-controls hidden">
+							<label>
+									<span>Algorithm</span>
+								<select id="jwtAlgorithm">
+									<option value="HS256">HS256</option>
 											<option value="HS384">HS384</option>
 											<option value="HS512">HS512</option>
 										</select>
@@ -308,15 +308,30 @@
 											spellcheck="false"
 										/>
 									</label>
-								</div>
-							</div>
 						</div>
-						<textarea
-							id="pairInput"
-							spellcheck="false"
-							placeholder="Enter content to encode"
-						></textarea>
-					</section>
+					</div>
+				</div>
+				<textarea
+					id="pairInput"
+					spellcheck="false"
+					placeholder="Enter content to encode"
+				></textarea>
+				<div id="urlQuerySection" class="query-panel hidden">
+					<div class="query-panel-head">
+						<div>
+							<h3>Query Parameters</h3>
+							<p class="muted">Edit params and keep URL Encode in sync</p>
+						</div>
+						<div class="query-panel-actions">
+							<button class="ghost-btn" id="urlQueryAdd" type="button">Add parameter</button>
+						</div>
+					</div>
+					<div id="urlQueryTable" class="query-table"></div>
+					<div id="urlQueryEmpty" class="query-empty muted hidden">
+						No query parameters detected. Add one to start.
+					</div>
+				</div>
+			</section>
 					<section class="panel">
 						<div class="panel-header">
 							<div>

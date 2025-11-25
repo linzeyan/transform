@@ -1,7 +1,7 @@
 #![cfg(target_arch = "wasm32")]
 
-use base64::engine::general_purpose::STANDARD as B64_STD;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as B64_STD;
 use bcrypt::BASE_64;
 use serde_json::Value as JsonValue;
 use wasm_bindgen::JsValue;
@@ -46,6 +46,42 @@ fn landing_page_shows_converter_by_default() {
 }
 
 #[wasm_bindgen_test]
+fn url_tool_exposes_query_editor_markup() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    assert!(
+        INDEX_HTML.contains("id=\"urlQuerySection\""),
+        "URL tool should render the query parameter section"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"urlQueryTable\""),
+        "query parameter table container should exist"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"urlQueryAdd\""),
+        "query editor should offer an add button"
+    );
+}
+
+#[wasm_bindgen_test]
+fn kdf_random_salt_controls_exist() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    assert!(
+        INDEX_HTML.contains("id=\"kdfRefreshSalts\""),
+        "Random salt button should be present for KDF tools"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"bcryptSalt\""),
+        "Bcrypt salt input should be present"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"argonSalt\""),
+        "Argon2 salt input should be present"
+    );
+}
+
+#[wasm_bindgen_test]
 fn number_bases_decimal_100_flow() {
     let map = js_to_json(convert_number_base("decimal", "100").expect("convert number base"));
     assert_eq!(field(&map, "binary"), "1100100");
@@ -84,8 +120,7 @@ fn unit_converter_bits_and_bytes() {
 #[wasm_bindgen_test]
 fn timestamp_sql_datetime_to_epoch() {
     let map = js_to_json(
-        convert_timestamp("sql_datetime", "2025-01-02 03:04:05")
-            .expect("timestamp conversion"),
+        convert_timestamp("sql_datetime", "2025-01-02 03:04:05").expect("timestamp conversion"),
     );
     assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05+00:00");
     assert_eq!(field(&map, "timestamp_seconds"), "1735787045");
@@ -193,9 +228,7 @@ fn random_sequences_respect_length_and_charset() {
 
 #[wasm_bindgen_test]
 fn totp_token_has_expected_length() {
-    let res = js_to_json(
-        totp_token("JBSWY3DPEHPK3PXP", "SHA256", 30, 6).expect("totp token"),
-    );
+    let res = js_to_json(totp_token("JBSWY3DPEHPK3PXP", "SHA256", 30, 6).expect("totp token"));
     let code = field(&res, "code");
     assert_eq!(code.len(), 6);
     assert!(code.chars().all(|c| c.is_ascii_digit()));
@@ -204,8 +237,8 @@ fn totp_token_has_expected_length() {
 #[wasm_bindgen_test]
 fn sql_insert_generator_includes_table_name() {
     let schema = "CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(10));";
-    let inserts = generate_insert_statements(schema, 2, JsValue::NULL)
-        .expect("generate insert statements");
+    let inserts =
+        generate_insert_statements(schema, 2, JsValue::NULL).expect("generate insert statements");
     assert!(inserts.contains("INSERT INTO `users`"));
     assert!(inserts.contains("VALUES"));
 }

@@ -551,6 +551,10 @@ const state = {
   currentPairTool: null,
   pairSyncing: false,
   pairLastSource: "input",
+  urlQueryParams: [],
+  urlBase: "",
+  urlHash: "",
+  urlHadQuestionMark: false,
   numberSyncing: false,
   unitSyncing: false,
   randomIncludeDigits: true,
@@ -728,6 +732,10 @@ function cacheElements() {
   elements.jwtAlgorithm = document.getElementById("jwtAlgorithm");
   elements.jwtSecret = document.getElementById("jwtSecret");
   elements.pairOutputMeta = document.getElementById("pairOutputMeta");
+  elements.urlQuerySection = document.getElementById("urlQuerySection");
+  elements.urlQueryTable = document.getElementById("urlQueryTable");
+  elements.urlQueryAdd = document.getElementById("urlQueryAdd");
+  elements.urlQueryEmpty = document.getElementById("urlQueryEmpty");
   elements.kdfWorkspace = document.getElementById("kdfWorkspace");
   elements.kdfAlgoSelect = document.getElementById("kdfAlgoSelect");
   elements.kdfCards = document.querySelectorAll(".kdf-card");
@@ -958,6 +966,9 @@ function bindUI() {
   elements.pairOutput?.addEventListener("input", () =>
     handlePairInput("output"),
   );
+  elements.urlQueryTable?.addEventListener("input", handleUrlQueryTableInput);
+  elements.urlQueryTable?.addEventListener("click", handleUrlQueryTableClick);
+  elements.urlQueryAdd?.addEventListener("click", () => addUrlQueryRow());
   elements.hashToggleCase?.addEventListener("click", () => {
     state.hashUppercase = !state.hashUppercase;
     elements.hashToggleCase.dataset.upper = state.hashUppercase
@@ -1685,6 +1696,10 @@ function isUnitTool(toolId) {
   return unitTools.has(toolId);
 }
 
+function isUrlTool(toolId) {
+  return toolId === "coder-url";
+}
+
 function isTimestampTool(toolId) {
   return timestampTools.has(toolId);
 }
@@ -1747,6 +1762,13 @@ function activatePairTool(toolId) {
   } else if (elements.jwtAlgorithm && !elements.jwtAlgorithm.value) {
     elements.jwtAlgorithm.value = "HS256";
   }
+  const showQueryEditor = config.type === "url";
+  elements.urlQuerySection?.classList.toggle("hidden", !showQueryEditor);
+  if (showQueryEditor) {
+    syncUrlParamsFromInput(elements.pairInput?.value || "", true);
+  } else {
+    resetUrlQueryState();
+  }
   updatePairMeta(null);
   setStatus("Ready", false);
 }
@@ -1772,28 +1794,20 @@ function runPairConversion(source) {
   const outputValue = elements.pairOutput?.value || "";
   if (config.type === "url") {
     if (source === "input") {
-      if (!inputValue) {
-        setPairField(elements.pairOutput, "");
-        setStatus("Cleared");
-        return;
-      }
-      try {
-        const encoded = url_encode(inputValue);
-        setPairField(elements.pairOutput, encoded);
-        setStatus("Done", false);
-      } catch (err) {
-        setStatus(`⚠️ ${err?.message || err}`, true);
-      }
+      syncUrlParamsFromInput(inputValue, true);
+      renderUrlEncodeOutput(inputValue);
       return;
     }
     if (!outputValue) {
       setPairField(elements.pairInput, "");
+      resetUrlQueryState();
       setStatus("Cleared");
       return;
     }
     try {
       const decoded = url_decode(outputValue);
       setPairField(elements.pairInput, decoded);
+      syncUrlParamsFromInput(decoded, true);
       setStatus("Done", false);
     } catch (err) {
       setStatus(`⚠️ ${err?.message || err}`, true);
@@ -1876,6 +1890,254 @@ function runPairConversion(source) {
     return;
   }
   setStatus("This tool isn't wired up in this build.", true);
+}
+
+// Query editor helpers keep the URL Encode textarea, table, and encoded output aligned.
+function syncUrlParamsFromInput(rawInput, renderTable = false) {
+  if (!isUrlTool(state.currentTool)) return;
+  const parts = splitUrlParts(rawInput || "");
+  state.urlBase = parts.base;
+  state.urlHash = parts.hash;
+  state.urlHadQuestionMark = parts.hadQuestionMark;
+  state.urlQueryParams = parseQueryParams(parts.queryString);
+  if (renderTable) {
+    renderUrlQueryTable();
+  }
+}
+
+function resetUrlQueryState() {
+  state.urlQueryParams = [];
+  state.urlBase = "";
+  state.urlHash = "";
+  state.urlHadQuestionMark = false;
+  if (isUrlTool(state.currentTool)) {
+    renderUrlQueryTable();
+  }
+}
+
+function splitUrlParts(raw) {
+  const text = raw || "";
+  const hashIndex = text.indexOf("#");
+  const beforeHash = hashIndex >= 0 ? text.slice(0, hashIndex) : text;
+  const hash = hashIndex >= 0 ? text.slice(hashIndex + 1) : "";
+  const qmIndex = beforeHash.indexOf("?");
+  const base = qmIndex >= 0 ? beforeHash.slice(0, qmIndex) : beforeHash;
+  const queryString = qmIndex >= 0 ? beforeHash.slice(qmIndex + 1) : "";
+  return {
+    base,
+    queryString,
+    hash,
+    hadQuestionMark: qmIndex >= 0,
+  };
+}
+
+function parseQueryParams(queryString) {
+  if (!queryString) return [];
+  return queryString
+    .split("&")
+    .filter((entry) => entry.length > 0)
+    .map((entry) => {
+      const [rawKey, ...rest] = entry.split("=");
+      const rawValue = rest.length ? rest.join("=") : "";
+      return {
+        key: decodeQueryPiece(rawKey),
+        value: decodeQueryPiece(rawValue),
+      };
+    });
+}
+
+function decodeQueryPiece(text) {
+  if (!text) return "";
+  const normalized = text.replace(/\+/g, " ");
+  try {
+    return decodeURIComponent(normalized);
+  } catch (err) {
+    return normalized;
+  }
+}
+
+function serializeQueryParams(params) {
+  if (!params?.length) return "";
+  const filtered = params.filter(
+    (entry) => (entry?.key || entry?.value || "").length > 0,
+  );
+  if (!filtered.length) return "";
+  return filtered.map(({ key, value }) => `${key || ""}=${value || ""}`).join("&");
+}
+
+function buildUrlFromState() {
+  const query = serializeQueryParams(state.urlQueryParams);
+  const hasParams = Boolean(query);
+  const hasHash = Boolean(state.urlHash);
+  let url = state.urlBase || "";
+  if (hasParams || state.urlHadQuestionMark) {
+    url += "?" + query;
+  }
+  if (hasHash) {
+    url += "#" + state.urlHash;
+  }
+  return url;
+}
+
+function renderUrlEncodeOutput(rawInput) {
+  state.pairLastSource = "input";
+  if (!state.wasmReady) {
+    setStatus("Waiting for WebAssembly...", true);
+    return;
+  }
+  if (!rawInput) {
+    setPairField(elements.pairOutput, "");
+    setStatus("Cleared");
+    return;
+  }
+  try {
+    const encoded = url_encode(rawInput);
+    setPairField(elements.pairOutput, encoded);
+    setStatus("Done", false);
+  } catch (err) {
+    setStatus(`⚠️ ${err?.message || err}`, true);
+  }
+}
+
+function applyUrlQueryStateChange({ renderTable = false } = {}) {
+  const rebuilt = buildUrlFromState();
+  setPairField(elements.pairInput, rebuilt);
+  renderUrlEncodeOutput(rebuilt);
+  if (renderTable) {
+    renderUrlQueryTable();
+  }
+}
+
+function renderUrlQueryTable() {
+  if (!elements.urlQueryTable) return;
+  const params = state.urlQueryParams || [];
+  elements.urlQueryTable.innerHTML = "";
+  if (!params.length) {
+    if (elements.urlQueryEmpty) elements.urlQueryEmpty.classList.remove("hidden");
+    return;
+  }
+  if (elements.urlQueryEmpty) elements.urlQueryEmpty.classList.add("hidden");
+  params.forEach((param, index) => {
+    const row = document.createElement("div");
+    row.className = "query-row";
+    row.dataset.index = String(index);
+
+    const handle = document.createElement("span");
+    handle.className = "query-handle";
+    handle.title = "Reorder";
+    handle.textContent = "≡";
+    row.appendChild(handle);
+
+    const keyInput = document.createElement("input");
+    keyInput.placeholder = "key";
+    keyInput.value = param?.key || "";
+    keyInput.dataset.field = "key";
+    row.appendChild(keyInput);
+
+    const equals = document.createElement("span");
+    equals.className = "query-equals";
+    equals.textContent = "=";
+    row.appendChild(equals);
+
+    const valueInput = document.createElement("input");
+    valueInput.placeholder = "value";
+    valueInput.value = param?.value || "";
+    valueInput.dataset.field = "value";
+    row.appendChild(valueInput);
+
+    const actions = document.createElement("div");
+    actions.className = "query-row-actions";
+
+    const upBtn = document.createElement("button");
+    upBtn.type = "button";
+    upBtn.dataset.action = "up";
+    upBtn.title = "Move up";
+    upBtn.textContent = "↑";
+    upBtn.disabled = index === 0;
+    actions.appendChild(upBtn);
+
+    const downBtn = document.createElement("button");
+    downBtn.type = "button";
+    downBtn.dataset.action = "down";
+    downBtn.title = "Move down";
+    downBtn.textContent = "↓";
+    downBtn.disabled = index === params.length - 1;
+    actions.appendChild(downBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.dataset.action = "delete";
+    deleteBtn.classList.add("danger");
+    deleteBtn.title = "Remove";
+    deleteBtn.textContent = "✕";
+    actions.appendChild(deleteBtn);
+
+    row.appendChild(actions);
+    elements.urlQueryTable.appendChild(row);
+  });
+}
+
+function addUrlQueryRow() {
+  if (!isUrlTool(state.currentTool)) return;
+  const next = [...(state.urlQueryParams || []), { key: "", value: "" }];
+  state.urlQueryParams = next;
+  applyUrlQueryStateChange({ renderTable: true });
+}
+
+function handleUrlQueryTableInput(event) {
+  if (!isUrlTool(state.currentTool)) return;
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  const row = target.closest(".query-row");
+  const field = target.dataset.field;
+  if (!row || !field) return;
+  const index = Number(row.dataset.index);
+  if (Number.isNaN(index) || !state.urlQueryParams[index]) return;
+  const next = [...state.urlQueryParams];
+  const updated = { ...next[index], [field]: target.value };
+  next[index] = updated;
+  state.urlQueryParams = next;
+  applyUrlQueryStateChange();
+}
+
+function handleUrlQueryTableClick(event) {
+  if (!isUrlTool(state.currentTool)) return;
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+  const row = button.closest(".query-row");
+  if (!row) return;
+  const index = Number(row.dataset.index);
+  if (Number.isNaN(index)) return;
+  const action = button.dataset.action;
+  if (action === "delete") {
+    removeUrlQueryRow(index);
+    return;
+  }
+  if (action === "up") {
+    moveUrlQueryRow(index, -1);
+    return;
+  }
+  if (action === "down") {
+    moveUrlQueryRow(index, 1);
+  }
+}
+
+function moveUrlQueryRow(index, delta) {
+  const params = [...(state.urlQueryParams || [])];
+  const targetIndex = index + delta;
+  if (targetIndex < 0 || targetIndex >= params.length) return;
+  const [item] = params.splice(index, 1);
+  params.splice(targetIndex, 0, item);
+  state.urlQueryParams = params;
+  applyUrlQueryStateChange({ renderTable: true });
+}
+
+function removeUrlQueryRow(index) {
+  const params = [...(state.urlQueryParams || [])];
+  if (index < 0 || index >= params.length) return;
+  params.splice(index, 1);
+  state.urlQueryParams = params;
+  applyUrlQueryStateChange({ renderTable: true });
 }
 
 function setPairField(target, value) {
@@ -3813,6 +4075,7 @@ function setKdfAlgorithm(algo) {
 }
 
 function seedKdfInputs(forceSalt = false) {
+  // Keep both Argon2 and Bcrypt salts populated; button click forces regeneration.
   if (elements.argonSalt) {
     if (forceSalt || !elements.argonSalt.value.trim()) {
       state.kdf.salts.argon = randomSaltBase64(16);
@@ -3821,8 +4084,13 @@ function seedKdfInputs(forceSalt = false) {
       state.kdf.salts.argon = elements.argonSalt.value.trim();
     }
   }
-  if (forceSalt && elements.bcryptSalt) {
-    elements.bcryptSalt.value = "";
+  if (elements.bcryptSalt) {
+    if (forceSalt || !elements.bcryptSalt.value.trim()) {
+      state.kdf.salts.bcrypt = randomBcryptSalt();
+      elements.bcryptSalt.value = state.kdf.salts.bcrypt;
+    } else {
+      state.kdf.salts.bcrypt = elements.bcryptSalt.value.trim();
+    }
   }
 }
 
@@ -4069,6 +4337,14 @@ function randomSaltBase64(byteLength = 16) {
   const arr = new Uint8Array(byteLength);
   crypto.getRandomValues(arr);
   return bytesToBase64(arr);
+}
+
+function randomBcryptSalt(byteLength = 16) {
+  const arr = new Uint8Array(byteLength);
+  crypto.getRandomValues(arr);
+  const std = bytesToBase64(arr).replace(/=+$/g, "");
+  // Bcrypt uses crypt-base64 alphabet: ./A-Za-z0-9
+  return std.replace(/\+/g, ".").replace(/\//g, "/");
 }
 
 function bcryptSaltFromHash(hash) {
