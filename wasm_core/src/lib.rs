@@ -2084,6 +2084,7 @@ struct IpInfoResult {
     compressed: Option<String>,
     binary: Option<String>,
     host_bits: Option<String>,
+    ipv6_mapped: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -2163,6 +2164,7 @@ fn ipv4_single(ip: Ipv4Addr, original: &str) -> IpInfoResult {
         integer: Some(u32::from(ip).to_string()),
         binary: Some(format_binary(u32::from(ip) as u128, 32)),
         host_bits: Some("0".into()),
+        ipv6_mapped: Some(ipv4_mapped_ipv6(ip)),
         ..Default::default()
     }
 }
@@ -2245,6 +2247,7 @@ fn ipv4_with_prefix(ip: Ipv4Addr, right: &str, original: &str) -> Result<IpInfoR
         integer: Some(ip_value.to_string()),
         binary: Some(format_binary(ip_value as u128, 32)),
         host_bits: Some(host_bits.to_string()),
+        ipv6_mapped: Some(ipv4_mapped_ipv6(ip)),
         ..Default::default()
     })
 }
@@ -2459,6 +2462,13 @@ fn format_ipv6_expanded(addr: Ipv6Addr) -> String {
         segments[6],
         segments[7]
     )
+}
+
+fn ipv4_mapped_ipv6(ip: Ipv4Addr) -> String {
+    let octets = ip.octets();
+    let seg6 = ((octets[0] as u16) << 8) | octets[1] as u16;
+    let seg7 = ((octets[2] as u16) << 8) | octets[3] as u16;
+    format!("0000:0000:0000:0000:0000:ffff:{:04x}:{:04x}", seg6, seg7)
 }
 
 fn format_binary(value: u128, bits: usize) -> String {

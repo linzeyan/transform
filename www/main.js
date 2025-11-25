@@ -2329,6 +2329,7 @@ function renderIPv4Results(data) {
   addRow("CIDR", data.cidr);
   addRow("Mask", data.mask);
   addRow("Mask (binary)", data.maskBinary);
+  addRow("IPv6 mapped", data.ipv6Mapped);
   if (data.rangeStart || data.rangeEnd) {
     addRow("Range", `${data.rangeStart || "?"} → ${data.rangeEnd || "?"}`);
   }

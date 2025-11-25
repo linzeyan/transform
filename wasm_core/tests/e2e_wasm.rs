@@ -135,6 +135,16 @@ fn ipv4_range_reports_total_hosts() {
 }
 
 #[wasm_bindgen_test]
+fn ipv4_single_includes_mapped_ipv6() {
+    let map = js_to_json(ipv4_info("10.0.0.1").expect("ipv4 single info"));
+    assert_eq!(field(&map, "version"), "IPv4");
+    assert_eq!(
+        field(&map, "ipv6Mapped"),
+        "0000:0000:0000:0000:0000:ffff:0a00:0001"
+    );
+}
+
+#[wasm_bindgen_test]
 fn coder_encode_and_decode_cycle() {
     let enc = js_to_json(encode_content("rust").expect("encode content"));
     assert_eq!(field(&enc, "base64_standard"), "cnVzdA==");
