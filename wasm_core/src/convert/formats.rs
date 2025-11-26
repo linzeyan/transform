@@ -168,6 +168,174 @@ pub fn format_content(format_name: &str, input: &str, minify: bool) -> Result<St
             xml::json_to_xml(&json_text)
         }
         FORMAT_GO_STRUCT => Ok(input.trim().to_string()),
+        FORMAT_GRAPHQL => format_braced_content(input, minify, false),
+        FORMAT_PROTO => format_braced_content(input, minify, true),
+        FORMAT_TOON => format_toon_content(input, minify),
+        FORMAT_MSGPACK | FORMAT_SCHEMA => {
+            // Normalize by JSON round-trip; these are data formats.
+            let json_text = convert_formats(format_name, FORMAT_JSON, input)?;
+            let normalized_json = {
+                let parsed = parse_json(&json_text)?;
+                encode_json(&parsed, minify)?
+            };
+            convert_formats(FORMAT_JSON, format_name, &normalized_json)
+        }
         _ => Err("Formatting is not available for this format".into()),
     }
+}
+
+// Lightweight formatter for brace-based languages (GraphQL, Protobuf).
+fn format_braced_content(
+    input: &str,
+    minify: bool,
+    break_on_semicolon: bool,
+) -> Result<String, String> {
+    if minify {
+        // Collapse whitespace but keep braces, semicolons, and commas meaningful.
+        let mut out = String::new();
+        let mut last_space = false;
+        for ch in input.chars() {
+            if ch.is_whitespace() {
+                last_space = true;
+                continue;
+            }
+            if matches!(ch, '{' | '}' | ';' | ',' | ':') {
+                out.push(ch);
+                last_space = false;
+                continue;
+            }
+            if last_space {
+                out.push(' ');
+                last_space = false;
+            }
+            out.push(ch);
+        }
+        return Ok(out);
+    }
+
+    let mut lines: Vec<String> = Vec::new();
+    let mut indent: i32 = 0;
+    for token in tokenize_braced(input, break_on_semicolon) {
+        let normalized = normalize_braced_token(&token, break_on_semicolon);
+        match normalized.as_str() {
+            "}" => {
+                indent = (indent - 1).max(0);
+                push_line(&mut lines, indent, "}");
+            }
+            "{" => {
+                push_line(&mut lines, indent, "{");
+                indent += 1;
+            }
+            ";" => {
+                if let Some(last) = lines.last_mut() {
+                    last.push(';');
+                } else {
+                    push_line(&mut lines, indent, ";");
+                }
+            }
+            t => {
+                push_line(&mut lines, indent, t);
+            }
+        }
+    }
+    Ok(lines.join("\n"))
+}
+
+fn tokenize_braced(input: &str, break_on_semicolon: bool) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut buf = String::new();
+    let push_buf = |tokens: &mut Vec<String>, buf: &mut String| {
+        let trimmed = buf.trim();
+        if !trimmed.is_empty() {
+            tokens.push(trimmed.to_string());
+        }
+        buf.clear();
+    };
+
+    for ch in input.chars() {
+        match ch {
+            '{' | '}' => {
+                push_buf(&mut tokens, &mut buf);
+                tokens.push(ch.to_string());
+            }
+            ';' if break_on_semicolon => {
+                push_buf(&mut tokens, &mut buf);
+                tokens.push(String::from(";"));
+            }
+            '\n' | '\r' => {
+                push_buf(&mut tokens, &mut buf);
+            }
+            _ => buf.push(ch),
+        }
+    }
+    push_buf(&mut tokens, &mut buf);
+    tokens
+}
+
+fn push_line(lines: &mut Vec<String>, indent: i32, line: &str) {
+    let mut buf = String::new();
+    for _ in 0..indent {
+        buf.push_str("  ");
+    }
+    buf.push_str(line.trim());
+    lines.push(buf);
+}
+
+fn normalize_braced_token(token: &str, break_on_semicolon: bool) -> String {
+    let mut out = String::new();
+    let mut prev_space = false;
+    let mut chars = token.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch.is_whitespace() {
+            prev_space = true;
+            continue;
+        }
+        match ch {
+            ':' => {
+                while out.ends_with(' ') {
+                    out.pop();
+                }
+                out.push(':');
+                while matches!(chars.peek(), Some(c) if c.is_whitespace()) {
+                    chars.next();
+                }
+                out.push(' ');
+                prev_space = false;
+            }
+            '=' => {
+                if !out.is_empty() && !out.ends_with(' ') {
+                    out.push(' ');
+                }
+                out.push('=');
+                while matches!(chars.peek(), Some(c) if c.is_whitespace()) {
+                    chars.next();
+                }
+                out.push(' ');
+                prev_space = false;
+            }
+            ';' if break_on_semicolon => {
+                out = out.trim_end().to_string();
+                out.push(';');
+                prev_space = false;
+            }
+            _ => {
+                if prev_space && !out.ends_with(' ') {
+                    out.push(' ');
+                }
+                out.push(ch);
+                prev_space = false;
+            }
+        }
+    }
+    out.trim().to_string()
+}
+
+fn format_toon_content(input: &str, minify: bool) -> Result<String, String> {
+    // Reuse existing TOON converters to normalize structure.
+    let json = convert_formats(FORMAT_TOON, FORMAT_JSON, input)?;
+    let pretty_json = {
+        let value = parse_json(&json)?;
+        encode_json(&value, minify)?
+    };
+    convert_formats(FORMAT_JSON, FORMAT_TOON, &pretty_json)
 }
