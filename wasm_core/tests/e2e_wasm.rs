@@ -157,6 +157,36 @@ fn format_then_pretty_protobuf_restores_layout() {
 }
 
 #[wasm_bindgen_test]
+fn ssh_key_generator_returns_keys() {
+    let result =
+        wasm_core::generate_ssh_key("ed25519", 0, "test@local", "openssh", 16, false, false)
+            .expect("ssh key");
+    let map = js_to_json(result);
+    assert_eq!(field(&map, "keyType"), "ed25519");
+    assert!(field(&map, "publicKey").starts_with("ssh-ed25519 "));
+    assert!(field(&map, "privateKey").contains("OPENSSH PRIVATE KEY"));
+}
+
+#[wasm_bindgen_test]
+fn ssh_key_generator_clamps_rsa_bits_and_supports_sk() {
+    // bits below 2048 should still produce a key
+    let rsa_res =
+        wasm_core::generate_ssh_key("rsa", 1024, "rsa@local", "openssh", 16, false, false)
+            .expect("rsa key");
+    let rsa_map = js_to_json(rsa_res);
+    assert_eq!(field(&rsa_map, "keyType"), "rsa");
+    assert!(field(&rsa_map, "publicKey").contains("ssh-rsa"));
+
+    // ed25519-sk should also work and return public/private material
+    let sk_res =
+        wasm_core::generate_ssh_key("ed25519-sk", 0, "sk@local", "openssh", 20, true, true)
+            .expect("sk key");
+    let sk_map = js_to_json(sk_res);
+    assert_eq!(field(&sk_map, "keyType"), "ed25519-sk");
+    assert!(field(&sk_map, "publicKey").contains("ssh-ed25519"));
+}
+
+#[wasm_bindgen_test]
 fn format_converter_json_to_proto_snake_case_fields() {
     let input = r#"{"plugins":{"proxy-rewrite":{"uri":"/x"}}}"#;
     let proto_text = transform_format("JSON", "Protobuf", input).expect("json -> proto");

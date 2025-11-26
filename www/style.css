@@ -719,6 +719,40 @@ button#swap {
   font-size: 14px;
 }
 
+#sshWorkspace {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ssh-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  padding: 0 18px 18px;
+}
+
+.ssh-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ssh-grid input,
+.ssh-grid select,
+.ssh-comment input {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--fg);
+  font: inherit;
+}
+
+.ssh-comment {
+  grid-column: 1 / -1;
+}
+
 .ipv4-results {
   padding: 16px 18px 24px;
   display: flex;

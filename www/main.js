@@ -28,6 +28,7 @@ import initWasm, {
   bcrypt_verify,
   argon2_hash,
   argon2_verify,
+  generate_ssh_key,
 } from "./pkg/wasm_core.js";
 
 const formats = [
@@ -423,6 +424,11 @@ const toolGroups = [
         label: "SQL Inserts",
         description: "Generate INSERT statements from MySQL schema.",
       },
+      {
+        id: "generator-ssh",
+        label: "SSH Key",
+        description: "Generate SSH public/private key pairs.",
+      },
     ],
   },
   {
@@ -455,6 +461,7 @@ const workspaceByTool = {
   "generator-random": "randomWorkspace",
   "generator-totp": "totpWorkspace",
   "generator-sql": "dataWorkspace",
+  "generator-ssh": "sshWorkspace",
   "fingerprint-browser": "fingerprintWorkspace",
 };
 
@@ -471,6 +478,7 @@ const generatorTools = new Set([
   "generator-random",
   "generator-totp",
   "generator-sql",
+  "generator-ssh",
 ]);
 const fingerprintTools = new Set(["fingerprint-browser"]);
 const uuidToolSet = new Set(["generator-uuid"]);
@@ -478,6 +486,7 @@ const userAgentToolSet = new Set(["generator-useragent"]);
 const randomToolSet = new Set(["generator-random"]);
 const totpToolSet = new Set(["generator-totp"]);
 const dataToolSet = new Set(["generator-sql"]);
+const sshToolSet = new Set(["generator-ssh"]);
 const implementedTools = new Set([
   "format",
   "converter-html-md",
@@ -524,6 +533,7 @@ const workspaceIds = [
   "randomWorkspace",
   "totpWorkspace",
   "dataWorkspace",
+  "sshWorkspace",
   "fingerprintWorkspace",
 ];
 
@@ -570,6 +580,14 @@ const state = {
   randomMinSymbols: 0,
   randomSymbols: new Set(),
   randomResults: [],
+  sshType: "ed25519",
+  sshBits: 4096,
+  sshComment: "",
+  sshFormat: "openssh",
+  sshKdf: 16,
+  sshResident: false,
+  sshVerify: false,
+  sshLastKey: null,
   timestampUpdating: false,
   timestampActiveField: null,
   totpSecret: "",
@@ -796,6 +814,20 @@ function cacheElements() {
   elements.randomSymbolMinRow = document.getElementById("randomSymbolMinRow");
   elements.randomGenerate = document.getElementById("randomGenerate");
   elements.randomResults = document.getElementById("randomResults");
+  elements.sshWorkspace = document.getElementById("sshWorkspace");
+  elements.sshType = document.getElementById("sshType");
+  elements.sshBits = document.getElementById("sshBits");
+  elements.sshBitsRow = document.querySelector(".ssh-bits-row");
+  elements.sshFormat = document.getElementById("sshFormat");
+  elements.sshKdf = document.getElementById("sshKdf");
+  elements.sshComment = document.getElementById("sshComment");
+  elements.sshGenerate = document.getElementById("sshGenerate");
+  elements.sshPublic = document.getElementById("sshPublic");
+  elements.sshPrivate = document.getElementById("sshPrivate");
+  elements.sshCopyPublic = document.getElementById("sshCopyPublic");
+  elements.sshCopyPrivate = document.getElementById("sshCopyPrivate");
+  elements.sshResident = document.getElementById("sshResident");
+  elements.sshVerify = document.getElementById("sshVerify");
   elements.timestampInputs = document.querySelectorAll(
     "#timestampWorkspace input[data-field]",
   );
@@ -1072,6 +1104,22 @@ function bindUI() {
   elements.randomGenerate?.addEventListener("click", () =>
     runRandomGenerator(),
   );
+  elements.sshGenerate?.addEventListener("click", runSshGenerator);
+  elements.sshCopyPublic?.addEventListener("click", () => {
+    const val = elements.sshPublic?.value || "";
+    if (val.trim()) copyText(val, "public key");
+  });
+  elements.sshCopyPrivate?.addEventListener("click", () => {
+    const val = elements.sshPrivate?.value || "";
+    if (val.trim()) copyText(val, "private key");
+  });
+  elements.sshType?.addEventListener("change", handleSshTypeChange);
+  elements.sshBits?.addEventListener("input", handleSshBitsChange);
+  elements.sshComment?.addEventListener("input", handleSshCommentChange);
+  elements.sshFormat?.addEventListener("change", handleSshFormatChange);
+  elements.sshKdf?.addEventListener("input", handleSshKdfChange);
+  elements.sshResident?.addEventListener("change", handleSshResidentChange);
+  elements.sshVerify?.addEventListener("change", handleSshVerifyChange);
   elements.randomResults?.addEventListener("click", handleRandomResultsClick);
   elements.kdfAlgoSelect = document.getElementById("kdfAlgoSelect");
   elements.kdfCards = document.querySelectorAll(".kdf-card");
@@ -1288,6 +1336,8 @@ function selectTool(toolId) {
     activateRandomTool();
   } else if (isTotpTool(toolId)) {
     activateTotpTool();
+  } else if (isSshTool(toolId)) {
+    activateSshTool();
   } else if (isDataTool(toolId)) {
     activateDataTool();
   } else if (isFingerprintTool(toolId)) {
@@ -1724,6 +1774,10 @@ function isTotpTool(toolId) {
 
 function isDataTool(toolId) {
   return dataToolSet.has(toolId);
+}
+
+function isSshTool(toolId) {
+  return sshToolSet.has(toolId);
 }
 
 function isFingerprintTool(toolId) {
@@ -3253,6 +3307,21 @@ function activateRandomTool() {
   setStatus("Ready", false);
 }
 
+function activateSshTool() {
+  if (elements.sshType) elements.sshType.value = state.sshType;
+  if (elements.sshBits) {
+    elements.sshBits.value = state.sshBits;
+  }
+  if (elements.sshComment) elements.sshComment.value = state.sshComment;
+  if (elements.sshFormat) elements.sshFormat.value = state.sshFormat;
+  if (elements.sshKdf) elements.sshKdf.value = state.sshKdf;
+  if (elements.sshResident) elements.sshResident.checked = state.sshResident;
+  if (elements.sshVerify) elements.sshVerify.checked = state.sshVerify;
+  updateSshVisibility();
+  renderSshOutputs();
+  setStatus("Ready", false);
+}
+
 function updateRandomZeroControl() {
   if (!elements.randomAllowZero) return;
   if (elements.randomAllowZeroRow) {
@@ -3511,6 +3580,103 @@ function handleRandomResultsClick(event) {
   const value = row.dataset.randomValue || "";
   if (!value) return;
   copyText(value, "Random string");
+}
+
+function handleSshTypeChange(event) {
+  state.sshType = event.target.value;
+  updateSshVisibility();
+}
+
+function handleSshBitsChange(event) {
+  const value = parseInt(event.target.value, 10);
+  state.sshBits = Number.isFinite(value) ? value : 4096;
+}
+
+function handleSshCommentChange(event) {
+  state.sshComment = event.target.value || "";
+}
+
+function handleSshFormatChange(event) {
+  state.sshFormat = event.target.value || "openssh";
+  if (state.sshLastKey) {
+    renderSshOutputs();
+  }
+}
+
+function handleSshKdfChange(event) {
+  const value = parseInt(event.target.value, 10);
+  const clamped = Math.min(500, Math.max(16, Number.isFinite(value) ? value : 16));
+  state.sshKdf = clamped;
+  if (elements.sshKdf) elements.sshKdf.value = clamped;
+}
+
+function handleSshResidentChange(event) {
+  state.sshResident = Boolean(event?.target?.checked);
+}
+
+function handleSshVerifyChange(event) {
+  state.sshVerify = Boolean(event?.target?.checked);
+}
+
+function runSshGenerator() {
+  if (!state.wasmReady) {
+    setStatus("Waiting for WebAssembly...", true);
+    return;
+  }
+  const keyType = elements.sshType?.value || "ed25519";
+  const rawBits = parseInt(elements.sshBits?.value || "4096", 10) || 4096;
+  const bits = keyType === "rsa" ? Math.max(2048, rawBits) : rawBits;
+  const comment = elements.sshComment?.value || "";
+  const format = elements.sshFormat?.value || "openssh";
+  const kdf = parseInt(elements.sshKdf?.value || "16", 10) || 16;
+  const resident = Boolean(elements.sshResident?.checked);
+  const verify = Boolean(elements.sshVerify?.checked);
+  try {
+    const result = generate_ssh_key(keyType, bits, comment, format, kdf, resident, verify);
+    const data = normalizeMapResult(result);
+    state.sshLastKey = data;
+    renderSshOutputs();
+    setStatus("SSH key generated", false);
+  } catch (err) {
+    setStatus(`⚠️ ${err?.message || err}`, true);
+  }
+}
+
+function updateSshVisibility() {
+  const isRsa = state.sshType === "rsa";
+  const isSk = state.sshType.endsWith("-sk");
+  if (elements.sshBitsRow) {
+    elements.sshBitsRow.classList.toggle("hidden", !isRsa);
+  }
+  if (elements.sshBits) {
+    elements.sshBits.disabled = !isRsa;
+  }
+  document.querySelectorAll(".ssh-sk-option").forEach((el) => {
+    el.classList.toggle("hidden", !isSk);
+  });
+}
+
+function renderSshOutputs() {
+  if (!state.sshLastKey) {
+    if (elements.sshPublic) elements.sshPublic.value = "";
+    if (elements.sshPrivate) elements.sshPrivate.value = "";
+    return;
+  }
+  const data = state.sshLastKey;
+  const format = state.sshFormat || data.format || "openssh";
+  if (elements.sshPublic && typeof data.publicKey === "string") {
+    elements.sshPublic.value = data.publicKey;
+  }
+  if (elements.sshPrivate && typeof data.privateKey === "string") {
+    const base = data.privateKey;
+    const rendered =
+      format === "pem"
+        ? base
+            .replace("OPENSSH PRIVATE KEY", "PRIVATE KEY")
+            .replace(/openssh/gi, "pem")
+        : base;
+    elements.sshPrivate.value = rendered;
+  }
 }
 
 function handleHashEncodingChange(event) {

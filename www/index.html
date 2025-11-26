@@ -555,6 +555,81 @@
 				</section>
 			</div>
 
+			<div id="sshWorkspace" class="tool-view hidden">
+				<section class="panel">
+					<div class="panel-header">
+						<div>
+							<h2>SSH Key Generator</h2>
+							<p>Generate OpenSSH public/private key pairs.</p>
+						</div>
+						<div class="generator-actions">
+							<button id="sshGenerate">Generate</button>
+						</div>
+					</div>
+					<div class="ssh-grid">
+						<label>
+							<span>Type</span>
+							<select id="sshType">
+								<option value="ed25519" selected>Ed25519</option>
+								<option value="ed25519-sk">Ed25519 SK</option>
+								<option value="rsa">RSA</option>
+							</select>
+						</label>
+						<label class="ssh-bits-row">
+							<span>Bits (RSA)</span>
+							<input type="number" id="sshBits" min="2048" max="8192" value="4096" disabled />
+						</label>
+						<label>
+							<span>Format</span>
+							<select id="sshFormat">
+								<option value="openssh" selected>OpenSSH</option>
+								<option value="pem">PEM</option>
+							</select>
+						</label>
+						<label>
+							<span>KDF Rounds</span>
+							<input type="number" id="sshKdf" min="16" max="500" value="16" />
+						</label>
+						<label class="ssh-comment">
+							<span>Comment</span>
+							<input type="text" id="sshComment" spellcheck="false" placeholder="user@host" />
+						</label>
+						<label class="ssh-sk-option ssh-sk-resident hidden">
+							<input type="checkbox" id="sshResident" />
+							<span>Resident (store on hardware token)</span>
+						</label>
+						<label class="ssh-sk-option ssh-sk-verify hidden">
+							<input type="checkbox" id="sshVerify" />
+							<span>Verify required (touch on each use)</span>
+						</label>
+					</div>
+				</section>
+				<section class="panel">
+					<div class="panel-header">
+						<div>
+							<h2>Public Key</h2>
+							<p>authorized_keys format</p>
+						</div>
+						<div class="panel-actions">
+							<button class="ghost-btn" id="sshCopyPublic">Copy</button>
+						</div>
+					</div>
+					<textarea id="sshPublic" spellcheck="false" readonly></textarea>
+				</section>
+				<section class="panel">
+					<div class="panel-header">
+						<div>
+							<h2>Private Key</h2>
+							<p>OpenSSH PEM</p>
+						</div>
+						<div class="panel-actions">
+							<button class="ghost-btn" id="sshCopyPrivate">Copy</button>
+						</div>
+					</div>
+					<textarea id="sshPrivate" spellcheck="false" readonly></textarea>
+				</section>
+			</div>
+
 			<!-- Browser Fingerprint surface: shows passive signals we can read without permissions. -->
 			<div id="fingerprintWorkspace" class="tool-view hidden">
 				<section class="panel">
