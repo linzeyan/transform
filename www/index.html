@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en-US">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -644,6 +644,38 @@
 					</div>
 					<div id="fingerprintGrid" class="fingerprint-grid">
 						<div class="muted">Loading…</div>
+					</div>
+				</section>
+			</div>
+
+			<!-- SSL Inspector workspace: decodes PEM certificates or chains. -->
+			<div id="certWorkspace" class="tool-view hidden">
+				<section class="panel">
+					<div class="panel-header">
+						<div>
+							<h2>SSL Inspector</h2>
+							<p>Paste a PEM certificate or chain to view decoded fields.</p>
+						</div>
+						<div class="panel-actions">
+							<button class="ghost-btn" id="certSample">Load sample</button>
+							<button id="certParse">Parse</button>
+						</div>
+					</div>
+					<textarea
+						id="certInput"
+						spellcheck="false"
+						placeholder="-----BEGIN CERTIFICATE-----"
+					></textarea>
+				</section>
+				<section class="panel">
+					<div class="panel-header">
+						<div>
+							<h2>Certificates</h2>
+							<p id="certSummary" class="muted">No certificates parsed yet.</p>
+						</div>
+					</div>
+					<div id="certResults" class="cert-grid">
+						<div class="muted">Paste a certificate to see details.</div>
 					</div>
 				</section>
 			</div>

@@ -10,9 +10,9 @@ use wasm_bindgen_test::*;
 use wasm_core::{
     argon2_hash, argon2_verify, bcrypt_hash, bcrypt_verify, convert_number_base, convert_timestamp,
     convert_units, decode_content, encode_content, generate_insert_statements,
-    generate_user_agents, generate_uuids, hash_content, html_to_markdown_text, ipv4_info,
-    jwt_decode, jwt_encode, markdown_to_html_text, random_number_sequences, totp_token,
-    transform_format, url_decode, url_encode,
+    generate_user_agents, generate_uuids, hash_content, html_to_markdown_text,
+    inspect_certificates, ipv4_info, jwt_decode, jwt_encode, markdown_to_html_text,
+    random_number_sequences, totp_token, transform_format, url_decode, url_encode,
 };
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -78,6 +78,24 @@ fn kdf_random_salt_controls_exist() {
     assert!(
         INDEX_HTML.contains("id=\"argonSalt\""),
         "Argon2 salt input should be present"
+    );
+}
+
+#[wasm_bindgen_test]
+fn ssl_inspector_workspace_is_wired() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    assert!(
+        INDEX_HTML.contains("id=\"certWorkspace\""),
+        "SSL inspector workspace should exist in DOM"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"certInput\""),
+        "SSL inspector input textarea should be present"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"certResults\""),
+        "SSL inspector results container should be present"
     );
 }
 
@@ -345,4 +363,23 @@ fn sql_insert_generator_includes_table_name() {
         generate_insert_statements(schema, 2, JsValue::NULL).expect("generate insert statements");
     assert!(inserts.contains("INSERT INTO `users`"));
     assert!(inserts.contains("VALUES"));
+}
+
+#[wasm_bindgen_test]
+fn ssl_inspector_parses_chain_via_wasm() {
+    const CHAIN: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/test_chain.pem"
+    ));
+    let value = inspect_certificates(CHAIN).expect("certificates parsed");
+    let list = js_to_json(value);
+    let arr = list
+        .as_array()
+        .unwrap_or_else(|| panic!("expected array from inspect_certificates"));
+    assert_eq!(arr.len(), 2);
+    let leaf = arr[0].as_object().expect("leaf map");
+    assert_eq!(
+        field(&JsonValue::Object(leaf.clone()), "subjectCommonName"),
+        "transform.test"
+    );
 }

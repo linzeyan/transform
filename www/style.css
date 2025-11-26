@@ -268,6 +268,10 @@ button#swap {
   grid-template-columns: 1fr;
 }
 
+#certWorkspace {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .tool-view.hidden {
   display: none;
 }
@@ -1127,6 +1131,114 @@ body.tool-generator .converter-only {
 .fingerprint-list code {
   font-size: 13px;
   word-break: break-word;
+}
+
+.cert-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  padding: 0 18px 18px;
+}
+
+.cert-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cert-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.cert-chip {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cert-card h3 {
+  margin: 0;
+}
+
+.cert-valid {
+  text-align: right;
+  border-left: 1px solid var(--border);
+  padding-left: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cert-valid code {
+  display: block;
+  color: var(--fg);
+  margin-top: 4px;
+  word-break: break-all;
+}
+
+.cert-valid.expired {
+  color: var(--danger);
+}
+
+.cert-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.cert-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cert-block span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cert-block code {
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.cert-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cert-badge {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.cert-fingerprints {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.cert-fingerprints label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cert-fingerprints code {
+  display: block;
+  font-size: 12px;
+  word-break: break-all;
 }
 
 @media (max-width: 960px) {

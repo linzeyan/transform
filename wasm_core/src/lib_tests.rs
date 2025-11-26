@@ -1,4 +1,5 @@
 use super::*;
+use crate::cert;
 use base64::Engine;
 use bcrypt::BASE_64;
 use chrono::{TimeZone, Utc};
@@ -349,4 +350,38 @@ fn totp_token_internal_validates_inputs() {
 
     let err = totp_token_internal("JBSWY3DPEHPK3PXP", "SHA256", 30, 3).unwrap_err();
     assert!(err.contains("digits must be between 4 and 10"));
+}
+
+#[test]
+fn inspect_certificates_parses_chain_and_links_issuer() {
+    const CHAIN: &str = include_str!("../tests/fixtures/test_chain.pem");
+    let summaries = cert::inspect_certificates_internal(CHAIN).expect("chain parsed");
+    assert_eq!(summaries.len(), 2, "expected leaf + root");
+
+    let leaf = &summaries[0];
+    assert_eq!(
+        leaf.subject_common_name.as_deref(),
+        Some("transform.test"),
+        "leaf CN should match request"
+    );
+    assert_eq!(
+        leaf.issuer_common_name.as_deref(),
+        Some("Transform Root CA"),
+        "leaf issuer should be root CN"
+    );
+    assert!(
+        leaf.subject_alt_names
+            .iter()
+            .any(|val| val.contains("transform.test")),
+        "SAN should include DNS names"
+    );
+    assert_eq!(
+        leaf.issuer_position,
+        Some(2),
+        "authority key id should map to root position"
+    );
+    assert!(
+        !leaf.fingerprints.sha256.is_empty(),
+        "fingerprints should be present"
+    );
 }

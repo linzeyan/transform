@@ -33,6 +33,7 @@ use uuid as uuid_crate;
 use uuid_crate::{Context, NoContext, Timestamp};
 use wasm_bindgen::prelude::*;
 
+mod cert;
 mod convert;
 
 /// Wasm entry point that installs a panic hook so Rust panics appear in the browser console.
@@ -722,6 +723,16 @@ pub fn inspect_schema(schema: &str) -> Result<JsValue, JsValue> {
         })
         .collect();
     serde_wasm_bindgen::to_value(&inspections).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+#[wasm_bindgen]
+/// Parses one or more PEM/DER certificates (including full chains) and surfaces
+/// human-readable metadata for each certificate so the UI can render details
+/// without shipping OpenSSL to the browser.
+pub fn inspect_certificates(input: &str) -> Result<JsValue, JsValue> {
+    cert::inspect_certificates_internal(input)
+        .and_then(|list| serde_wasm_bindgen::to_value(&list).map_err(|err| err.to_string()))
+        .map_err(|err| JsValue::from_str(&err))
 }
 
 fn generate_insert_statements_internal(
