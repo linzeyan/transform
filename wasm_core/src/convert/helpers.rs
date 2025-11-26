@@ -11,9 +11,6 @@ pub fn export_name(key: &str) -> String {
             } else {
                 runes.push(ch);
             }
-        } else if ch == '_' {
-            runes.push('_');
-            cap_next = true;
         } else {
             cap_next = true;
         }
@@ -25,7 +22,38 @@ pub fn export_name(key: &str) -> String {
         }
         out.remove(0);
     }
+    if let Some(first) = out.chars().next() {
+        if first.is_ascii_lowercase() {
+            let mut chars: Vec<char> = out.chars().collect();
+            chars[0] = first.to_ascii_uppercase();
+            out = chars.into_iter().collect();
+        }
+    }
     out
+}
+
+/// Converts a key into snake_case for targets like Protobuf field names.
+pub fn snake_name(key: &str) -> String {
+    let mut normalized = String::new();
+    for ch in key.chars() {
+        if ch.is_alphanumeric() {
+            normalized.push(ch);
+        } else {
+            normalized.push('_');
+        }
+    }
+    let mut words: Vec<String> = Vec::new();
+    for token in normalized.split('_') {
+        for part in split_words(token) {
+            if !part.is_empty() {
+                words.push(part.to_lowercase());
+            }
+        }
+    }
+    if words.is_empty() {
+        return "field".into();
+    }
+    words.join("_")
 }
 
 /// Lower-cases the first word of a camel/pascal string while preserving acronyms.

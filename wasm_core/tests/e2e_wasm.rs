@@ -101,6 +101,31 @@ fn format_converter_json_to_yaml() {
 }
 
 #[wasm_bindgen_test]
+fn format_converter_json_to_go_struct_handles_nested_objects() {
+    let input = r#"{"plugins":{"proxy-rewrite":{"uri":"/x"}},"update_time":1}"#;
+    let go = transform_format("JSON", "Go Struct", input).expect("json -> go struct");
+    assert!(go.contains("type Plugins struct"));
+    assert!(go.contains("type ProxyRewrite struct"));
+    assert!(go.contains("UpdateTime"));
+}
+
+#[wasm_bindgen_test]
+fn format_converter_json_to_graphql_camelizes_field_names() {
+    let input = r#"{"plugins":{"proxy-rewrite":{"uri":"/x"}}}"#;
+    let gql = transform_format("JSON", "GraphQL Schema", input).expect("json -> gql");
+    assert!(gql.contains("plugins: Plugins"));
+    assert!(gql.contains("proxyRewrite: ProxyRewrite"));
+}
+
+#[wasm_bindgen_test]
+fn format_converter_json_to_proto_snake_case_fields() {
+    let input = r#"{"plugins":{"proxy-rewrite":{"uri":"/x"}}}"#;
+    let proto_text = transform_format("JSON", "Protobuf", input).expect("json -> proto");
+    assert!(proto_text.contains("proxy_rewrite"));
+    assert!(!proto_text.contains("proxy-rewrite"));
+}
+
+#[wasm_bindgen_test]
 fn markdown_html_roundtrip() {
     let html =
         markdown_to_html_text("# Title\n\n- item").expect("markdown to html conversion works");

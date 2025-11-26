@@ -899,10 +899,12 @@ function bindUI() {
     setStatus("Cleared input/output", false);
   });
   elements.from?.addEventListener("change", () => {
+    updateConverterLabels(elements.from?.value || "", elements.to?.value || "");
     ensureConverterMode();
     scheduleConvert(true);
   });
   elements.to?.addEventListener("change", () => {
+    updateConverterLabels(elements.from?.value || "", elements.to?.value || "");
     ensureConverterMode();
     scheduleConvert(true);
   });
@@ -1140,13 +1142,17 @@ function ensureConverterMode() {
     setStatus("Unsupported format", true);
     return false;
   }
-  if (elements.inputLabel) elements.inputLabel.textContent = from;
-  if (elements.outputLabel) elements.outputLabel.textContent = to;
-  if (elements.input) {
-    elements.input.placeholder = samples[from] || "";
-  }
+  updateConverterLabels(from, to);
   state.formatKey = `${from}|${to}`;
   return true;
+}
+
+function updateConverterLabels(from, to) {
+  if (elements.inputLabel) elements.inputLabel.textContent = from || "Input";
+  if (elements.outputLabel) elements.outputLabel.textContent = to || "Output";
+  if (elements.input) {
+    elements.input.placeholder = samples[from] || elements.input.placeholder;
+  }
 }
 
 function scheduleConvert(immediate = false) {

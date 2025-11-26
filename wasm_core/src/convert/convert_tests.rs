@@ -18,6 +18,41 @@ fn formats_go_struct_generation() {
 }
 
 #[test]
+fn formats_json_to_go_struct_nests_types() {
+    let json = r#"{"plugins":{"proxy-rewrite":{"uri":"/x"}},"update_time":1}"#;
+    let go = formats::convert_formats("JSON", "Go Struct", json).unwrap();
+    assert!(go.contains("type Plugins struct"));
+    assert!(go.contains("type ProxyRewrite struct"));
+    assert!(go.contains("UpdateTime int"));
+}
+
+#[test]
+fn formats_json_to_proto_nests_messages() {
+    let json = r#"{"value":{"uri":"/"}}"#;
+    let proto_text = formats::convert_formats("JSON", "Protobuf", json).unwrap();
+    assert!(proto_text.contains("message Value"));
+    assert!(proto_text.contains("string uri = 1;"));
+}
+
+#[test]
+fn formats_json_to_graphql_nests_types() {
+    let json = r#"{"plugins":{"name":"p"}}"#;
+    let gql = formats::convert_formats("JSON", "GraphQL Schema", json).unwrap();
+    assert!(gql.contains("type Plugins"));
+    assert!(gql.contains("plugins: Plugins"));
+    assert!(gql.contains("name: String"));
+}
+
+#[test]
+fn formats_json_to_graphql_camelizes_fields() {
+    let json = r#"{"plugins":{"proxy-rewrite":{"uri":"/x"}}}"#;
+    let gql = formats::convert_formats("JSON", "GraphQL Schema", json).unwrap();
+    assert!(gql.contains("plugins: Plugins"));
+    assert!(gql.contains("proxyRewrite: ProxyRewrite"));
+    assert!(gql.contains("type ProxyRewrite"));
+}
+
+#[test]
 fn formats_format_content_minifies() {
     let min = formats::format_content("JSON", "{\n  \"a\": 1\n}\n", true).unwrap();
     assert_eq!(min, "{\"a\":1}");
@@ -55,13 +90,14 @@ fn graphql_back_to_json() {
 
 #[test]
 fn helpers_export_and_lower_first() {
-    assert_eq!(helpers::export_name("123foo_bar"), "foo_Bar");
+    assert_eq!(helpers::export_name("123foo_bar"), "FooBar");
     assert_eq!(helpers::lower_first("UserName"), "userName");
     assert!(helpers::is_all_upper("ABC"));
     assert_eq!(
         helpers::split_words("HTTPStatus200"),
         vec!["HTTP", "Status", "200"]
     );
+    assert_eq!(helpers::snake_name("proxy-rewrite"), "proxy_rewrite");
 }
 
 #[test]
