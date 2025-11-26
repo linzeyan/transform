@@ -59,11 +59,27 @@ fn encode_content_map_includes_common_encodings() {
 }
 
 #[test]
+fn encode_content_bytes_matches_text_map() {
+    // File bytes should reuse the same encoding helpers used for text input.
+    let text_map = encode_content_map("file!");
+    let bytes_map = encode_content_map_bytes("file!".as_bytes());
+    assert_eq!(text_map, bytes_map);
+}
+
+#[test]
 fn decode_content_internal_round_trips_base64() {
     let encoded = base64::engine::general_purpose::STANDARD.encode("rust");
     let decoded =
         decode_content_internal("base64_standard", &encoded).expect("should decode base64");
     assert_eq!(decoded, b"rust");
+}
+
+#[test]
+fn decode_content_bytes_preserves_binary_output() {
+    // Decode bytes should return raw data, not a lossy UTF-8 string.
+    let encoded = base64::engine::general_purpose::STANDARD.encode([0u8, 255u8, 2u8, 3u8]);
+    let decoded = decode_content_bytes("base64_standard", &encoded).expect("binary decode");
+    assert_eq!(decoded, vec![0u8, 255u8, 2u8, 3u8]);
 }
 
 #[test]
@@ -286,6 +302,93 @@ fn hash_content_hmac_matches_reference() {
         map.get("sha1"),
         Some(&"0caf649feee4953d87bf903ac1176c45e028df16".into())
     );
+}
+
+#[test]
+fn hash_content_bytes_matches_text_hashes() {
+    // Hashing raw bytes should match the exact digests produced for text input.
+    let file_map = hash_content_map(b"abc");
+    let text_map = hash_content_map("abc".as_bytes());
+    assert_eq!(file_map, text_map);
+}
+
+#[test]
+fn hash_content_hmac_bytes_matches_text() {
+    let file_map = hash_hmac_map(b"payload", b"topsecret");
+    let text_map = hash_hmac_map("payload".as_bytes(), b"topsecret");
+    assert_eq!(file_map.get("sha256"), text_map.get("sha256"));
+    assert_eq!(file_map.get("sha1"), text_map.get("sha1"));
+}
+
+#[test]
+fn encrypt_bytes_internal_aes_roundtrip() {
+    let key_bytes = [0x11u8; 32];
+    let nonce_bytes = [0x22u8; 12];
+    let key_b64 = base64::engine::general_purpose::STANDARD.encode(key_bytes);
+    let nonce_b64 = base64::engine::general_purpose::STANDARD.encode(nonce_bytes);
+    let plaintext = b"secret memo";
+    let output = encrypt_bytes_internal(
+        "aes-256-gcm",
+        plaintext,
+        Some(key_b64.clone()),
+        Some(nonce_b64.clone()),
+    )
+    .expect("encrypt ok");
+    assert_eq!(output.algorithm, "aes-256-gcm");
+    assert_eq!(output.key_b64, key_b64);
+    assert_eq!(output.nonce_b64, nonce_b64);
+
+    let decrypted =
+        decrypt_bytes_internal("aes-256-gcm", &output.ciphertext_b64, &key_b64, &nonce_b64)
+            .expect("decrypt ok");
+    assert_eq!(decrypted, plaintext);
+}
+
+#[test]
+fn encrypt_bytes_internal_chacha_roundtrip() {
+    let key_bytes = [0xABu8; 32];
+    let nonce_bytes = [0xCDu8; 12];
+    let key_b64 = base64::engine::general_purpose::STANDARD.encode(key_bytes);
+    let nonce_b64 = base64::engine::general_purpose::STANDARD.encode(nonce_bytes);
+    let plaintext = b"file-bytes";
+    let output = encrypt_bytes_internal(
+        "chacha20-poly1305",
+        plaintext,
+        Some(key_b64.clone()),
+        Some(nonce_b64.clone()),
+    )
+    .expect("encrypt ok");
+    let decrypted = decrypt_bytes_internal(
+        "chacha20-poly1305",
+        &output.ciphertext_b64,
+        &key_b64,
+        &nonce_b64,
+    )
+    .expect("decrypt ok");
+    assert_eq!(decrypted, plaintext);
+}
+
+#[test]
+fn xchacha_nonce_length_is_validated() {
+    let key_b64 = base64::engine::general_purpose::STANDARD.encode([0x33u8; 32]);
+    let short_nonce = base64::engine::general_purpose::STANDARD.encode([0x44u8; 12]);
+    let err = encrypt_bytes_internal(
+        "xchacha20-poly1305",
+        b"plaintext",
+        Some(key_b64),
+        Some(short_nonce),
+    )
+    .unwrap_err();
+    assert!(
+        err.contains("24 bytes"),
+        "expected nonce length error, got {err}"
+    );
+}
+
+#[test]
+fn decrypt_bytes_internal_rejects_empty_key() {
+    let err = decrypt_bytes_internal("aes-256-gcm", "Zm9v", "", "").unwrap_err();
+    assert!(err.contains("key is required"), "msg: {err}");
 }
 
 #[test]

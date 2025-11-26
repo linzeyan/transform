@@ -298,6 +298,23 @@ button#swap {
   gap: 12px;
 }
 
+.coder-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px 12px;
+  flex-wrap: wrap;
+}
+
+.coder-mode-row .checkbox {
+  margin: 0;
+}
+
+#coderFileMeta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .decode-select {
   display: flex;
   flex-direction: column;
@@ -837,6 +854,12 @@ textarea:focus {
   flex-direction: column;
   gap: 18px;
   padding: 16px 18px 24px;
+}
+
+#coderDecodeMeta {
+  padding: 0 0 4px 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .coder-groups {

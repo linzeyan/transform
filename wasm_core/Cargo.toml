@@ -48,6 +48,8 @@ ssh-key = { version = "0.6", features = ["ed25519", "rsa", "rand_core"] }
 rand_core = "0.6"
 x509-parser = "0.16"
 time = { version = "0.3", features = ["formatting"] }
+aes-gcm = { version = "0.10", features = ["std"] }
+chacha20poly1305 = { version = "0.10", features = ["std"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

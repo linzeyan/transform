@@ -6,11 +6,18 @@ use std::str::FromStr;
 use std::sync::OnceLock;
 
 use adler::Adler32;
+use aes_gcm::{
+    Aes256Gcm, Nonce as AesNonce,
+    aead::{Aead as AesAead, KeyInit as AesKeyInit},
+};
 use argon2::{Algorithm as ArgonAlgorithm, Argon2, Version as ArgonVersion};
 use ascii85::{decode as ascii85_decode, encode as ascii85_encode};
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
 use bcrypt::{hash_with_salt as bcrypt_hash_with_salt, verify as bcrypt_verify_fn};
+use chacha20poly1305::{
+    ChaCha20Poly1305, Nonce as ChaChaNonce, XChaCha20Poly1305, XNonce as XChaChaNonce,
+};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use console_error_panic_hook::set_once as set_panic_hook;
 use crc::{CRC_32_ISCSI, CRC_64_ECMA_182, CRC_64_GO_ISO, Crc};
@@ -432,7 +439,7 @@ struct SshKeyPair {
 /// Generates an SSH keypair.
 /// `key_type`: "rsa", "ed25519", "ed25519-sk" (security key).
 /// `bits`: RSA key size (min 2048). `comment`: appended to public key. `format`: "openssh" or "pem" (pem aliases openssh output).
-/// `kdf_rounds`: UI hint (16–500) preserved in output; resident/verify flags are informational for *-sk types.
+/// `kdf_rounds`: UI hint (16-500) preserved in output; resident/verify flags are informational for *-sk types.
 pub fn generate_ssh_key(
     key_type: &str,
     bits: u32,
@@ -650,8 +657,20 @@ pub fn encode_content(input: &str) -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(&map).map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
+#[wasm_bindgen]
+/// Encodes arbitrary bytes (text or file contents) into common bases so file uploads can
+/// share the same output grid as text input in the UI.
+pub fn encode_content_bytes(data: &[u8]) -> Result<JsValue, JsValue> {
+    let map = encode_content_map_bytes(data);
+    serde_wasm_bindgen::to_value(&map).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
 fn encode_content_map(input: &str) -> BTreeMap<String, String> {
-    let data = input.as_bytes();
+    encode_content_map_bytes(input.as_bytes())
+}
+
+// Shared encoding helper so both text and raw file bytes produce identical maps.
+fn encode_content_map_bytes(data: &[u8]) -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
     map.insert("base32_standard".into(), BASE32.encode(data));
     map.insert(
@@ -1581,6 +1600,13 @@ pub fn decode_content(kind: &str, input: &str) -> Result<String, JsValue> {
         .map_err(|err| JsValue::from_str(&err))
 }
 
+#[wasm_bindgen]
+/// Decodes a text payload and returns the raw bytes so callers can trigger file downloads
+/// when the decoded data is not valid UTF-8.
+pub fn decode_content_bytes(kind: &str, input: &str) -> Result<Vec<u8>, JsValue> {
+    decode_content_internal(kind, input).map_err(|err| JsValue::from_str(&err))
+}
+
 fn decode_content_internal(kind: &str, input: &str) -> Result<Vec<u8>, String> {
     let trimmed = input.trim();
     match kind {
@@ -1624,11 +1650,219 @@ pub fn hash_content(input: &str) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
+/// Hashes arbitrary bytes (including uploaded files) using the same digest set used for text.
+pub fn hash_content_bytes(input: &[u8]) -> Result<JsValue, JsValue> {
+    let map = hash_content_map(input);
+    serde_wasm_bindgen::to_value(&map).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+#[wasm_bindgen]
 /// Computes HMAC digests (SHA1/2/3 families) for the provided key+message and
 /// returns them as a JS map, keeping the UI preview in sync with the plain-hash output.
 pub fn hash_content_hmac(input: &str, key: &str) -> Result<JsValue, JsValue> {
     let map = hash_hmac_map(input.as_bytes(), key.as_bytes());
     serde_wasm_bindgen::to_value(&map).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+#[wasm_bindgen]
+/// Computes HMAC digests for arbitrary bytes (such as file payloads) so file hashing
+/// behaves consistently with text hashing in the UI.
+pub fn hash_content_hmac_bytes(input: &[u8], key: &[u8]) -> Result<JsValue, JsValue> {
+    let map = hash_hmac_map(input, key);
+    serde_wasm_bindgen::to_value(&map).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct CipherOutput {
+    algorithm: String,
+    key_b64: String,
+    nonce_b64: String,
+    ciphertext_b64: String,
+}
+
+/// Supported AEAD choices kept in a simple enum so we can branch to the right cipher backend.
+enum CipherAlgorithm {
+    Aes256Gcm,
+    ChaCha20Poly1305,
+    XChaCha20Poly1305,
+}
+
+struct CipherSuite {
+    algorithm: CipherAlgorithm,
+    label: &'static str,
+    key_len: usize,
+    nonce_len: usize,
+}
+
+fn parse_cipher_suite(name: &str) -> Result<CipherSuite, String> {
+    let normalized = name.trim().to_lowercase().replace('_', "-");
+    match normalized.as_str() {
+        "aes-256-gcm" | "aes-gcm" | "aes" => Ok(CipherSuite {
+            algorithm: CipherAlgorithm::Aes256Gcm,
+            label: "aes-256-gcm",
+            key_len: 32,
+            nonce_len: 12,
+        }),
+        "chacha20-poly1305" | "chacha20" => Ok(CipherSuite {
+            algorithm: CipherAlgorithm::ChaCha20Poly1305,
+            label: "chacha20-poly1305",
+            key_len: 32,
+            nonce_len: 12,
+        }),
+        "xchacha20-poly1305" | "xchacha20" => Ok(CipherSuite {
+            algorithm: CipherAlgorithm::XChaCha20Poly1305,
+            label: "xchacha20-poly1305",
+            key_len: 32,
+            nonce_len: 24,
+        }),
+        other => Err(format!("unsupported algorithm '{}'", other)),
+    }
+}
+
+fn decode_or_generate(
+    value: Option<String>,
+    expected_len: usize,
+    label: &str,
+) -> Result<Vec<u8>, String> {
+    let trimmed = value.as_deref().unwrap_or("").trim();
+    if trimmed.is_empty() {
+        return Ok(random_bytes(expected_len));
+    }
+    let bytes = decode_b64(trimmed)?;
+    if bytes.len() != expected_len {
+        return Err(format!(
+            "{} must be {} bytes (got {})",
+            label,
+            expected_len,
+            bytes.len()
+        ));
+    }
+    Ok(bytes)
+}
+
+fn decode_required(value: &str, expected_len: usize, label: &str) -> Result<Vec<u8>, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{label} is required for decryption"));
+    }
+    let decoded = decode_b64(trimmed)?;
+    if decoded.len() != expected_len {
+        return Err(format!(
+            "{} must be {} bytes (got {})",
+            label,
+            expected_len,
+            decoded.len()
+        ));
+    }
+    Ok(decoded)
+}
+
+#[wasm_bindgen]
+/// Encrypts arbitrary bytes (UTF-8 text or file contents) using modern AEAD
+/// ciphers (AES-256-GCM, ChaCha20-Poly1305, XChaCha20-Poly1305). Keys/nonces
+/// are accepted as Base64; when omitted, cryptographically random values are
+/// generated and returned alongside the ciphertext for easier reuse in the UI.
+pub fn encrypt_bytes(
+    algorithm: &str,
+    plaintext: &[u8],
+    key_b64: Option<String>,
+    nonce_b64: Option<String>,
+) -> Result<JsValue, JsValue> {
+    encrypt_bytes_internal(algorithm, plaintext, key_b64, nonce_b64)
+        .and_then(|out| serde_wasm_bindgen::to_value(&out).map_err(|err| err.to_string()))
+        .map_err(|err| JsValue::from_str(&err))
+}
+
+fn encrypt_bytes_internal(
+    algorithm: &str,
+    plaintext: &[u8],
+    key_b64: Option<String>,
+    nonce_b64: Option<String>,
+) -> Result<CipherOutput, String> {
+    let suite = parse_cipher_suite(algorithm)?;
+    let key = decode_or_generate(key_b64, suite.key_len, "key")?;
+    let nonce = decode_or_generate(nonce_b64, suite.nonce_len, "nonce")?;
+    let ciphertext = match suite.algorithm {
+        CipherAlgorithm::Aes256Gcm => {
+            let cipher =
+                Aes256Gcm::new_from_slice(&key).map_err(|err| format!("invalid AES key: {err}"))?;
+            cipher
+                .encrypt(AesNonce::from_slice(&nonce), plaintext)
+                .map_err(|err| format!("encryption failed: {err}"))?
+        }
+        CipherAlgorithm::ChaCha20Poly1305 => {
+            let cipher = ChaCha20Poly1305::new_from_slice(&key)
+                .map_err(|err| format!("invalid ChaCha20 key: {err}"))?;
+            cipher
+                .encrypt(ChaChaNonce::from_slice(&nonce), plaintext)
+                .map_err(|err| format!("encryption failed: {err}"))?
+        }
+        CipherAlgorithm::XChaCha20Poly1305 => {
+            let cipher = XChaCha20Poly1305::new_from_slice(&key)
+                .map_err(|err| format!("invalid XChaCha20 key: {err}"))?;
+            cipher
+                .encrypt(XChaChaNonce::from_slice(&nonce), plaintext)
+                .map_err(|err| format!("encryption failed: {err}"))?
+        }
+    };
+
+    Ok(CipherOutput {
+        algorithm: suite.label.into(),
+        key_b64: STANDARD.encode(&key),
+        nonce_b64: STANDARD.encode(&nonce),
+        ciphertext_b64: STANDARD.encode(ciphertext),
+    })
+}
+
+#[wasm_bindgen]
+/// Decrypts a Base64 ciphertext produced by `encrypt_bytes`, returning raw
+/// bytes so the caller can treat them as UTF-8 text or feed them to a file
+/// download flow. Authentication failures bubble up as descriptive errors.
+pub fn decrypt_bytes(
+    algorithm: &str,
+    ciphertext_b64: &str,
+    key_b64: &str,
+    nonce_b64: &str,
+) -> Result<Vec<u8>, JsValue> {
+    decrypt_bytes_internal(algorithm, ciphertext_b64, key_b64, nonce_b64)
+        .map_err(|err| JsValue::from_str(&err))
+}
+
+fn decrypt_bytes_internal(
+    algorithm: &str,
+    ciphertext_b64: &str,
+    key_b64: &str,
+    nonce_b64: &str,
+) -> Result<Vec<u8>, String> {
+    let suite = parse_cipher_suite(algorithm)?;
+    let key = decode_required(key_b64, suite.key_len, "key")?;
+    let nonce = decode_required(nonce_b64, suite.nonce_len, "nonce")?;
+    let ciphertext = decode_b64(ciphertext_b64)?;
+    let plaintext = match suite.algorithm {
+        CipherAlgorithm::Aes256Gcm => {
+            let cipher =
+                Aes256Gcm::new_from_slice(&key).map_err(|err| format!("invalid AES key: {err}"))?;
+            cipher
+                .decrypt(AesNonce::from_slice(&nonce), ciphertext.as_ref())
+                .map_err(|err| format!("decryption failed: {err}"))?
+        }
+        CipherAlgorithm::ChaCha20Poly1305 => {
+            let cipher = ChaCha20Poly1305::new_from_slice(&key)
+                .map_err(|err| format!("invalid ChaCha20 key: {err}"))?;
+            cipher
+                .decrypt(ChaChaNonce::from_slice(&nonce), ciphertext.as_ref())
+                .map_err(|err| format!("decryption failed: {err}"))?
+        }
+        CipherAlgorithm::XChaCha20Poly1305 => {
+            let cipher = XChaCha20Poly1305::new_from_slice(&key)
+                .map_err(|err| format!("invalid XChaCha20 key: {err}"))?;
+            cipher
+                .decrypt(XChaChaNonce::from_slice(&nonce), ciphertext.as_ref())
+                .map_err(|err| format!("decryption failed: {err}"))?
+        }
+    };
+    Ok(plaintext)
 }
 
 #[wasm_bindgen]

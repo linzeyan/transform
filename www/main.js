@@ -12,9 +12,13 @@ import initWasm, {
 	jwt_encode,
 	jwt_decode,
 	encode_content,
+	encode_content_bytes,
 	decode_content,
+	decode_content_bytes,
 	hash_content,
+	hash_content_bytes,
 	hash_content_hmac,
+	hash_content_hmac_bytes,
 	transform_format,
 	format_content_text,
 	markdown_to_html_text,
@@ -30,6 +34,8 @@ import initWasm, {
 	argon2_verify,
 	generate_ssh_key,
 	inspect_certificates,
+	encrypt_bytes,
+	decrypt_bytes,
 } from "./pkg/wasm_core.js";
 
 const formats = [
@@ -233,6 +239,11 @@ const coderTools = [
 		description: "Bcrypt / Argon2 generate and verify.",
 	},
 	{
+		id: "security-crypto",
+		label: "Encrypt / Decrypt",
+		description: "AES-GCM + (X)ChaCha20 for text/files.",
+	},
+	{
 		id: "security-ssl",
 		label: "SSL Inspector",
 		description: "Parse PEM certificates or full chains.",
@@ -347,10 +358,17 @@ const hashLabels = {
 	sha3_512: "SHA3-512",
 };
 
+// Map of supported symmetric ciphers so key/nonce helpers can stay in sync with wasm expectations.
+const cryptoSuites = {
+	"aes-256-gcm": { keyLen: 32, nonceLen: 12, label: "AES-256-GCM" },
+	"chacha20-poly1305": { keyLen: 32, nonceLen: 12, label: "ChaCha20-Poly1305" },
+	"xchacha20-poly1305": { keyLen: 32, nonceLen: 24, label: "XChaCha20-Poly1305" },
+};
+
 const coderModeDescriptions = {
-	encode: "Encode text into multiple bases.",
-	decode: "Decode text with your selected base.",
-	hash: "Generate hashes provided by standard library.",
+	encode: "Encode text or files into multiple bases.",
+	decode: "Decode text and recover raw bytes.",
+	hash: "Generate hashes for text or files.",
 };
 
 const coderModeTitles = {
@@ -366,9 +384,9 @@ const coderResultHints = {
 };
 
 const coderPlaceholders = {
-	encode: "Type or paste text...",
+	encode: "Type or paste text (or pick a file below)...",
 	decode: "Paste Base32/64/85/91 text to decode...",
-	hash: "Enter text to compute hashes",
+	hash: "Enter text or pick a file to compute hashes",
 };
 
 const pairToolConfigs = {
@@ -506,6 +524,7 @@ const workspaceByTool = {
 	"coder-url": "pairWorkspace",
 	"coder-jwt": "pairWorkspace",
 	"coder-kdf": "kdfWorkspace",
+	"security-crypto": "cryptoWorkspace",
 	"generator-uuid": "uuidWorkspace",
 	"generator-useragent": "userAgentWorkspace",
 	"generator-random": "randomWorkspace",
@@ -533,6 +552,7 @@ const generatorTools = new Set([
 ]);
 const fingerprintTools = new Set(["fingerprint-browser"]);
 const certTools = new Set(["security-ssl"]);
+const cryptoToolSet = new Set(["security-crypto"]);
 const uuidToolSet = new Set(["generator-uuid"]);
 const userAgentToolSet = new Set(["generator-useragent"]);
 const randomToolSet = new Set(["generator-random"]);
@@ -554,6 +574,7 @@ const implementedTools = new Set([
 	"coder-url",
 	"coder-jwt",
 	"coder-kdf",
+	"security-crypto",
 	"generator-random",
 	"generator-totp",
 	"generator-sql",
@@ -581,6 +602,7 @@ const workspaceIds = [
 	"timestampWorkspace",
 	"ipv4Workspace",
 	"kdfWorkspace",
+	"cryptoWorkspace",
 	"uuidWorkspace",
 	"userAgentWorkspace",
 	"randomWorkspace",
@@ -612,6 +634,14 @@ const state = {
 	lastEncodeResults: null,
 	lastHashResults: null,
 	encodeCaseMap: { base16: true, base32: true },
+	coder: {
+		inputMode: "text",
+		fileBytes: null,
+		fileName: "",
+		fileSize: 0,
+		decodedBytes: null,
+		decodedFileName: "",
+	},
 	currentPairTool: null,
 	pairSyncing: false,
 	pairLastSource: "input",
@@ -672,6 +702,13 @@ const state = {
 	},
 	certTimer: null,
 	certResults: [],
+	crypto: {
+		algorithm: "aes-256-gcm",
+		inputMode: "text",
+		fileBytes: null,
+		fileName: "",
+		fileSize: 0,
+	},
 };
 
 let coderTimer = null;
@@ -785,9 +822,15 @@ function cacheElements() {
 	elements.coderResults = document.getElementById("coderResults");
 	elements.coderWorkspaceTitle = document.getElementById("coderWorkspaceTitle");
 	elements.coderModeHint = document.getElementById("coderModeHint");
+	elements.coderInputControls = document.getElementById("coderInputControls");
+	elements.coderModeText = document.getElementById("coderModeText");
+	elements.coderModeFile = document.getElementById("coderModeFile");
+	elements.coderFile = document.getElementById("coderFile");
+	elements.coderFileMeta = document.getElementById("coderFileMeta");
 	elements.decodeVariantWrap = document.getElementById("decodeVariantWrap");
 	elements.decodeVariant = document.getElementById("decodeVariant");
 	elements.coderResultActions = document.getElementById("coderResultActions");
+	elements.coderDownloadDecoded = document.getElementById("coderDownloadDecoded");
 	elements.hashToggleCase = document.getElementById("hashToggleCase");
 	elements.hashEncoding = document.getElementById("hashEncoding");
 	elements.hashControls = document.getElementById("hashControls");
@@ -795,6 +838,7 @@ function cacheElements() {
 	elements.hashHmacSecret = document.getElementById("hashHmacSecret");
 	elements.coderResultHeading = document.getElementById("coderResultHeading");
 	elements.coderResultHint = document.getElementById("coderResultHint");
+	elements.coderDecodeMeta = document.getElementById("coderDecodeMeta");
 	elements.pairWorkspace = document.getElementById("pairWorkspace");
 	elements.pairInput = document.getElementById("pairInput");
 	elements.pairOutput = document.getElementById("pairOutput");
@@ -906,6 +950,21 @@ function cacheElements() {
 	elements.dataOutput = document.getElementById("dataOutput");
 	elements.dataCopy = document.getElementById("dataCopy");
 	elements.dataColumnEditor = document.getElementById("dataColumnEditor");
+	elements.cryptoAlgorithm = document.getElementById("cryptoAlgorithm");
+	elements.cryptoKey = document.getElementById("cryptoKey");
+	elements.cryptoNonce = document.getElementById("cryptoNonce");
+	elements.cryptoPlaintext = document.getElementById("cryptoPlaintext");
+	elements.cryptoCiphertext = document.getElementById("cryptoCiphertext");
+	elements.cryptoDecryptOutput = document.getElementById("cryptoDecryptOutput");
+	elements.cryptoEncrypt = document.getElementById("cryptoEncrypt");
+	elements.cryptoDecrypt = document.getElementById("cryptoDecrypt");
+	elements.cryptoCopyCiphertext = document.getElementById("cryptoCopyCiphertext");
+	elements.cryptoGenerateKey = document.getElementById("cryptoGenerateKey");
+	elements.cryptoGenerateNonce = document.getElementById("cryptoGenerateNonce");
+	elements.cryptoModeText = document.getElementById("cryptoModeText");
+	elements.cryptoModeFile = document.getElementById("cryptoModeFile");
+	elements.cryptoFile = document.getElementById("cryptoFile");
+	elements.cryptoFileMeta = document.getElementById("cryptoFileMeta");
 	elements.appShell = document.querySelector(".app-shell");
 	elements.fingerprintGrid = document.getElementById("fingerprintGrid");
 	elements.fingerprintSummary = document.getElementById("fingerprintSummary");
@@ -1015,6 +1074,13 @@ function bindUI() {
 		handleFormatField(elements.output, elements.to?.value, true)
 	);
 	elements.coderInput?.addEventListener("input", () => scheduleCoder());
+	elements.coderModeText?.addEventListener("change", () =>
+		setCoderInputMode("text")
+	);
+	elements.coderModeFile?.addEventListener("change", () =>
+		setCoderInputMode("file")
+	);
+	elements.coderFile?.addEventListener("change", handleCoderFileChange);
 	elements.decodeVariant?.addEventListener("change", (event) => {
 		state.selectedDecoder = event.target.value;
 		updateCoderTexts();
@@ -1057,6 +1123,10 @@ function bindUI() {
 			}
 		}
 	});
+	elements.coderDownloadDecoded?.addEventListener(
+		"click",
+		downloadDecodedFile
+	);
 	elements.pairInput?.addEventListener("input", () => handlePairInput("input"));
 	elements.pairOutput?.addEventListener("input", () =>
 		handlePairInput("output")
@@ -1204,6 +1274,19 @@ function bindUI() {
 		ev.preventDefault();
 		verifyArgon();
 	});
+	elements.cryptoAlgorithm?.addEventListener("change", handleCryptoAlgorithmChange);
+	elements.cryptoGenerateKey?.addEventListener("click", seedCryptoKey);
+	elements.cryptoGenerateNonce?.addEventListener("click", seedCryptoNonce);
+	elements.cryptoEncrypt?.addEventListener("click", handleCryptoEncrypt);
+	elements.cryptoDecrypt?.addEventListener("click", handleCryptoDecrypt);
+	elements.cryptoCopyCiphertext?.addEventListener("click", copyCryptoCiphertext);
+	elements.cryptoModeText?.addEventListener("change", () =>
+		setCryptoInputMode("text")
+	);
+	elements.cryptoModeFile?.addEventListener("change", () =>
+		setCryptoInputMode("file")
+	);
+	elements.cryptoFile?.addEventListener("change", handleCryptoFileChange);
 	elements.hashEncoding?.addEventListener("change", handleHashEncodingChange);
 	elements.hashUseHmac?.addEventListener("change", handleHashModeToggle);
 	elements.hashHmacSecret?.addEventListener("input", handleHashSecretInput);
@@ -1410,6 +1493,8 @@ function selectTool(toolId) {
 		activateDataTool();
 	} else if (isFingerprintTool(toolId)) {
 		activateFingerprintTool();
+	} else if (isCryptoTool(toolId)) {
+		activateCryptoTool();
 	} else if (isCertTool(toolId)) {
 		activateCertTool();
 	}
@@ -1429,6 +1514,7 @@ function updateBodyClasses(toolId) {
 	document.body.classList.toggle("tool-useragent", isUserAgentTool(toolId));
 	document.body.classList.toggle("tool-random", isRandomTool(toolId));
 	document.body.classList.toggle("tool-cert", isCertTool(toolId));
+	document.body.classList.toggle("tool-crypto", isCryptoTool(toolId));
 }
 
 function toggleConverterControls(show) {
@@ -1470,6 +1556,75 @@ function scheduleCoder(immediate = false) {
 	coderTimer = setTimeout(() => runCoder(), 200);
 }
 
+function setCoderInputMode(mode) {
+	const useFile = mode === "file";
+	state.coder.inputMode = useFile ? "file" : "text";
+	if (elements.coderModeText) elements.coderModeText.checked = !useFile;
+	if (elements.coderModeFile) elements.coderModeFile.checked = useFile;
+	if (elements.coderFile)
+		elements.coderFile.classList.toggle("hidden", !useFile);
+	if (elements.coderFileMeta)
+		elements.coderFileMeta.classList.toggle("hidden", !useFile);
+	if (!useFile) {
+		state.coder.fileBytes = null;
+		state.coder.fileName = "";
+		state.coder.fileSize = 0;
+	}
+	renderCoderFileMeta();
+	if (state.coderMode !== "decode") {
+		scheduleCoder(true);
+	}
+}
+
+async function handleCoderFileChange(event) {
+	const file = event?.target?.files?.[0];
+	if (!file) {
+		state.coder.fileBytes = null;
+		state.coder.fileName = "";
+		state.coder.fileSize = 0;
+		renderCoderFileMeta();
+		renderCoderEmpty();
+		return;
+	}
+	try {
+		const buffer = await file.arrayBuffer();
+		state.coder.fileBytes = new Uint8Array(buffer);
+		state.coder.fileName = file.name;
+		state.coder.fileSize = file.size;
+		renderCoderFileMeta();
+		scheduleCoder(true);
+	} catch (err) {
+		console.error(err);
+		setStatus(`⚠️ Failed to read file: ${err?.message || err}`, true);
+	}
+}
+
+function renderCoderFileMeta() {
+	if (!elements.coderFileMeta) return;
+	if (state.coder.inputMode !== "file") {
+		elements.coderFileMeta.textContent = "File mode hidden";
+		elements.coderFileMeta.classList.add("hidden");
+		return;
+	}
+	elements.coderFileMeta.classList.remove("hidden");
+	if (state.coder.fileBytes?.length) {
+		const name = state.coder.fileName || "selected file";
+		const size = state.coder.fileBytes.length;
+		elements.coderFileMeta.textContent = `${name} (${size} bytes)`;
+	} else {
+		elements.coderFileMeta.textContent = "No file selected";
+	}
+}
+
+function clearDecodedFileState() {
+	state.coder.decodedBytes = null;
+	state.coder.decodedFileName = "";
+	if (elements.coderDecodeMeta) {
+		elements.coderDecodeMeta.classList.add("hidden");
+		elements.coderDecodeMeta.textContent = "";
+	}
+}
+
 function runCoder() {
 	if (!coderMainTools.has(state.currentTool)) return;
 	if (!state.wasmReady) {
@@ -1478,17 +1633,30 @@ function runCoder() {
 	}
 	const text = elements.coderInput?.value || "";
 	const trimmed = text.trim();
-	if (!trimmed && state.coderMode !== "hash") {
+	const usingFile =
+		state.coderMode !== "decode" && state.coder.inputMode === "file";
+	const fileBytes = state.coder.fileBytes;
+	if (state.coderMode !== "hash") {
+		clearDecodedFileState();
+	}
+	if (!trimmed && state.coderMode !== "hash" && !usingFile) {
 		renderCoderEmpty();
 		return;
 	}
 	try {
 		if (state.coderMode === "encode") {
-			const result = encode_content(text);
+			if (usingFile && !(fileBytes && fileBytes.length)) {
+				renderCoderEmpty();
+				setStatus("Select a file to encode", true);
+				return;
+			}
+			const result = usingFile
+				? encode_content_bytes(fileBytes || new Uint8Array())
+				: encode_content(text);
 			const map = normalizeMapResult(result);
 			state.lastEncodeResults = map;
 			renderEncodeResults(map);
-			setStatus("Done", false);
+			setStatus(usingFile ? "Encoded file" : "Done", false);
 			return;
 		}
 		if (state.coderMode === "decode") {
@@ -1498,22 +1666,54 @@ function runCoder() {
 				setStatus("Select an encoding to decode", true);
 				return;
 			}
+			if (!trimmed) {
+				renderCoderEmpty();
+				return;
+			}
 			const decodeInput =
 				decoderKey === "hex_upper" ? text.toUpperCase() : text;
-			const decoded = decode_content(decoderKey, decodeInput);
+			const bytes = decode_content_bytes(decoderKey, decodeInput);
+			const preview = bytesToUtf8Strict(bytes);
+			const displayValue = preview ?? toBase64(bytes, false);
 			const info = encodingVariantMap.get(decoderKey);
 			const displayLabel = info ? `${info.group} · ${info.label}` : "Decoded";
-			renderDecodeResult(decoded, displayLabel);
-			setStatus("Done", false);
+			state.coder.decodedBytes = bytes;
+			state.coder.decodedFileName =
+				state.coder.fileName || "decoded.bin";
+			renderDecodeResult(
+				{
+					label: displayLabel,
+					value: displayValue,
+					byteLength: bytes.length,
+					note: preview ? "" : "Binary output shown as Base64",
+				}
+			);
+			setStatus(
+				preview ? "Done" : "Decoded (binary previewed as Base64)",
+				false
+			);
+			updateCoderActionsVisibility();
+			return;
+		}
+		if (usingFile && !(fileBytes && fileBytes.length)) {
+			renderCoderEmpty();
+			setStatus("Select a file to hash", true);
 			return;
 		}
 		const hashes = state.hashUseHmac
-			? hash_content_hmac(text, state.hashHmacSecret || "")
+			? state.coder.inputMode === "file"
+				? hash_content_hmac_bytes(
+						fileBytes || new Uint8Array(),
+						utf8ToBytes(state.hashHmacSecret || "")
+				  )
+				: hash_content_hmac(text, state.hashHmacSecret || "")
+			: state.coder.inputMode === "file"
+			? hash_content_bytes(fileBytes || new Uint8Array())
 			: hash_content(text);
 		const map = normalizeMapResult(hashes);
 		state.lastHashResults = map;
 		renderHashResults(map);
-		setStatus("Done", false);
+		setStatus(usingFile ? "Hashed file" : "Done", false);
 	} catch (err) {
 		renderCoderEmpty();
 		setStatus(`⚠️ ${err?.message || err}`, true);
@@ -1554,6 +1754,20 @@ function updateCoderTexts() {
 			"hidden",
 			state.coderMode !== "decode"
 		);
+	}
+	if (elements.coderInputControls) {
+		const showFileControls = state.coderMode !== "decode";
+		elements.coderInputControls.classList.toggle("hidden", !showFileControls);
+		if (!showFileControls) {
+			state.coder.inputMode = "text";
+			state.coder.fileBytes = null;
+			state.coder.fileName = "";
+			state.coder.fileSize = 0;
+			if (elements.coderModeText) elements.coderModeText.checked = true;
+			renderCoderFileMeta();
+		} else {
+			setCoderInputMode(state.coder.inputMode || "text");
+		}
 	}
 	if (elements.decodeVariant && state.selectedDecoder) {
 		elements.decodeVariant.value = state.selectedDecoder;
@@ -1596,19 +1810,31 @@ function renderCoderEmpty() {
 	if (state.coderMode === "encode") {
 		state.lastEncodeResults = null;
 	}
+	if (state.coderMode !== "hash") {
+		clearDecodedFileState();
+	}
 	const message =
 		state.coderMode === "decode"
 			? "Paste encoded text to decode"
+			: state.coder.inputMode === "file"
+			? "Select a file to process"
 			: "Enter content to see results";
 	elements.coderResults.innerHTML = `<div class="muted">${message}</div>`;
+	updateCoderActionsVisibility();
 }
 
 function updateCoderActionsVisibility() {
 	if (!elements.coderResultActions) return;
-	const show = state.coderMode === "hash";
-	elements.coderResultActions.classList.toggle("hidden", !show);
+	const showHash = state.coderMode === "hash";
+	const showDownload =
+		state.coderMode === "decode" && Boolean(state.coder.decodedBytes?.length);
+	const showAny = showHash || showDownload;
+	elements.coderResultActions.classList.toggle("hidden", !showAny);
 	if (elements.hashToggleCase) {
-		elements.hashToggleCase.classList.toggle("hidden", !show);
+		elements.hashToggleCase.classList.toggle("hidden", !showHash);
+	}
+	if (elements.coderDownloadDecoded) {
+		elements.coderDownloadDecoded.classList.toggle("hidden", !showDownload);
 	}
 }
 
@@ -1708,20 +1934,56 @@ function renderEncodeResults(map) {
   `;
 }
 
-function renderDecodeResult(value, label) {
+function renderDecodeResult(result) {
 	if (!elements.coderResults) return;
-	const block = renderGroupBlock(label || "Decoded", [
+	const label = result?.label || "Decoded";
+	const note = result?.note || "";
+	const block = renderGroupBlock(label, [
 		{
-			label: label || "Decoded",
-			value: value || "",
-			copyLabel: label || "Decoded",
+			label,
+			value: result?.value || "",
+			copyLabel: label,
+			clickCopy: true,
 		},
 	]);
+	const metaParts = [];
+	if (result?.byteLength !== undefined) {
+		metaParts.push(`${result.byteLength} bytes`);
+	}
+	if (note) metaParts.push(note);
+	if (elements.coderDecodeMeta) {
+		if (metaParts.length) {
+			elements.coderDecodeMeta.textContent = metaParts.join(" · ");
+			elements.coderDecodeMeta.classList.remove("hidden");
+		} else {
+			elements.coderDecodeMeta.textContent = "";
+			elements.coderDecodeMeta.classList.add("hidden");
+		}
+	}
 	elements.coderResults.innerHTML = `
     <div class="coder-groups">
       <div class="coder-output-grid">${block}</div>
     </div>
   `;
+}
+
+// Exposes decoded bytes as a download so binary payloads can be recovered.
+function downloadDecodedFile() {
+	const bytes = state.coder.decodedBytes;
+	if (!bytes?.length) {
+		setStatus("No decoded file available", true);
+		return;
+	}
+	const blob = new Blob([bytes], { type: "application/octet-stream" });
+	const url = URL.createObjectURL(blob);
+	const anchor = document.createElement("a");
+	anchor.href = url;
+	anchor.download = state.coder.decodedFileName || "decoded.bin";
+	document.body.appendChild(anchor);
+	anchor.click();
+	anchor.remove();
+	URL.revokeObjectURL(url);
+	setStatus("Saved decoded file", false);
 }
 
 function renderHashResults(map) {
@@ -1863,6 +2125,10 @@ function isFingerprintTool(toolId) {
 
 function isCertTool(toolId) {
 	return certTools.has(toolId);
+}
+
+function isCryptoTool(toolId) {
+	return cryptoToolSet.has(toolId);
 }
 
 function activatePairTool(toolId) {
@@ -4831,6 +5097,193 @@ function clearKdfStatuses() {
 	setKdfStatus("argonStatus", "Idle");
 }
 
+// Crypto tool: routes UI controls to wasm AES/ChaCha encrypt/decrypt helpers.
+function activateCryptoTool() {
+	const algo = state.crypto.algorithm || "aes-256-gcm";
+	if (elements.cryptoAlgorithm) {
+		elements.cryptoAlgorithm.value = algo;
+	}
+	handleCryptoAlgorithmChange();
+	setCryptoInputMode(state.crypto.inputMode || "text");
+	renderCryptoFileMeta();
+	if (!state.wasmReady) {
+		setStatus("Waiting for WebAssembly...", true);
+	} else {
+		setStatus("Ready", false);
+	}
+}
+
+function handleCryptoAlgorithmChange() {
+	const algo = elements.cryptoAlgorithm?.value || "aes-256-gcm";
+	state.crypto.algorithm = algo;
+	const suite = cryptoSuites[algo] || cryptoSuites["aes-256-gcm"];
+	if (elements.cryptoNonce) {
+		elements.cryptoNonce.placeholder = `Leave blank to auto-generate ${suite.nonceLen}-byte nonce (Base64)`;
+	}
+}
+
+function seedCryptoKey() {
+	const suite = cryptoSuites[state.crypto.algorithm] || cryptoSuites["aes-256-gcm"];
+	const key = randomSaltBase64(suite.keyLen);
+	if (elements.cryptoKey) {
+		elements.cryptoKey.value = key;
+	}
+	setStatus("Generated random key", false);
+}
+
+function seedCryptoNonce() {
+	const suite = cryptoSuites[state.crypto.algorithm] || cryptoSuites["aes-256-gcm"];
+	const nonce = randomSaltBase64(suite.nonceLen);
+	if (elements.cryptoNonce) {
+		elements.cryptoNonce.value = nonce;
+	}
+	setStatus("Generated random nonce", false);
+}
+
+function setCryptoInputMode(mode) {
+	state.crypto.inputMode = mode;
+	const isFile = mode === "file";
+	if (elements.cryptoModeText) {
+		elements.cryptoModeText.checked = !isFile;
+	}
+	if (elements.cryptoModeFile) {
+		elements.cryptoModeFile.checked = isFile;
+	}
+	elements.cryptoPlaintext?.classList.toggle("hidden", isFile);
+	elements.cryptoFile?.classList.toggle("hidden", !isFile);
+	if (!isFile) {
+		state.crypto.fileBytes = null;
+		state.crypto.fileName = "";
+		state.crypto.fileSize = 0;
+	}
+	renderCryptoFileMeta();
+}
+
+async function handleCryptoFileChange(event) {
+	const file = event?.target?.files?.[0];
+	if (!file) {
+		state.crypto.fileBytes = null;
+		state.crypto.fileName = "";
+		state.crypto.fileSize = 0;
+		renderCryptoFileMeta();
+		return;
+	}
+	try {
+		const buffer = await file.arrayBuffer();
+		state.crypto.fileBytes = new Uint8Array(buffer);
+		state.crypto.fileName = file.name;
+		state.crypto.fileSize = file.size;
+		renderCryptoFileMeta();
+	} catch (err) {
+		console.error(err);
+		setStatus(`⚠️ Failed to read file: ${err?.message || err}`, true);
+	}
+}
+
+function renderCryptoFileMeta() {
+	if (!elements.cryptoFileMeta) return;
+	if (state.crypto.inputMode !== "file") {
+		elements.cryptoFileMeta.classList.add("hidden");
+		elements.cryptoFileMeta.textContent = "No file selected";
+		return;
+	}
+	elements.cryptoFileMeta.classList.remove("hidden");
+	if (state.crypto.fileBytes?.length) {
+		const size = state.crypto.fileBytes.length;
+		const name = state.crypto.fileName || "selected file";
+		elements.cryptoFileMeta.textContent = `${name} (${size} bytes)`;
+	} else {
+		elements.cryptoFileMeta.textContent = "No file selected";
+	}
+}
+
+function handleCryptoEncrypt() {
+	if (!state.wasmReady) {
+		setStatus("Waiting for WebAssembly...", true);
+		return;
+	}
+	const algo = elements.cryptoAlgorithm?.value || "aes-256-gcm";
+	state.crypto.algorithm = algo;
+	const key = elements.cryptoKey?.value?.trim();
+	const nonce = elements.cryptoNonce?.value?.trim();
+	let payload = new Uint8Array();
+	if (state.crypto.inputMode === "file") {
+		if (!state.crypto.fileBytes?.length) {
+			setStatus("Select a file to encrypt", true);
+			return;
+		}
+		payload = state.crypto.fileBytes;
+	} else {
+		const text = elements.cryptoPlaintext?.value || "";
+		payload = utf8ToBytes(text);
+	}
+	try {
+		const result = encrypt_bytes(
+			algo,
+			payload,
+			key || undefined,
+			nonce || undefined
+		);
+		const cipher = result.ciphertextB64 || "";
+		if (elements.cryptoCiphertext) {
+			elements.cryptoCiphertext.value = cipher;
+		}
+		if (elements.cryptoKey && result.keyB64) {
+			elements.cryptoKey.value = result.keyB64;
+		}
+		if (elements.cryptoNonce && result.nonceB64) {
+			elements.cryptoNonce.value = result.nonceB64;
+		}
+		setStatus("Encrypted", false);
+	} catch (err) {
+		console.error(err);
+		setStatus(`⚠️ ${err?.message || err}`, true);
+	}
+}
+
+function handleCryptoDecrypt() {
+	if (!state.wasmReady) {
+		setStatus("Waiting for WebAssembly...", true);
+		return;
+	}
+	const algo = elements.cryptoAlgorithm?.value || "aes-256-gcm";
+	const cipher = elements.cryptoCiphertext?.value?.trim();
+	const key = elements.cryptoKey?.value?.trim();
+	const nonce = elements.cryptoNonce?.value?.trim();
+	if (!cipher) {
+		setStatus("Paste ciphertext to decrypt", true);
+		return;
+	}
+	if (!key || !nonce) {
+		setStatus("Key and nonce are required to decrypt", true);
+		return;
+	}
+	try {
+		const bytes = decrypt_bytes(algo, cipher, key, nonce);
+		const decoded = bytesToUtf8Strict(bytes);
+		if (elements.cryptoDecryptOutput) {
+			elements.cryptoDecryptOutput.value =
+				decoded !== null ? decoded : toBase64(bytes, false);
+		}
+		const okMsg =
+			decoded !== null ? "Decrypted" : "Decrypted (displayed as Base64)";
+		setStatus(okMsg, false);
+	} catch (err) {
+		console.error(err);
+		setStatus(`⚠️ ${err?.message || err}`, true);
+	}
+}
+
+function copyCryptoCiphertext() {
+	const value = elements.cryptoCiphertext?.value || "";
+	if (!value.trim()) {
+		setStatus("No ciphertext to copy", true);
+		return;
+	}
+	copyText(value, "ciphertext");
+	setStatus("Copied", false);
+}
+
 function getInputValue(el) {
 	return el?.value?.trim() || "";
 }
@@ -4877,6 +5330,15 @@ function utf8ToBytes(text) {
 	const bytes = new Uint8Array(text.length);
 	for (let i = 0; i < text.length; i += 1) bytes[i] = text.charCodeAt(i);
 	return bytes;
+}
+
+function bytesToUtf8Strict(bytes) {
+	if (typeof TextDecoder === "undefined") return null;
+	try {
+		return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+	} catch (err) {
+		return null;
+	}
 }
 
 function randomSaltBase64(byteLength = 16) {

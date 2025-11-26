@@ -9,10 +9,11 @@ use wasm_bindgen_test::*;
 
 use wasm_core::{
     argon2_hash, argon2_verify, bcrypt_hash, bcrypt_verify, convert_number_base, convert_timestamp,
-    convert_units, decode_content, encode_content, generate_insert_statements,
-    generate_user_agents, generate_uuids, hash_content, html_to_markdown_text,
-    inspect_certificates, ipv4_info, jwt_decode, jwt_encode, markdown_to_html_text,
-    random_number_sequences, totp_token, transform_format, url_decode, url_encode,
+    convert_units, decode_content, decode_content_bytes, decrypt_bytes, encode_content,
+    encode_content_bytes, encrypt_bytes, generate_insert_statements, generate_user_agents,
+    generate_uuids, hash_content, hash_content_bytes, html_to_markdown_text, inspect_certificates,
+    ipv4_info, jwt_decode, jwt_encode, markdown_to_html_text, random_number_sequences, totp_token,
+    transform_format, url_decode, url_encode,
 };
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -266,12 +267,95 @@ fn coder_encode_and_decode_cycle() {
 }
 
 #[wasm_bindgen_test]
+fn coder_supports_file_controls_in_markup() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    assert!(
+        INDEX_HTML.contains("id=\"coderModeFile\""),
+        "file toggle should exist for coder workspace"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"coderFile\""),
+        "file input should exist for coder workspace"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"coderDownloadDecoded\""),
+        "decoded download action should be present"
+    );
+}
+
+#[wasm_bindgen_test]
+fn base_encode_accepts_raw_bytes() {
+    let map = js_to_json(encode_content_bytes(&[0u8, 0xFF, 0x10]).expect("encode bytes"));
+    assert_eq!(field(&map, "base64_standard"), "AP8Q");
+    assert_eq!(field(&map, "hex_upper"), "00FF10");
+}
+
+#[wasm_bindgen_test]
+fn base_decode_returns_raw_bytes() {
+    let encoded = B64_STD.encode([9u8, 8u8, 7u8]);
+    let decoded = decode_content_bytes("base64_standard", &encoded).expect("decode bytes");
+    assert_eq!(decoded, [9u8, 8u8, 7u8]);
+}
+
+#[wasm_bindgen_test]
+fn file_hash_matches_known_sha256() {
+    let map = js_to_json(hash_content_bytes(b"abc").expect("hash bytes"));
+    assert_eq!(
+        field(&map, "sha256"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+}
+
+#[wasm_bindgen_test]
 fn hash_content_sha256_matches_known_value() {
     let map = js_to_json(hash_content("abc").expect("hash content"));
     assert_eq!(
         field(&map, "sha256"),
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     );
+}
+
+#[wasm_bindgen_test]
+fn crypto_workspace_controls_exist() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    assert!(
+        INDEX_HTML.contains("id=\"cryptoWorkspace\""),
+        "crypto workspace container should exist"
+    );
+    for id in [
+        "cryptoAlgorithm",
+        "cryptoKey",
+        "cryptoNonce",
+        "cryptoPlaintext",
+        "cryptoCiphertext",
+        "cryptoDecryptOutput",
+    ] {
+        assert!(
+            INDEX_HTML.contains(&format!("id=\"{id}\"")),
+            "expected control {id}"
+        );
+    }
+}
+
+#[wasm_bindgen_test]
+fn encrypt_bytes_roundtrip_in_browser() {
+    let key = B64_STD.encode([0x77u8; 32]);
+    let nonce = B64_STD.encode([0x55u8; 12]);
+    let encrypted = js_to_json(
+        encrypt_bytes(
+            "aes-256-gcm",
+            b"browser-flow",
+            Some(key.clone()),
+            Some(nonce.clone()),
+        )
+        .expect("encrypt"),
+    );
+    let cipher = field(&encrypted, "ciphertextB64");
+    let decrypted = decrypt_bytes("aes-256-gcm", cipher, &key, &nonce).expect("decrypt");
+    let text = String::from_utf8(decrypted).expect("utf8 plaintext");
+    assert_eq!(text, "browser-flow");
 }
 
 #[wasm_bindgen_test]
