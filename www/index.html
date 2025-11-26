@@ -1,549 +1,661 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en-US">
-	<head>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width,initial-scale=1" />
-		<title>transform</title>
-		<link rel="icon" type="image/svg+xml" href="favicon.svg" />
-		<link rel="stylesheet" href="style.css" />
-	</head>
-	<body>
-		<!-- Single-page toolbox driven by wasm_core exports. Sidebar selects a workspace panel on the right. -->
-		<div class="app-shell">
-			<aside id="sidebar">
-				<div class="sidebar-brand">
-					<strong>transform</strong>
-					<span>Toolbox</span>
-				</div>
-				<nav id="toolGroups"></nav>
-			</aside>
-			<div id="sidebarResizer"></div>
-			<div class="workspace">
-				<header class="topbar">
-					<button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle navigation">
-						☰
-					</button>
-					<div class="tool-info">
-						<h1 id="toolName">Format Converter</h1>
-						<p id="toolDesc">Convert between structured data formats.</p>
-					</div>
-					<div class="converter-controls" id="converterControls">
-						<div class="mode-select">
-							<select id="fromSelect">
-								<option value="JSON">JSON</option>
-								<option value="Go Struct">Go Struct</option>
-								<option value="YAML">YAML</option>
-								<option value="TOML">TOML</option>
-								<option value="XML">XML</option>
-								<option value="JSON Schema">JSON Schema</option>
-								<option value="GraphQL Schema">GraphQL Schema</option>
-								<option value="Protobuf">Protobuf</option>
-								<option value="TOON">TOON</option>
-								<option value="MsgPack">MsgPack</option>
-							</select>
-							<button id="swap" title="Swap">&#8646;</button>
-							<select id="toSelect">
-								<option value="Go Struct">Go Struct</option>
-								<option value="JSON">JSON</option>
-								<option value="YAML">YAML</option>
-								<option value="TOML">TOML</option>
-								<option value="XML">XML</option>
-								<option value="JSON Schema">JSON Schema</option>
-								<option value="GraphQL Schema">GraphQL Schema</option>
-								<option value="Protobuf">Protobuf</option>
-								<option value="TOON">TOON</option>
-								<option value="MsgPack">MsgPack</option>
-							</select>
-						</div>
-						<div class="actions converter-only">
-							<button id="copy">Copy output</button>
-							<button id="clear">Clear</button>
-						</div>
-					</div>
-				</header>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>transform</title>
+        <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+        <link rel="stylesheet" href="style.css" />
+    </head>
+    <body>
+        <!-- Single-page toolbox driven by wasm_core exports. Sidebar selects a workspace panel on the right. -->
+        <div class="app-shell">
+            <aside id="sidebar">
+                <div class="sidebar-brand">
+                    <strong>transform</strong>
+                    <span>Toolbox</span>
+                </div>
+                <nav id="toolGroups"></nav>
+            </aside>
+            <div id="sidebarResizer"></div>
+            <div class="workspace">
+                <header class="topbar">
+                    <button
+                        class="sidebar-toggle"
+                        id="sidebarToggle"
+                        aria-label="Toggle navigation"
+                    >
+                        ☰
+                    </button>
+                    <div class="tool-info">
+                        <h1 id="toolName">Format Converter</h1>
+                        <p id="toolDesc">Convert between structured data formats.</p>
+                    </div>
+                    <div class="converter-controls" id="converterControls">
+                        <div class="mode-select">
+                            <select id="fromSelect">
+                                <option value="JSON">JSON</option>
+                                <option value="Go Struct">Go Struct</option>
+                                <option value="YAML">YAML</option>
+                                <option value="TOML">TOML</option>
+                                <option value="XML">XML</option>
+                                <option value="JSON Schema">JSON Schema</option>
+                                <option value="GraphQL Schema">GraphQL Schema</option>
+                                <option value="Protobuf">Protobuf</option>
+                                <option value="TOON">TOON</option>
+                                <option value="MsgPack">MsgPack</option>
+                            </select>
+                            <button id="swap" title="Swap">&#8646;</button>
+                            <select id="toSelect">
+                                <option value="Go Struct">Go Struct</option>
+                                <option value="JSON">JSON</option>
+                                <option value="YAML">YAML</option>
+                                <option value="TOML">TOML</option>
+                                <option value="XML">XML</option>
+                                <option value="JSON Schema">JSON Schema</option>
+                                <option value="GraphQL Schema">GraphQL Schema</option>
+                                <option value="Protobuf">Protobuf</option>
+                                <option value="TOON">TOON</option>
+                                <option value="MsgPack">MsgPack</option>
+                            </select>
+                        </div>
+                        <div class="actions converter-only">
+                            <button id="copy">Copy output</button>
+                            <button id="clear">Clear</button>
+                        </div>
+                    </div>
+                </header>
 
-				<div id="converterWorkspace" class="tool-view">
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2 id="inputLabel">Input</h2>
-							</div>
-							<div class="panel-actions">
-								<button class="ghost-btn" id="formatInput">Format</button>
-								<button class="ghost-btn" id="minifyInput">Minimize</button>
-							</div>
-						</div>
-						<textarea
-							id="input"
-							spellcheck="false"
-							placeholder='Paste JSON or Go struct...'
-						></textarea>
-					</section>
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2 id="outputLabel">Output</h2>
-							</div>
-							<div class="panel-actions">
-								<button class="ghost-btn" id="formatOutput">Format</button>
-								<button class="ghost-btn" id="minifyOutput">Minimize</button>
-							</div>
-						</div>
-						<textarea id="output" spellcheck="false" readonly></textarea>
-					</section>
-				</div>
+                <div id="converterWorkspace" class="tool-view">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 id="inputLabel">Input</h2>
+                            </div>
+                            <div class="panel-actions">
+                                <button class="ghost-btn" id="formatInput">Format</button>
+                                <button class="ghost-btn" id="minifyInput">Minimize</button>
+                            </div>
+                        </div>
+                        <textarea
+                            id="input"
+                            spellcheck="false"
+                            placeholder="Paste JSON or Go struct..."
+                        ></textarea>
+                    </section>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 id="outputLabel">Output</h2>
+                            </div>
+                            <div class="panel-actions">
+                                <button class="ghost-btn" id="formatOutput">Format</button>
+                                <button class="ghost-btn" id="minifyOutput">Minimize</button>
+                            </div>
+                        </div>
+                        <textarea id="output" spellcheck="false" readonly></textarea>
+                    </section>
+                </div>
 
-			<div id="coderWorkspace" class="tool-view hidden">
-				<section class="panel">
-					<div class="panel-header coder-header">
-						<div>
-							<h2 id="coderWorkspaceTitle">Encode</h2>
-							<p id="coderModeHint">Encode text into multiple bases.</p>
-						</div>
-						<label class="decode-select hidden" id="decodeVariantWrap">
-							<span>Decoder</span>
-							<select id="decodeVariant"></select>
-						</label>
-						<div class="hash-controls hidden" id="hashControls">
-							<label>
-								<span>Digest Output</span>
-							<select id="hashEncoding">
-									<option value="base16">Base16</option>
-									<option value="base64">Base64</option>
-									<option value="base64_raw">Base64 (no padding)</option>
-									<option value="base64_url">Base64 URL</option>
-									<option value="base64_url_raw">Base64 URL (no padding)</option>
-								</select>
-							</label>
-							<label class="hash-hmac-toggle">
-								<input type="checkbox" id="hashUseHmac" />
-								<span>Use HMAC</span>
-							</label>
-							<input
-								type="password"
-								id="hashHmacSecret"
-								class="hidden"
-								placeholder="Secret key"
-								spellcheck="false"
-							/>
-						</div>
-					</div>
-					<div class="coder-mode-row" id="coderInputControls">
-						<label class="checkbox">
-							<input
-								type="radio"
-								name="coderInputMode"
-								id="coderModeText"
-								value="text"
-								checked
-							/>
-							<span>Use text</span>
-						</label>
-						<label class="checkbox">
-							<input
-								type="radio"
-								name="coderInputMode"
-								id="coderModeFile"
-								value="file"
-							/>
-							<span>Use file</span>
-						</label>
-						<input type="file" id="coderFile" class="hidden" />
-						<div id="coderFileMeta" class="muted hidden">No file selected</div>
-					</div>
-					<textarea
-						id="coderInput"
-							spellcheck="false"
-							placeholder="Type or paste text..."
-						></textarea>
-					</section>
-						<section class="panel">
-							<div class="panel-header">
-								<div>
-									<h2 id="coderResultHeading">Encodings</h2>
-									<p id="coderResultHint">Base32 / Base64 / Base85 / Base91 / Hex</p>
-								</div>
-								<div class="panel-actions hidden" id="coderResultActions">
-									<button
-										class="ghost-btn hidden"
-										id="hashToggleCase"
-										data-upper="false"
-									>
-										Toggle Case
-									</button>
-									<button
-										class="ghost-btn hidden"
-										id="coderDownloadDecoded"
-										type="button"
-									>
-										Download decoded file
-									</button>
-								</div>
-							</div>
-							<div id="coderDecodeMeta" class="muted hidden"></div>
-						<div id="coderResults" class="coder-results">
-							<div class="muted">Enter content to see results</div>
-						</div>
-					</section>
-			</div>
+                <div id="coderWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header coder-header">
+                            <div>
+                                <h2 id="coderWorkspaceTitle">Encode</h2>
+                                <p id="coderModeHint">Encode text into multiple bases.</p>
+                            </div>
+                            <label class="decode-select hidden" id="decodeVariantWrap">
+                                <span>Decoder</span>
+                                <select id="decodeVariant"></select>
+                            </label>
+                            <div class="hash-controls hidden" id="hashControls">
+                                <label>
+                                    <span>Digest Output</span>
+                                    <select id="hashEncoding">
+                                        <option value="base16">Base16</option>
+                                        <option value="base64">Base64</option>
+                                        <option value="base64_raw">Base64 (no padding)</option>
+                                        <option value="base64_url">Base64 URL</option>
+                                        <option value="base64_url_raw">
+                                            Base64 URL (no padding)
+                                        </option>
+                                    </select>
+                                </label>
+                                <label class="hash-hmac-toggle">
+                                    <input type="checkbox" id="hashUseHmac" />
+                                    <span>Use HMAC</span>
+                                </label>
+                                <input
+                                    type="password"
+                                    id="hashHmacSecret"
+                                    class="hidden"
+                                    placeholder="Secret key"
+                                    spellcheck="false"
+                                />
+                            </div>
+                        </div>
+                        <div class="coder-mode-row" id="coderInputControls">
+                            <label class="checkbox">
+                                <input
+                                    type="radio"
+                                    name="coderInputMode"
+                                    id="coderModeText"
+                                    value="text"
+                                    checked
+                                />
+                                <span>Use text</span>
+                            </label>
+                            <label class="checkbox">
+                                <input
+                                    type="radio"
+                                    name="coderInputMode"
+                                    id="coderModeFile"
+                                    value="file"
+                                />
+                                <span>Use file</span>
+                            </label>
+                            <input type="file" id="coderFile" class="hidden" />
+                            <div id="coderFileMeta" class="muted hidden">No file selected</div>
+                        </div>
+                        <textarea
+                            id="coderInput"
+                            spellcheck="false"
+                            placeholder="Type or paste text..."
+                        ></textarea>
+                    </section>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 id="coderResultHeading">Encodings</h2>
+                                <p id="coderResultHint">Base32 / Base64 / Base85 / Base91 / Hex</p>
+                            </div>
+                            <div class="panel-actions hidden" id="coderResultActions">
+                                <button
+                                    class="ghost-btn hidden"
+                                    id="hashToggleCase"
+                                    data-upper="false"
+                                >
+                                    Toggle Case
+                                </button>
+                                <button
+                                    class="ghost-btn hidden"
+                                    id="coderDownloadDecoded"
+                                    type="button"
+                                >
+                                    Download decoded file
+                                </button>
+                            </div>
+                        </div>
+                        <div id="coderDecodeMeta" class="muted hidden"></div>
+                        <div id="coderResults" class="coder-results">
+                            <div class="muted">Enter content to see results</div>
+                        </div>
+                    </section>
+                </div>
 
-			<div id="kdfWorkspace" class="tool-view hidden">
-				<section class="panel">
-					<div class="panel-header">
-						<div>
-							<h2>Password Hashers</h2>
-							<p>Bcrypt / Argon2 — generate and verify.</p>
-						</div>
-						<div class="panel-actions">
-							<button id="kdfRefreshSalts">Random salt</button>
-							<select id="kdfAlgoSelect">
-								<option value="bcrypt">Bcrypt</option>
-								<option value="argon2">Argon2</option>
-							</select>
-						</div>
-					</div>
-						<p class="muted kdf-note">
-							Enter a password to hash. Paste an existing hash (or plain text) to verify against the password. Empty salt will be auto-generated.
-						</p>
-						<div class="kdf-grid">
-							<div class="kdf-card" data-algo="bcrypt">
-							<div class="kdf-card-head">
-								<div>
-									<h3>Bcrypt</h3>
-									<p class="muted">Good for login flows, cost 4-31</p>
-								</div>
-								<span id="bcryptStatus" class="kdf-status muted">Idle</span>
-							</div>
-							<label>
-								<span>Password</span>
-								<input id="bcryptPassword" type="password" spellcheck="false" placeholder="Enter password" />
-							</label>
-							<div class="kdf-inline">
-								<label>
-									<span>Cost</span>
-									<input id="bcryptCost" type="number" min="4" max="31" value="10" />
-								</label>
-								<label class="flex-1">
-									<span>Salt (leave blank for random)</span>
-									<input id="bcryptSalt" spellcheck="false" placeholder="Auto-generate salt when empty" />
-								</label>
-							</div>
-							<div class="kdf-actions">
-								<button id="bcryptHashBtn">Generate</button>
-							</div>
-							<textarea
-								id="bcryptOutput"
-								spellcheck="false"
-								placeholder="Bcrypt hash will appear here (editable)"
-							></textarea>
-								<div class="kdf-verify">
-									<input
-										id="bcryptVerifyHash"
-										spellcheck="false"
-										placeholder="Paste bcrypt hash OR plain text to verify"
-									/>
-									<button class="ghost-btn" id="bcryptVerifyBtn">Verify</button>
-								</div>
-							</div>
+                <div id="kdfWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Password Hashers</h2>
+                                <p>Bcrypt / Argon2 — generate and verify.</p>
+                            </div>
+                            <div class="panel-actions">
+                                <button id="kdfRefreshSalts">Random salt</button>
+                                <select id="kdfAlgoSelect">
+                                    <option value="bcrypt">Bcrypt</option>
+                                    <option value="argon2">Argon2</option>
+                                </select>
+                            </div>
+                        </div>
+                        <p class="muted kdf-note">
+                            Enter a password to hash. Paste an existing hash (or plain text) to
+                            verify against the password. Empty salt will be auto-generated.
+                        </p>
+                        <div class="kdf-grid">
+                            <div class="kdf-card" data-algo="bcrypt">
+                                <div class="kdf-card-head">
+                                    <div>
+                                        <h3>Bcrypt</h3>
+                                        <p class="muted">Good for login flows, cost 4-31</p>
+                                    </div>
+                                    <span id="bcryptStatus" class="kdf-status muted">Idle</span>
+                                </div>
+                                <label>
+                                    <span>Password</span>
+                                    <input
+                                        id="bcryptPassword"
+                                        type="password"
+                                        spellcheck="false"
+                                        placeholder="Enter password"
+                                    />
+                                </label>
+                                <div class="kdf-inline">
+                                    <label>
+                                        <span>Cost</span>
+                                        <input
+                                            id="bcryptCost"
+                                            type="number"
+                                            min="4"
+                                            max="31"
+                                            value="10"
+                                        />
+                                    </label>
+                                    <label class="flex-1">
+                                        <span>Salt (leave blank for random)</span>
+                                        <input
+                                            id="bcryptSalt"
+                                            spellcheck="false"
+                                            placeholder="Auto-generate salt when empty"
+                                        />
+                                    </label>
+                                </div>
+                                <div class="kdf-actions">
+                                    <button id="bcryptHashBtn">Generate</button>
+                                </div>
+                                <textarea
+                                    id="bcryptOutput"
+                                    spellcheck="false"
+                                    placeholder="Bcrypt hash will appear here (editable)"
+                                ></textarea>
+                                <div class="kdf-verify">
+                                    <input
+                                        id="bcryptVerifyHash"
+                                        spellcheck="false"
+                                        placeholder="Paste bcrypt hash OR plain text to verify"
+                                    />
+                                    <button class="ghost-btn" id="bcryptVerifyBtn">Verify</button>
+                                </div>
+                            </div>
 
-							<div class="kdf-card" data-algo="argon2">
-							<div class="kdf-card-head">
-								<div>
-									<h3>Argon2</h3>
-									<p class="muted">Default Argon2id, modern password hashing</p>
-								</div>
-								<span id="argonStatus" class="kdf-status muted">Idle</span>
-							</div>
-							<label>
-								<span>Password</span>
-								<input id="argonPassword" type="password" spellcheck="false" placeholder="Enter password" />
-							</label>
-							<div class="kdf-inline">
-								<label>
-									<span>Time cost (t)</span>
-									<input id="argonTime" type="number" min="1" value="3" />
-								</label>
-								<label>
-									<span>Memory (KiB)</span>
-									<input id="argonMem" type="number" min="4096" step="1024" value="65536" />
-								</label>
-							</div>
-							<div class="kdf-inline">
-								<label>
-									<span>Parallelism</span>
-									<input id="argonParallelism" type="number" min="1" max="8" value="1" />
-								</label>
-								<label>
-									<span>Hash length</span>
-									<input id="argonHashLen" type="number" min="16" max="64" value="32" />
-								</label>
-								<label class="flex-1">
-									<span>Variant</span>
-									<select id="argonType">
-										<option value="argon2id">Argon2id</option>
-										<option value="argon2i">Argon2i</option>
-										<option value="argon2d">Argon2d</option>
-									</select>
-								</label>
-							</div>
-							<label>
-								<span>Salt (Base64)</span>
-								<input id="argonSalt" spellcheck="false" placeholder="Leave blank to auto-generate 16-byte salt" />
-							</label>
-							<div class="kdf-actions">
-								<button id="argonHashBtn">Generate</button>
-							</div>
-							<textarea
-								id="argonOutput"
-								spellcheck="false"
-								placeholder="Argon2 PHC string will appear here (editable)"
-							></textarea>
-							<div class="kdf-verify">
-								<input
-									id="argonVerifyHash"
-									spellcheck="false"
-									placeholder="Paste Argon2 PHC string OR plain text to verify"
-								/>
-								<button class="ghost-btn" id="argonVerifyBtn">Verify</button>
-							</div>
-						</div>
-						</div>
-					</section>
-			</div>
+                            <div class="kdf-card" data-algo="argon2">
+                                <div class="kdf-card-head">
+                                    <div>
+                                        <h3>Argon2</h3>
+                                        <p class="muted">
+                                            Default Argon2id, modern password hashing
+                                        </p>
+                                    </div>
+                                    <span id="argonStatus" class="kdf-status muted">Idle</span>
+                                </div>
+                                <label>
+                                    <span>Password</span>
+                                    <input
+                                        id="argonPassword"
+                                        type="password"
+                                        spellcheck="false"
+                                        placeholder="Enter password"
+                                    />
+                                </label>
+                                <div class="kdf-inline">
+                                    <label>
+                                        <span>Time cost (t)</span>
+                                        <input id="argonTime" type="number" min="1" value="3" />
+                                    </label>
+                                    <label>
+                                        <span>Memory (KiB)</span>
+                                        <input
+                                            id="argonMem"
+                                            type="number"
+                                            min="4096"
+                                            step="1024"
+                                            value="65536"
+                                        />
+                                    </label>
+                                </div>
+                                <div class="kdf-inline">
+                                    <label>
+                                        <span>Parallelism</span>
+                                        <input
+                                            id="argonParallelism"
+                                            type="number"
+                                            min="1"
+                                            max="8"
+                                            value="1"
+                                        />
+                                    </label>
+                                    <label>
+                                        <span>Hash length</span>
+                                        <input
+                                            id="argonHashLen"
+                                            type="number"
+                                            min="16"
+                                            max="64"
+                                            value="32"
+                                        />
+                                    </label>
+                                    <label class="flex-1">
+                                        <span>Variant</span>
+                                        <select id="argonType">
+                                            <option value="argon2id">Argon2id</option>
+                                            <option value="argon2i">Argon2i</option>
+                                            <option value="argon2d">Argon2d</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <label>
+                                    <span>Salt (Base64)</span>
+                                    <input
+                                        id="argonSalt"
+                                        spellcheck="false"
+                                        placeholder="Leave blank to auto-generate 16-byte salt"
+                                    />
+                                </label>
+                                <div class="kdf-actions">
+                                    <button id="argonHashBtn">Generate</button>
+                                </div>
+                                <textarea
+                                    id="argonOutput"
+                                    spellcheck="false"
+                                    placeholder="Argon2 PHC string will appear here (editable)"
+                                ></textarea>
+                                <div class="kdf-verify">
+                                    <input
+                                        id="argonVerifyHash"
+                                        spellcheck="false"
+                                        placeholder="Paste Argon2 PHC string OR plain text to verify"
+                                    />
+                                    <button class="ghost-btn" id="argonVerifyBtn">Verify</button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
 
-			<!-- Crypto workspace: encrypt/decrypt text or files with modern AEAD ciphers. -->
-			<div id="cryptoWorkspace" class="tool-view hidden">
-				<section class="panel">
-					<div class="panel-header">
-						<div>
-							<h2>Encrypt</h2>
-							<p>Encrypt text or files with AES-GCM or (X)ChaCha20.</p>
-						</div>
-						<div class="panel-actions">
-							<label>
-								<span>Algorithm</span>
-								<select id="cryptoAlgorithm">
-									<option value="aes-256-gcm">AES-256-GCM</option>
-									<option value="chacha20-poly1305">ChaCha20-Poly1305</option>
-									<option value="xchacha20-poly1305">XChaCha20-Poly1305</option>
-								</select>
-							</label>
-						</div>
-					</div>
-					<div class="kdf-inline">
-						<label>
-							<span>Key (Base64)</span>
-							<input id="cryptoKey" spellcheck="false" placeholder="Leave blank to auto-generate" />
-						</label>
-						<label>
-							<span>Nonce (Base64)</span>
-							<input id="cryptoNonce" spellcheck="false" placeholder="Leave blank to auto-generate" />
-						</label>
-					</div>
-					<div class="kdf-actions">
-						<button id="cryptoGenerateKey" type="button">Generate key</button>
-						<button id="cryptoGenerateNonce" type="button">Generate nonce</button>
-					</div>
-					<div class="kdf-inline">
-						<label class="checkbox">
-							<input type="radio" name="cryptoInputMode" id="cryptoModeText" value="text" checked />
-							<span>Encrypt text</span>
-						</label>
-						<label class="checkbox">
-							<input type="radio" name="cryptoInputMode" id="cryptoModeFile" value="file" />
-							<span>Encrypt file</span>
-						</label>
-						<input type="file" id="cryptoFile" class="hidden" />
-						<div id="cryptoFileMeta" class="muted hidden">No file selected</div>
-					</div>
-					<textarea
-						id="cryptoPlaintext"
-						spellcheck="false"
-						placeholder="Paste text to encrypt or switch to file mode"
-					></textarea>
-					<div class="panel-actions">
-						<button id="cryptoEncrypt" type="button">Encrypt</button>
-					</div>
-				</section>
-				<section class="panel">
-					<div class="panel-header">
-						<div>
-							<h2>Ciphertext</h2>
-							<p>Base64 output (includes auth tag)</p>
-						</div>
-						<div class="panel-actions">
-							<button id="cryptoCopyCiphertext" type="button">Copy</button>
-						</div>
-					</div>
-					<textarea
-						id="cryptoCiphertext"
-						spellcheck="false"
-						placeholder="Ciphertext will appear here (editable for decrypt)"
-					></textarea>
-					<div class="panel-header">
-						<div>
-							<h2>Decrypt</h2>
-							<p>Paste ciphertext, key, and nonce to recover the original bytes.</p>
-						</div>
-						<div class="panel-actions">
-							<button id="cryptoDecrypt" type="button">Decrypt</button>
-						</div>
-					</div>
-					<textarea
-						id="cryptoDecryptOutput"
-						spellcheck="false"
-						readonly
-						placeholder="Plaintext or Base64 output will render here"
-					></textarea>
-				</section>
-			</div>
+                <!-- Crypto workspace: encrypt/decrypt text or files with modern AEAD ciphers. -->
+                <div id="cryptoWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Encrypt</h2>
+                                <p>Encrypt text or files with AES-GCM or (X)ChaCha20.</p>
+                            </div>
+                            <div class="panel-actions">
+                                <label>
+                                    <span>Algorithm</span>
+                                    <select id="cryptoAlgorithm">
+                                        <option value="aes-256-gcm">AES-256-GCM</option>
+                                        <option value="chacha20-poly1305">ChaCha20-Poly1305</option>
+                                        <option value="xchacha20-poly1305">
+                                            XChaCha20-Poly1305
+                                        </option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="kdf-inline">
+                            <label>
+                                <span>Key (Base64)</span>
+                                <input
+                                    id="cryptoKey"
+                                    spellcheck="false"
+                                    placeholder="Leave blank to auto-generate"
+                                />
+                            </label>
+                            <label>
+                                <span>Nonce (Base64)</span>
+                                <input
+                                    id="cryptoNonce"
+                                    spellcheck="false"
+                                    placeholder="Leave blank to auto-generate"
+                                />
+                            </label>
+                        </div>
+                        <div class="kdf-actions">
+                            <button id="cryptoGenerateKey" type="button">Generate key</button>
+                            <button id="cryptoGenerateNonce" type="button">Generate nonce</button>
+                        </div>
+                        <div class="kdf-inline">
+                            <label class="checkbox">
+                                <input
+                                    type="radio"
+                                    name="cryptoInputMode"
+                                    id="cryptoModeText"
+                                    value="text"
+                                    checked
+                                />
+                                <span>Encrypt text</span>
+                            </label>
+                            <label class="checkbox">
+                                <input
+                                    type="radio"
+                                    name="cryptoInputMode"
+                                    id="cryptoModeFile"
+                                    value="file"
+                                />
+                                <span>Encrypt file</span>
+                            </label>
+                            <input type="file" id="cryptoFile" class="hidden" />
+                            <div id="cryptoFileMeta" class="muted hidden">No file selected</div>
+                        </div>
+                        <textarea
+                            id="cryptoPlaintext"
+                            spellcheck="false"
+                            placeholder="Paste text to encrypt or switch to file mode"
+                        ></textarea>
+                        <div class="panel-actions">
+                            <button id="cryptoEncrypt" type="button">Encrypt</button>
+                        </div>
+                    </section>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Ciphertext</h2>
+                                <p>Base64 output (includes auth tag)</p>
+                            </div>
+                            <div class="panel-actions">
+                                <button id="cryptoCopyCiphertext" type="button">Copy</button>
+                            </div>
+                        </div>
+                        <textarea
+                            id="cryptoCiphertext"
+                            spellcheck="false"
+                            placeholder="Ciphertext will appear here (editable for decrypt)"
+                        ></textarea>
+                        <div class="panel-header">
+                            <div>
+                                <h2>Decrypt</h2>
+                                <p>
+                                    Paste ciphertext, key, and nonce to recover the original bytes.
+                                </p>
+                            </div>
+                            <div class="panel-actions">
+                                <button id="cryptoDecrypt" type="button">Decrypt</button>
+                            </div>
+                        </div>
+                        <textarea
+                            id="cryptoDecryptOutput"
+                            spellcheck="false"
+                            readonly
+                            placeholder="Plaintext or Base64 output will render here"
+                        ></textarea>
+                    </section>
+                </div>
 
-				<div id="pairWorkspace" class="tool-view hidden">
-			<section class="panel">
-				<div class="panel-header">
-					<div>
-						<h2 id="pairInputLabel">Encode</h2>
-						<p id="pairInputHint">Enter text to encode</p>
-					</div>
-					<div class="pair-controls">
-						<div id="jwtControls" class="jwt-controls hidden">
-							<label>
-									<span>Algorithm</span>
-								<select id="jwtAlgorithm">
-									<option value="HS256">HS256</option>
-											<option value="HS384">HS384</option>
-											<option value="HS512">HS512</option>
-										</select>
-									</label>
-									<label>
-										<span>Secret</span>
-										<input
-											type="password"
-											id="jwtSecret"
-											placeholder="Enter secret"
-											spellcheck="false"
-										/>
-									</label>
-						</div>
-					</div>
-				</div>
-				<textarea
-					id="pairInput"
-					spellcheck="false"
-					placeholder="Enter content to encode"
-				></textarea>
-				<div id="urlQuerySection" class="query-panel hidden">
-					<div class="query-panel-head">
-						<div>
-							<h3>Query Parameters</h3>
-							<p class="muted">Edit params and keep URL Encode in sync</p>
-						</div>
-						<div class="query-panel-actions">
-							<button class="ghost-btn" id="urlQueryAdd" type="button">Add parameter</button>
-						</div>
-					</div>
-					<div id="urlQueryTable" class="query-table"></div>
-					<div id="urlQueryEmpty" class="query-empty muted hidden">
-						No query parameters detected. Add one to start.
-					</div>
-				</div>
-			</section>
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2 id="pairOutputLabel">Decode</h2>
-								<p id="pairOutputHint">Paste encoded text to decode</p>
-							</div>
-						</div>
-						<textarea
-							id="pairOutput"
-							spellcheck="false"
-							placeholder="Paste content to decode"
-						></textarea>
-						<pre id="pairOutputMeta" class="pair-meta hidden"></pre>
-					</section>
-				</div>
+                <div id="pairWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 id="pairInputLabel">Encode</h2>
+                                <p id="pairInputHint">Enter text to encode</p>
+                            </div>
+                            <div class="pair-controls">
+                                <div id="jwtControls" class="jwt-controls hidden">
+                                    <label>
+                                        <span>Algorithm</span>
+                                        <select id="jwtAlgorithm">
+                                            <option value="HS256">HS256</option>
+                                            <option value="HS384">HS384</option>
+                                            <option value="HS512">HS512</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>Secret</span>
+                                        <input
+                                            type="password"
+                                            id="jwtSecret"
+                                            placeholder="Enter secret"
+                                            spellcheck="false"
+                                        />
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <textarea
+                            id="pairInput"
+                            spellcheck="false"
+                            placeholder="Enter content to encode"
+                        ></textarea>
+                        <div id="urlQuerySection" class="query-panel hidden">
+                            <div class="query-panel-head">
+                                <div>
+                                    <h3>Query Parameters</h3>
+                                    <p class="muted">Edit params and keep URL Encode in sync</p>
+                                </div>
+                                <div class="query-panel-actions">
+                                    <button class="ghost-btn" id="urlQueryAdd" type="button">
+                                        Add parameter
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="urlQueryTable" class="query-table"></div>
+                            <div id="urlQueryEmpty" class="query-empty muted hidden">
+                                No query parameters detected. Add one to start.
+                            </div>
+                        </div>
+                    </section>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 id="pairOutputLabel">Decode</h2>
+                                <p id="pairOutputHint">Paste encoded text to decode</p>
+                            </div>
+                        </div>
+                        <textarea
+                            id="pairOutput"
+                            spellcheck="false"
+                            placeholder="Paste content to decode"
+                        ></textarea>
+                        <pre id="pairOutputMeta" class="pair-meta hidden"></pre>
+                    </section>
+                </div>
 
-				<div id="numberWorkspace" class="tool-view hidden">
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2>Number Converter</h2>
-								<p>Update any field to sync all bases</p>
-							</div>
-						</div>
-						<div class="number-grid">
-							<label>
-								<span>Binary</span>
-								<input id="numberBinary" spellcheck="false" placeholder="e.g. 1010" />
-							</label>
-							<label>
-								<span>Octal</span>
-								<input id="numberOctal" spellcheck="false" placeholder="e.g. 12" />
-							</label>
-							<label>
-								<span>Decimal</span>
-								<input id="numberDecimal" spellcheck="false" placeholder="e.g. 10" />
-							</label>
-							<label>
-								<span>Hexadecimal</span>
-								<input id="numberHex" spellcheck="false" placeholder="e.g. a" />
-							</label>
-						</div>
-					</section>
-				</div>
+                <div id="numberWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Number Converter</h2>
+                                <p>Update any field to sync all bases</p>
+                            </div>
+                        </div>
+                        <div class="number-grid">
+                            <label>
+                                <span>Binary</span>
+                                <input
+                                    id="numberBinary"
+                                    spellcheck="false"
+                                    placeholder="e.g. 1010"
+                                />
+                            </label>
+                            <label>
+                                <span>Octal</span>
+                                <input id="numberOctal" spellcheck="false" placeholder="e.g. 12" />
+                            </label>
+                            <label>
+                                <span>Decimal</span>
+                                <input
+                                    id="numberDecimal"
+                                    spellcheck="false"
+                                    placeholder="e.g. 10"
+                                />
+                            </label>
+                            <label>
+                                <span>Hexadecimal</span>
+                                <input id="numberHex" spellcheck="false" placeholder="e.g. a" />
+                            </label>
+                        </div>
+                    </section>
+                </div>
 
-				<div id="unitWorkspace" class="tool-view hidden">
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2>Unit Converter</h2>
-								<p>Bits ↔ Bytes with binary multiples</p>
-							</div>
-						</div>
-						<div class="number-grid">
-							<label>
-								<span>Bit</span>
-								<input id="unitBit" spellcheck="false" placeholder="e.g. 8" />
-							</label>
-							<label>
-								<span>Byte</span>
-								<input id="unitByte" spellcheck="false" placeholder="e.g. 1" />
-							</label>
-							<label>
-								<span>Kilobit</span>
-								<input id="unitKilobit" spellcheck="false" placeholder="e.g. 1" />
-							</label>
-							<label>
-								<span>Kilobyte</span>
-								<input id="unitKilobyte" spellcheck="false" placeholder="e.g. 0.125" />
-							</label>
-							<label>
-								<span>Megabit</span>
-								<input id="unitMegabit" spellcheck="false" placeholder="e.g. 0.001" />
-							</label>
-							<label>
-								<span>Megabyte</span>
-								<input id="unitMegabyte" spellcheck="false" placeholder="e.g. 0.000125" />
-							</label>
-							<label>
-								<span>Gigabit</span>
-								<input id="unitGigabit" spellcheck="false" placeholder="e.g. 0.000001" />
-							</label>
-							<label>
-								<span>Gigabyte</span>
-								<input id="unitGigabyte" spellcheck="false" placeholder="e.g. 0.000000125" />
-							</label>
-							<label>
-								<span>Terabit</span>
-								<input id="unitTerabit" spellcheck="false" placeholder="e.g. 0.000000001" />
-							</label>
-							<label>
-								<span>Terabyte</span>
-								<input id="unitTerabyte" spellcheck="false" placeholder="e.g. 0.000000000125" />
-							</label>
-						</div>
-					</section>
+                <div id="unitWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Unit Converter</h2>
+                                <p>Bits ↔ Bytes with binary multiples</p>
+                            </div>
+                        </div>
+                        <div class="number-grid">
+                            <label>
+                                <span>Bit</span>
+                                <input id="unitBit" spellcheck="false" placeholder="e.g. 8" />
+                            </label>
+                            <label>
+                                <span>Byte</span>
+                                <input id="unitByte" spellcheck="false" placeholder="e.g. 1" />
+                            </label>
+                            <label>
+                                <span>Kilobit</span>
+                                <input id="unitKilobit" spellcheck="false" placeholder="e.g. 1" />
+                            </label>
+                            <label>
+                                <span>Kilobyte</span>
+                                <input
+                                    id="unitKilobyte"
+                                    spellcheck="false"
+                                    placeholder="e.g. 0.125"
+                                />
+                            </label>
+                            <label>
+                                <span>Megabit</span>
+                                <input
+                                    id="unitMegabit"
+                                    spellcheck="false"
+                                    placeholder="e.g. 0.001"
+                                />
+                            </label>
+                            <label>
+                                <span>Megabyte</span>
+                                <input
+                                    id="unitMegabyte"
+                                    spellcheck="false"
+                                    placeholder="e.g. 0.000125"
+                                />
+                            </label>
+                            <label>
+                                <span>Gigabit</span>
+                                <input
+                                    id="unitGigabit"
+                                    spellcheck="false"
+                                    placeholder="e.g. 0.000001"
+                                />
+                            </label>
+                            <label>
+                                <span>Gigabyte</span>
+                                <input
+                                    id="unitGigabyte"
+                                    spellcheck="false"
+                                    placeholder="e.g. 0.000000125"
+                                />
+                            </label>
+                            <label>
+                                <span>Terabit</span>
+                                <input
+                                    id="unitTerabit"
+                                    spellcheck="false"
+                                    placeholder="e.g. 0.000000001"
+                                />
+                            </label>
+                            <label>
+                                <span>Terabyte</span>
+                                <input
+                                    id="unitTerabyte"
+                                    spellcheck="false"
+                                    placeholder="e.g. 0.000000000125"
+                                />
+                            </label>
+                        </div>
+                    </section>
                 </div>
 
                 <div id="timestampWorkspace" class="tool-view hidden">
@@ -560,447 +672,501 @@
                         <div class="timestamp-grid">
                             <label>
                                 <span>ISO 8601 / RFC 3339</span>
-                                <input id="timestampIso" data-field="iso8601" spellcheck="false" placeholder="2025-03-13T15:09:26Z" />
+                                <input
+                                    id="timestampIso"
+                                    data-field="iso8601"
+                                    spellcheck="false"
+                                    placeholder="2025-03-13T15:09:26Z"
+                                />
                             </label>
                             <label>
                                 <span>RFC 2822</span>
-                                <input id="timestampRfc" data-field="rfc2822" spellcheck="false" placeholder="Thu, 13 Mar 2025 15:09:26 +0000" />
+                                <input
+                                    id="timestampRfc"
+                                    data-field="rfc2822"
+                                    spellcheck="false"
+                                    placeholder="Thu, 13 Mar 2025 15:09:26 +0000"
+                                />
                             </label>
                             <label>
                                 <span>SQL DateTime</span>
-                                <input id="timestampSql" data-field="sql_datetime" spellcheck="false" placeholder="2025-03-13 15:09:26" />
+                                <input
+                                    id="timestampSql"
+                                    data-field="sql_datetime"
+                                    spellcheck="false"
+                                    placeholder="2025-03-13 15:09:26"
+                                />
                             </label>
                             <label>
                                 <span>SQL Date</span>
-                                <input id="timestampSqlDate" data-field="sql_date" spellcheck="false" placeholder="2025-03-13" />
+                                <input
+                                    id="timestampSqlDate"
+                                    data-field="sql_date"
+                                    spellcheck="false"
+                                    placeholder="2025-03-13"
+                                />
                             </label>
                             <label>
                                 <span>Unix Seconds</span>
-                                <input id="timestampSeconds" data-field="timestamp_seconds" type="text" inputmode="numeric" spellcheck="false" placeholder="1710324566" />
+                                <input
+                                    id="timestampSeconds"
+                                    data-field="timestamp_seconds"
+                                    type="text"
+                                    inputmode="numeric"
+                                    spellcheck="false"
+                                    placeholder="1710324566"
+                                />
                             </label>
                             <label>
                                 <span>Unix Millis</span>
-                                <input id="timestampMillis" data-field="timestamp_milliseconds" type="text" inputmode="numeric" spellcheck="false" placeholder="1710324566000" />
+                                <input
+                                    id="timestampMillis"
+                                    data-field="timestamp_milliseconds"
+                                    type="text"
+                                    inputmode="numeric"
+                                    spellcheck="false"
+                                    placeholder="1710324566000"
+                                />
                             </label>
                             <label>
                                 <span>Unix Micros</span>
-                                <input id="timestampMicros" data-field="timestamp_microseconds" type="text" inputmode="numeric" spellcheck="false" placeholder="1710324566000000" />
+                                <input
+                                    id="timestampMicros"
+                                    data-field="timestamp_microseconds"
+                                    type="text"
+                                    inputmode="numeric"
+                                    spellcheck="false"
+                                    placeholder="1710324566000000"
+                                />
                             </label>
                             <label>
                                 <span>Unix Nanos</span>
-                                <input id="timestampNanos" data-field="timestamp_nanoseconds" type="text" inputmode="numeric" spellcheck="false" placeholder="1710324566000000000" />
+                                <input
+                                    id="timestampNanos"
+                                    data-field="timestamp_nanoseconds"
+                                    type="text"
+                                    inputmode="numeric"
+                                    spellcheck="false"
+                                    placeholder="1710324566000000000"
+                                />
                             </label>
                         </div>
                     </section>
                 </div>
 
                 <div id="ipv4Workspace" class="tool-view hidden">
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2>IPv4 Tools</h2>
-								<p>Enter an IP, CIDR, or IP with subnet mask</p>
-							</div>
-						</div>
-						<textarea
-							id="ipv4Input"
-							spellcheck="false"
-							placeholder="Examples: 192.168.0.1, 192.168.0.0/24, 10.0.0.0/255.255.0.0"
-						></textarea>
-					</section>
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2>Results</h2>
-								<p>Shows range, totals, and alternate formats</p>
-							</div>
-						</div>
-						<div id="ipv4Results" class="ipv4-results">
-							<div class="muted">Enter an IPv4 or CIDR block to see details</div>
-						</div>
-					</section>
-				</div>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>IPv4 Tools</h2>
+                                <p>Enter an IP, CIDR, or IP with subnet mask</p>
+                            </div>
+                        </div>
+                        <textarea
+                            id="ipv4Input"
+                            spellcheck="false"
+                            placeholder="Examples: 192.168.0.1, 192.168.0.0/24, 10.0.0.0/255.255.0.0"
+                        ></textarea>
+                    </section>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Results</h2>
+                                <p>Shows range, totals, and alternate formats</p>
+                            </div>
+                        </div>
+                        <div id="ipv4Results" class="ipv4-results">
+                            <div class="muted">Enter an IPv4 or CIDR block to see details</div>
+                        </div>
+                    </section>
+                </div>
 
-				<div id="uuidWorkspace" class="tool-view hidden">
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2>UUID</h2>
-								<p>Generate UUID v1 ~ v8, GUID, and ULID</p>
-							</div>
-							<div class="generator-actions">
-								<button id="uuidToggleCase" data-upper="false">
-									Toggle Case
-								</button>
-								<button id="uuidRegenerate">Regenerate</button>
-							</div>
-						</div>
-						<div id="uuidList" class="uuid-list"></div>
-					</section>
-				</div>
+                <div id="uuidWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>UUID</h2>
+                                <p>Generate UUID v1 ~ v8, GUID, and ULID</p>
+                            </div>
+                            <div class="generator-actions">
+                                <button id="uuidToggleCase" data-upper="false">Toggle Case</button>
+                                <button id="uuidRegenerate">Regenerate</button>
+                            </div>
+                        </div>
+                        <div id="uuidList" class="uuid-list"></div>
+                    </section>
+                </div>
 
-			<div id="userAgentWorkspace" class="tool-view hidden">
-				<section class="panel">
-					<div class="panel-header">
-						<div>
-							<h2>User-Agent</h2>
-							<p>Pick a browser and OS to fetch realistic strings</p>
-						</div>
-						<div class="generator-actions">
-							<select id="uaBrowser">
-								<option value="">All Browsers</option>
-									<option value="chrome">Chrome</option>
-									<option value="firefox">Firefox</option>
-									<option value="opera">Opera</option>
-									<option value="safari">Safari</option>
-									<option value="edge">Edge</option>
-									<option value="vivaldi">Vivaldi</option>
-									<option value="yandex">Yandex</option>
-								</select>
-								<select id="uaOS">
-									<option value="">All Platforms</option>
-									<option value="windows">Windows</option>
-									<option value="macos">macOS</option>
-									<option value="chrome-os">ChromeOS</option>
-									<option value="android">Android</option>
-									<option value="ios">iOS</option>
-								</select>
-							</div>
-						</div>
-						<div id="uaResults" class="ua-results">
-							<div class="muted">Choose filters to generate user agents</div>
-						</div>
-				</section>
-			</div>
+                <div id="userAgentWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>User-Agent</h2>
+                                <p>Pick a browser and OS to fetch realistic strings</p>
+                            </div>
+                            <div class="generator-actions">
+                                <select id="uaBrowser">
+                                    <option value="">All Browsers</option>
+                                    <option value="chrome">Chrome</option>
+                                    <option value="firefox">Firefox</option>
+                                    <option value="opera">Opera</option>
+                                    <option value="safari">Safari</option>
+                                    <option value="edge">Edge</option>
+                                    <option value="vivaldi">Vivaldi</option>
+                                    <option value="yandex">Yandex</option>
+                                </select>
+                                <select id="uaOS">
+                                    <option value="">All Platforms</option>
+                                    <option value="windows">Windows</option>
+                                    <option value="macos">macOS</option>
+                                    <option value="chrome-os">ChromeOS</option>
+                                    <option value="android">Android</option>
+                                    <option value="ios">iOS</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="uaResults" class="ua-results">
+                            <div class="muted">Choose filters to generate user agents</div>
+                        </div>
+                    </section>
+                </div>
 
-			<div id="sshWorkspace" class="tool-view hidden">
-				<section class="panel">
-					<div class="panel-header">
-						<div>
-							<h2>SSH Key Generator</h2>
-							<p>Generate OpenSSH public/private key pairs.</p>
-						</div>
-						<div class="generator-actions">
-							<button id="sshGenerate">Generate</button>
-						</div>
-					</div>
-					<div class="ssh-grid">
-						<label>
-							<span>Type</span>
-							<select id="sshType">
-								<option value="ed25519" selected>Ed25519</option>
-								<option value="ed25519-sk">Ed25519 SK</option>
-								<option value="rsa">RSA</option>
-							</select>
-						</label>
-						<label class="ssh-bits-row">
-							<span>Bits (RSA)</span>
-							<input type="number" id="sshBits" min="2048" max="8192" value="4096" disabled />
-						</label>
-						<label>
-							<span>Format</span>
-							<select id="sshFormat">
-								<option value="openssh" selected>OpenSSH</option>
-								<option value="pem">PEM</option>
-							</select>
-						</label>
-						<label>
-							<span>KDF Rounds</span>
-							<input type="number" id="sshKdf" min="16" max="500" value="16" />
-						</label>
-						<label class="ssh-comment">
-							<span>Comment</span>
-							<input type="text" id="sshComment" spellcheck="false" placeholder="user@host" />
-						</label>
-						<label class="ssh-sk-option ssh-sk-resident hidden">
-							<input type="checkbox" id="sshResident" />
-							<span>Resident (store on hardware token)</span>
-						</label>
-						<label class="ssh-sk-option ssh-sk-verify hidden">
-							<input type="checkbox" id="sshVerify" />
-							<span>Verify required (touch on each use)</span>
-						</label>
-					</div>
-				</section>
-				<section class="panel">
-					<div class="panel-header">
-						<div>
-							<h2>Public Key</h2>
-							<p>authorized_keys format</p>
-						</div>
-						<div class="panel-actions">
-							<button class="ghost-btn" id="sshCopyPublic">Copy</button>
-						</div>
-					</div>
-					<textarea id="sshPublic" spellcheck="false" readonly></textarea>
-				</section>
-				<section class="panel">
-					<div class="panel-header">
-						<div>
-							<h2>Private Key</h2>
-							<p>OpenSSH PEM</p>
-						</div>
-						<div class="panel-actions">
-							<button class="ghost-btn" id="sshCopyPrivate">Copy</button>
-						</div>
-					</div>
-					<textarea id="sshPrivate" spellcheck="false" readonly></textarea>
-				</section>
-			</div>
+                <div id="sshWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>SSH Key Generator</h2>
+                                <p>Generate OpenSSH public/private key pairs.</p>
+                            </div>
+                            <div class="generator-actions">
+                                <button id="sshGenerate">Generate</button>
+                            </div>
+                        </div>
+                        <div class="ssh-grid">
+                            <label>
+                                <span>Type</span>
+                                <select id="sshType">
+                                    <option value="ed25519" selected>Ed25519</option>
+                                    <option value="ed25519-sk">Ed25519 SK</option>
+                                    <option value="rsa">RSA</option>
+                                </select>
+                            </label>
+                            <label class="ssh-bits-row">
+                                <span>Bits (RSA)</span>
+                                <input
+                                    type="number"
+                                    id="sshBits"
+                                    min="2048"
+                                    max="8192"
+                                    value="4096"
+                                    disabled
+                                />
+                            </label>
+                            <label>
+                                <span>Format</span>
+                                <select id="sshFormat">
+                                    <option value="openssh" selected>OpenSSH</option>
+                                    <option value="pem">PEM</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>KDF Rounds</span>
+                                <input type="number" id="sshKdf" min="16" max="500" value="16" />
+                            </label>
+                            <label class="ssh-comment">
+                                <span>Comment</span>
+                                <input
+                                    type="text"
+                                    id="sshComment"
+                                    spellcheck="false"
+                                    placeholder="user@host"
+                                />
+                            </label>
+                            <label class="ssh-sk-option ssh-sk-resident hidden">
+                                <input type="checkbox" id="sshResident" />
+                                <span>Resident (store on hardware token)</span>
+                            </label>
+                            <label class="ssh-sk-option ssh-sk-verify hidden">
+                                <input type="checkbox" id="sshVerify" />
+                                <span>Verify required (touch on each use)</span>
+                            </label>
+                        </div>
+                    </section>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Public Key</h2>
+                                <p>authorized_keys format</p>
+                            </div>
+                            <div class="panel-actions">
+                                <button class="ghost-btn" id="sshCopyPublic">Copy</button>
+                            </div>
+                        </div>
+                        <textarea id="sshPublic" spellcheck="false" readonly></textarea>
+                    </section>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Private Key</h2>
+                                <p>OpenSSH PEM</p>
+                            </div>
+                            <div class="panel-actions">
+                                <button class="ghost-btn" id="sshCopyPrivate">Copy</button>
+                            </div>
+                        </div>
+                        <textarea id="sshPrivate" spellcheck="false" readonly></textarea>
+                    </section>
+                </div>
 
-			<!-- Browser Fingerprint surface: shows passive signals we can read without permissions. -->
-			<div id="fingerprintWorkspace" class="tool-view hidden">
-				<section class="panel">
-					<div class="panel-header">
-						<div>
-							<h2>Browser Fingerprint</h2>
-							<p>Inspect what the browser exposes without permissions</p>
-						</div>
-					</div>
-					<div id="fingerprintSummary" class="fingerprint-summary">
-						Showing values available via standard Web APIs.
-					</div>
-					<div id="fingerprintGrid" class="fingerprint-grid">
-						<div class="muted">Loading…</div>
-					</div>
-				</section>
-			</div>
+                <!-- Browser Fingerprint surface: shows passive signals we can read without permissions. -->
+                <div id="fingerprintWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Browser Fingerprint</h2>
+                                <p>Inspect what the browser exposes without permissions</p>
+                            </div>
+                        </div>
+                        <div id="fingerprintSummary" class="fingerprint-summary">
+                            Showing values available via standard Web APIs.
+                        </div>
+                        <div id="fingerprintGrid" class="fingerprint-grid">
+                            <div class="muted">Loading…</div>
+                        </div>
+                    </section>
+                </div>
 
-			<!-- SSL Inspector workspace: decodes PEM certificates or chains. -->
-			<div id="certWorkspace" class="tool-view hidden">
-				<section class="panel">
-					<div class="panel-header">
-						<div>
-							<h2>SSL Inspector</h2>
-							<p>Paste a PEM certificate or chain to view decoded fields.</p>
-						</div>
-						<div class="panel-actions">
-							<button class="ghost-btn" id="certSample">Load sample</button>
-							<button id="certParse">Parse</button>
-						</div>
-					</div>
-					<textarea
-						id="certInput"
-						spellcheck="false"
-						placeholder="-----BEGIN CERTIFICATE-----"
-					></textarea>
-				</section>
-				<section class="panel">
-					<div class="panel-header">
-						<div>
-							<h2>Certificates</h2>
-							<p id="certSummary" class="muted">No certificates parsed yet.</p>
-						</div>
-					</div>
-					<div id="certResults" class="cert-grid">
-						<div class="muted">Paste a certificate to see details.</div>
-					</div>
-				</section>
-			</div>
+                <!-- SSL Inspector workspace: decodes PEM certificates or chains. -->
+                <div id="certWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>SSL Inspector</h2>
+                                <p>Paste a PEM certificate or chain to view decoded fields.</p>
+                            </div>
+                            <div class="panel-actions">
+                                <button class="ghost-btn" id="certSample">Load sample</button>
+                                <button id="certParse">Parse</button>
+                            </div>
+                        </div>
+                        <textarea
+                            id="certInput"
+                            spellcheck="false"
+                            placeholder="-----BEGIN CERTIFICATE-----"
+                        ></textarea>
+                    </section>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Certificates</h2>
+                                <p id="certSummary" class="muted">No certificates parsed yet.</p>
+                            </div>
+                        </div>
+                        <div id="certResults" class="cert-grid">
+                            <div class="muted">Paste a certificate to see details.</div>
+                        </div>
+                    </section>
+                </div>
 
-				<div id="randomWorkspace" class="tool-view hidden">
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2>Random</h2>
-								<p>Generate random strings with custom rules</p>
-							</div>
-							<div class="generator-actions">
-								<button id="randomGenerate">Generate</button>
-							</div>
-						</div>
-						<div class="random-controls">
-							<label>
-								<span>Length</span>
-								<input
-									type="number"
-									min="1"
-									max="2048"
-									value="24"
-									id="randomLength"
-								/>
-							</label>
-							<label>
-								<span>Count</span>
-								<input
-									type="number"
-									min="1"
-									max="256"
-									value="5"
-									id="randomCount"
-								/>
-							</label>
-							<div class="checkbox-row" data-min-row="digits">
-								<label class="checkbox">
-									<input type="checkbox" id="randomIncludeDigits" checked />
-									<span>Include digits</span>
-								</label>
-								<input
-									type="number"
-									min="0"
-									value="0"
-									id="randomMinDigits"
-									class="min-count"
-								/>
-							</div>
-							<div class="checkbox-row" id="randomAllowZeroRow">
-								<label class="checkbox">
-									<input type="checkbox" id="randomAllowZero" checked />
-									<span>Allow leading zero</span>
-								</label>
-							</div>
-							<div class="checkbox-row" data-min-row="lower">
-								<label class="checkbox">
-									<input type="checkbox" id="randomIncludeLower" />
-									<span>Include a-z</span>
-								</label>
-								<input
-									type="number"
-									min="0"
-									value="0"
-									id="randomMinLower"
-									class="min-count"
-								/>
-							</div>
-							<div class="checkbox-row" data-min-row="upper">
-								<label class="checkbox">
-									<input type="checkbox" id="randomIncludeUpper" />
-									<span>Include A-Z</span>
-								</label>
-								<input
-									type="number"
-									min="0"
-									value="0"
-									id="randomMinUpper"
-									class="min-count"
-								/>
-							</div>
-						</div>
-						<div class="random-exclude">
-							<label>
-								<span>Exclude characters</span>
-								<input
-									type="text"
-									id="randomExclude"
-									spellcheck="false"
-									placeholder="e.g. O0Il"
-								/>
-							</label>
-						</div>
-						<div class="symbol-toggle-grid" id="randomSymbolToggles"></div>
-						<div class="symbol-min hidden" id="randomSymbolMinRow">
-							<label for="randomMinSymbols">Min symbols</label>
-							<input
-								type="number"
-								min="0"
-								value="0"
-								id="randomMinSymbols"
-								class="min-count"
-							/>
-						</div>
-						<div id="randomResults" class="random-results">
-							<div class="random-placeholder">Click Generate to produce strings</div>
-						</div>
-					</section>
-				</div>
+                <div id="randomWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Random</h2>
+                                <p>Generate random strings with custom rules</p>
+                            </div>
+                            <div class="generator-actions">
+                                <button id="randomGenerate">Generate</button>
+                            </div>
+                        </div>
+                        <div class="random-controls">
+                            <label>
+                                <span>Length</span>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="2048"
+                                    value="24"
+                                    id="randomLength"
+                                />
+                            </label>
+                            <label>
+                                <span>Count</span>
+                                <input type="number" min="1" max="256" value="5" id="randomCount" />
+                            </label>
+                            <div class="checkbox-row" data-min-row="digits">
+                                <label class="checkbox">
+                                    <input type="checkbox" id="randomIncludeDigits" checked />
+                                    <span>Include digits</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value="0"
+                                    id="randomMinDigits"
+                                    class="min-count"
+                                />
+                            </div>
+                            <div class="checkbox-row" id="randomAllowZeroRow">
+                                <label class="checkbox">
+                                    <input type="checkbox" id="randomAllowZero" checked />
+                                    <span>Allow leading zero</span>
+                                </label>
+                            </div>
+                            <div class="checkbox-row" data-min-row="lower">
+                                <label class="checkbox">
+                                    <input type="checkbox" id="randomIncludeLower" />
+                                    <span>Include a-z</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value="0"
+                                    id="randomMinLower"
+                                    class="min-count"
+                                />
+                            </div>
+                            <div class="checkbox-row" data-min-row="upper">
+                                <label class="checkbox">
+                                    <input type="checkbox" id="randomIncludeUpper" />
+                                    <span>Include A-Z</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value="0"
+                                    id="randomMinUpper"
+                                    class="min-count"
+                                />
+                            </div>
+                        </div>
+                        <div class="random-exclude">
+                            <label>
+                                <span>Exclude characters</span>
+                                <input
+                                    type="text"
+                                    id="randomExclude"
+                                    spellcheck="false"
+                                    placeholder="e.g. O0Il"
+                                />
+                            </label>
+                        </div>
+                        <div class="symbol-toggle-grid" id="randomSymbolToggles"></div>
+                        <div class="symbol-min hidden" id="randomSymbolMinRow">
+                            <label for="randomMinSymbols">Min symbols</label>
+                            <input
+                                type="number"
+                                min="0"
+                                value="0"
+                                id="randomMinSymbols"
+                                class="min-count"
+                            />
+                        </div>
+                        <div id="randomResults" class="random-results">
+                            <div class="random-placeholder">Click Generate to produce strings</div>
+                        </div>
+                    </section>
+                </div>
 
-				<!-- TOTP workspace: computes RFC 6238 codes based on user-selected algorithm/period/digits. -->
-				<div id="totpWorkspace" class="tool-view hidden">
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2>TOTP</h2>
-								<p>Compute time-based OTP codes from a Base32 secret.</p>
-							</div>
-						</div>
-						<div class="totp-form">
-							<label>
-								<span>Secret</span>
-								<input type="text" id="totpSecret" spellcheck="false" placeholder="6BDRT7ATRRCZV5ISFLOHAHQLYF4ZORG7" />
-							</label>
-							<label>
-								<span>Algorithm</span>
-								<select id="totpAlgorithm">
-									<option value="SHA256" selected>SHA256</option>
-									<option value="SHA1">SHA1</option>
-									<option value="SHA512">SHA512</option>
-								</select>
-							</label>
-							<label>
-								<span>Period (seconds)</span>
-								<input type="number" id="totpPeriod" min="1" max="300" value="30" />
-							</label>
-							<label>
-								<span>Digits</span>
-								<input type="number" id="totpDigits" min="4" max="10" value="6" />
-							</label>
-						</div>
-					<div class="totp-result" id="totpResult">
-						<code id="totpCode" title="Click to copy"></code>
-							<div class="totp-meta">
-								<span id="totpPeriodLabel"></span>
-								<span id="totpRemainingLabel"></span>
-							</div>
-							<div class="totp-error" id="totpError"></div>
-						</div>
-					</section>
-				</div>
+                <!-- TOTP workspace: computes RFC 6238 codes based on user-selected algorithm/period/digits. -->
+                <div id="totpWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>TOTP</h2>
+                                <p>Compute time-based OTP codes from a Base32 secret.</p>
+                            </div>
+                        </div>
+                        <div class="totp-form">
+                            <label>
+                                <span>Secret</span>
+                                <input
+                                    type="text"
+                                    id="totpSecret"
+                                    spellcheck="false"
+                                    placeholder="6BDRT7ATRRCZV5ISFLOHAHQLYF4ZORG7"
+                                />
+                            </label>
+                            <label>
+                                <span>Algorithm</span>
+                                <select id="totpAlgorithm">
+                                    <option value="SHA256" selected>SHA256</option>
+                                    <option value="SHA1">SHA1</option>
+                                    <option value="SHA512">SHA512</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>Period (seconds)</span>
+                                <input type="number" id="totpPeriod" min="1" max="300" value="30" />
+                            </label>
+                            <label>
+                                <span>Digits</span>
+                                <input type="number" id="totpDigits" min="4" max="10" value="6" />
+                            </label>
+                        </div>
+                        <div class="totp-result" id="totpResult">
+                            <code id="totpCode" title="Click to copy"></code>
+                            <div class="totp-meta">
+                                <span id="totpPeriodLabel"></span>
+                                <span id="totpRemainingLabel"></span>
+                            </div>
+                            <div class="totp-error" id="totpError"></div>
+                        </div>
+                    </section>
+                </div>
 
-				<div id="dataWorkspace" class="tool-view hidden">
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2>SQL Inserts</h2>
-								<p>Paste a MySQL schema to generate sample INSERT statements</p>
-							</div>
-							<div class="generator-actions data-actions">
-								<label>
-									<span>Rows</span>
-									<input
-										type="number"
-										min="1"
-										max="100"
-										value="5"
-										id="dataRows"
-									/>
-								</label>
-								<button id="dataGenerate">Generate</button>
-							</div>
-						</div>
-						<textarea
-							id="dataSchema"
-							spellcheck="false"
-							placeholder="CREATE TABLE users (\n  id INT PRIMARY KEY,\n  name VARCHAR(64),\n  created_at DATETIME\n);"
-						></textarea>
+                <div id="dataWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>SQL Inserts</h2>
+                                <p>Paste a MySQL schema to generate sample INSERT statements</p>
+                            </div>
+                            <div class="generator-actions data-actions">
+                                <label>
+                                    <span>Rows</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="100"
+                                        value="5"
+                                        id="dataRows"
+                                    />
+                                </label>
+                                <button id="dataGenerate">Generate</button>
+                            </div>
+                        </div>
+                        <textarea
+                            id="dataSchema"
+                            spellcheck="false"
+                            placeholder="CREATE TABLE users (\n  id INT PRIMARY KEY,\n  name VARCHAR(64),\n  created_at DATETIME\n);"
+                        ></textarea>
                         <div id="dataColumnEditor" class="data-column-editor">
                             <div class="muted">Paste a schema to configure column ranges.</div>
                         </div>
-					</section>
-					<section class="panel">
-						<div class="panel-header">
-							<div>
-								<h2>INSERT Statements</h2>
-								<p>Results update when you generate</p>
-							</div>
-							<div class="panel-actions">
-								<button id="dataCopy">Copy</button>
-							</div>
-						</div>
-						<textarea id="dataOutput" spellcheck="false" readonly></textarea>
-					</section>
-				</div>
+                    </section>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>INSERT Statements</h2>
+                                <p>Results update when you generate</p>
+                            </div>
+                            <div class="panel-actions">
+                                <button id="dataCopy">Copy</button>
+                            </div>
+                        </div>
+                        <textarea id="dataOutput" spellcheck="false" readonly></textarea>
+                    </section>
+                </div>
 
-				<footer>
-					<div id="status">Loading WebAssembly...</div>
-					<div class="hotkeys">
-						⌘/Ctrl + L Clear · ⌘/Ctrl + Enter Run
-					</div>
-				</footer>
-			</div>
-			</div>
-			<div id="sidebarBackdrop"></div>
-		</div>
+                <footer>
+                    <div id="status">Loading WebAssembly...</div>
+                    <div class="hotkeys">⌘/Ctrl + L Clear · ⌘/Ctrl + Enter Run</div>
+                </footer>
+            </div>
+        </div>
+        <div id="sidebarBackdrop"></div>
 
-		<script type="module" src="main.js"></script>
-	</body>
+        <script type="module" src="main.js"></script>
+    </body>
 </html>

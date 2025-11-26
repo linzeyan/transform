@@ -2,3 +2,5 @@
 wasm_core/target/
 www/pkg/
 .cargo
+package*
+node_modules

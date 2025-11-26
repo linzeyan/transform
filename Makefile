@@ -14,6 +14,13 @@ test:
 	cargo test $(WASM_CORE) --all
 
 e2e:
+# fmt
+	npx prettier "www/*.{js,jsx,ts,tsx,css,scss,html}" --write
+# lint
+	npx htmlhint "www/*.html"
+	npx stylelint "www/*.{css,scss,sass,less}" --fix
+	npx eslint -c www/eslint.config.cjs www/main.js --fix
+
 	cargo build $(WASM_CORE) --tests --target wasm32-unknown-unknown
 	wasm-pack test --chrome --headless wasm_core
 
