@@ -1058,45 +1058,67 @@
                                     <input type="checkbox" id="randomIncludeDigits" checked />
                                     <span>Include digits</span>
                                 </label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value="0"
-                                    id="randomMinDigits"
-                                    class="min-count"
-                                />
-                            </div>
-                            <div class="checkbox-row" id="randomAllowZeroRow">
-                                <label class="checkbox">
-                                    <input type="checkbox" id="randomAllowZero" checked />
-                                    <span>Allow leading zero</span>
-                                </label>
+                                <div class="checkbox-subrow" id="randomMinDigitsRow">
+                                    <label for="randomMinDigits">Min digits</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value="0"
+                                        id="randomMinDigits"
+                                        class="min-count"
+                                    />
+                                </div>
+                                <div class="checkbox-subrow" id="randomAllowZeroRow">
+                                    <label class="checkbox">
+                                        <input type="checkbox" id="randomAllowZero" checked />
+                                        <span>Allow leading zero</span>
+                                    </label>
+                                </div>
+                                <div
+                                    class="checkbox-subrow range-row hidden"
+                                    id="randomDigitRangeRow"
+                                >
+                                    <div class="range-field">
+                                        <label for="randomDigitMin">Min value</label>
+                                        <input type="number" id="randomDigitMin" />
+                                    </div>
+                                    <div class="range-field">
+                                        <label for="randomDigitMax">Max value</label>
+                                        <input type="number" id="randomDigitMax" />
+                                    </div>
+                                </div>
                             </div>
                             <div class="checkbox-row" data-min-row="lower">
                                 <label class="checkbox">
                                     <input type="checkbox" id="randomIncludeLower" />
                                     <span>Include a-z</span>
                                 </label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value="0"
-                                    id="randomMinLower"
-                                    class="min-count"
-                                />
+                                <div class="checkbox-subrow" id="randomMinLowerRow">
+                                    <label for="randomMinLower">Min a-z</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value="0"
+                                        id="randomMinLower"
+                                        class="min-count"
+                                    />
+                                </div>
                             </div>
                             <div class="checkbox-row" data-min-row="upper">
                                 <label class="checkbox">
                                     <input type="checkbox" id="randomIncludeUpper" />
                                     <span>Include A-Z</span>
                                 </label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value="0"
-                                    id="randomMinUpper"
-                                    class="min-count"
-                                />
+                                <div class="checkbox-subrow" id="randomMinUpperRow">
+                                    <label for="randomMinUpper">Min A-Z</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value="0"
+                                        id="randomMinUpper"
+                                        class="min-count"
+                                    />
+                                </div>
                             </div>
                         </div>
                         <div class="random-exclude">

@@ -24,6 +24,7 @@ import initWasm, {
     markdown_to_html_text,
     html_to_markdown_text,
     random_number_sequences,
+    random_numeric_range_sequences,
     generate_insert_statements,
     generate_qr_code,
     inspect_schema,
@@ -221,14 +222,17 @@ const minCountConfig = {
     digits: {
         stateKey: 'randomMinDigits',
         elementKey: 'randomMinDigits',
+        rowKey: 'randomMinDigitsRow',
     },
     lower: {
         stateKey: 'randomMinLower',
         elementKey: 'randomMinLower',
+        rowKey: 'randomMinLowerRow',
     },
     upper: {
         stateKey: 'randomMinUpper',
         elementKey: 'randomMinUpper',
+        rowKey: 'randomMinUpperRow',
     },
     symbols: {
         stateKey: 'randomMinSymbols',
@@ -726,6 +730,8 @@ const state = {
     randomIncludeLower: false,
     randomIncludeUpper: false,
     randomExclude: '',
+    randomDigitMin: '',
+    randomDigitMax: '',
     randomMinDigits: 0,
     randomMinLower: 0,
     randomMinUpper: 0,
@@ -983,12 +989,18 @@ function cacheElements() {
     elements.randomCount = document.getElementById('randomCount');
     elements.randomAllowZero = document.getElementById('randomAllowZero');
     elements.randomAllowZeroRow = document.getElementById('randomAllowZeroRow');
+    elements.randomDigitRangeRow = document.getElementById('randomDigitRangeRow');
+    elements.randomDigitMin = document.getElementById('randomDigitMin');
+    elements.randomDigitMax = document.getElementById('randomDigitMax');
     elements.randomIncludeLower = document.getElementById('randomIncludeLower');
     elements.randomIncludeUpper = document.getElementById('randomIncludeUpper');
     elements.randomExclude = document.getElementById('randomExclude');
     elements.randomMinDigits = document.getElementById('randomMinDigits');
     elements.randomMinLower = document.getElementById('randomMinLower');
     elements.randomMinUpper = document.getElementById('randomMinUpper');
+    elements.randomMinDigitsRow = document.getElementById('randomMinDigitsRow');
+    elements.randomMinLowerRow = document.getElementById('randomMinLowerRow');
+    elements.randomMinUpperRow = document.getElementById('randomMinUpperRow');
     elements.randomMinSymbols = document.getElementById('randomMinSymbols');
     elements.randomSymbolToggles = document.getElementById('randomSymbolToggles');
     elements.randomSymbolMinRow = document.getElementById('randomSymbolMinRow');
@@ -1289,6 +1301,8 @@ function bindUI() {
     elements.randomIncludeLower?.addEventListener('change', handleRandomIncludeLowerChange);
     elements.randomIncludeUpper?.addEventListener('change', handleRandomIncludeUpperChange);
     elements.randomExclude?.addEventListener('input', handleRandomExcludeInput);
+    elements.randomDigitMin?.addEventListener('input', handleRandomDigitRangeInput);
+    elements.randomDigitMax?.addEventListener('input', handleRandomDigitRangeInput);
     elements.randomMinDigits?.addEventListener('input', () => handleRandomMinChange('digits'));
     elements.randomMinLower?.addEventListener('input', () => handleRandomMinChange('lower'));
     elements.randomMinUpper?.addEventListener('input', () => handleRandomMinChange('upper'));
@@ -4118,7 +4132,8 @@ function handleRandomSymbolToggle(event) {
         state.randomSymbols.add(symbol);
         button.dataset.active = 'true';
     }
-    updateSymbolMinState();
+    updateMinInputStates();
+    updateRandomZeroControl();
     validateMinimumTotals(true);
 }
 
@@ -4144,12 +4159,38 @@ function activateRandomTool() {
     if (elements.randomExclude) {
         elements.randomExclude.value = state.randomExclude;
     }
+    if (elements.randomDigitMin) {
+        elements.randomDigitMin.value = state.randomDigitMin;
+    }
+    if (elements.randomDigitMax) {
+        elements.randomDigitMax.value = state.randomDigitMax;
+    }
     updateMinInputStates();
-    updateSymbolMinState();
     syncSymbolButtons();
     updateRandomZeroControl();
     updateRandomResults(state.randomResults);
     setStatus('Ready', false);
+}
+
+function characterSetSummary() {
+    if (!state.randomSymbols) {
+        state.randomSymbols = new Set();
+    }
+    const hasSymbols = state.randomSymbols.size > 0;
+    const hasDigits = Boolean(state.randomIncludeDigits);
+    const hasLower = Boolean(state.randomIncludeLower);
+    const hasUpper = Boolean(state.randomIncludeUpper);
+    const activeCount = [hasDigits, hasLower, hasUpper, hasSymbols].filter(Boolean).length;
+    return { hasDigits, hasLower, hasUpper, hasSymbols, activeCount };
+}
+
+function isDigitsOnlySelection() {
+    const summary = characterSetSummary();
+    return summary.hasDigits && !summary.hasLower && !summary.hasUpper && !summary.hasSymbols;
+}
+
+function shouldShowMinimumInputs() {
+    return characterSetSummary().activeCount >= 2;
 }
 
 function activateSshTool() {
@@ -4169,16 +4210,29 @@ function activateSshTool() {
 
 function updateRandomZeroControl() {
     if (!elements.randomAllowZero) return;
+    const digitsOnly = isDigitsOnlySelection();
     if (elements.randomAllowZeroRow) {
-        elements.randomAllowZeroRow.classList.toggle('hidden', !state.randomIncludeDigits);
+        elements.randomAllowZeroRow.classList.toggle('hidden', !digitsOnly);
     }
-    if (!state.randomIncludeDigits) {
-        state.randomAllowLeadingZero = false;
-        elements.randomAllowZero.checked = false;
-        elements.randomAllowZero.disabled = true;
-    } else {
-        elements.randomAllowZero.disabled = false;
+    elements.randomAllowZero.disabled = !digitsOnly;
+    if (digitsOnly) {
         elements.randomAllowZero.checked = state.randomAllowLeadingZero;
+    }
+    updateDigitRangeVisibility();
+}
+
+function updateDigitRangeVisibility() {
+    if (!elements.randomDigitRangeRow || !elements.randomDigitMin || !elements.randomDigitMax) {
+        return;
+    }
+    const digitsOnly = isDigitsOnlySelection();
+    const showRange = digitsOnly && !state.randomAllowLeadingZero;
+    elements.randomDigitRangeRow.classList.toggle('hidden', !showRange);
+    elements.randomDigitMin.disabled = !showRange;
+    elements.randomDigitMax.disabled = !showRange;
+    if (showRange) {
+        elements.randomDigitMin.value = state.randomDigitMin || '';
+        elements.randomDigitMax.value = state.randomDigitMax || '';
     }
 }
 
@@ -4201,9 +4255,11 @@ function handleRandomMinChange(kind) {
 }
 
 function updateMinInputStates() {
-    setMinInputState('digits', state.randomIncludeDigits);
-    setMinInputState('lower', state.randomIncludeLower);
-    setMinInputState('upper', state.randomIncludeUpper);
+    const showMinimums = shouldShowMinimumInputs();
+    setMinInputState('digits', state.randomIncludeDigits && showMinimums);
+    setMinInputState('lower', state.randomIncludeLower && showMinimums);
+    setMinInputState('upper', state.randomIncludeUpper && showMinimums);
+    updateSymbolMinState(showMinimums);
 }
 
 function setMinInputState(kind, enabled) {
@@ -4211,8 +4267,13 @@ function setMinInputState(kind, enabled) {
     if (!config) return;
     const el = elements[config.elementKey];
     if (!el) return;
+    const wrapper = config.rowKey ? elements[config.rowKey] : null;
     el.disabled = !enabled;
-    el.classList.toggle('hidden', !enabled);
+    if (wrapper) {
+        wrapper.classList.toggle('hidden', !enabled);
+    } else {
+        el.classList.toggle('hidden', !enabled);
+    }
     if (!enabled) {
         state[config.stateKey] = 0;
         el.value = 0;
@@ -4226,15 +4287,16 @@ function setMinInputState(kind, enabled) {
     }
 }
 
-function updateSymbolMinState() {
+function updateSymbolMinState(showMinimums = shouldShowMinimumInputs()) {
     const el = elements.randomMinSymbols;
     if (!el) return;
     const hasSymbols = state.randomSymbols && state.randomSymbols.size > 0;
+    const showRow = hasSymbols && showMinimums;
     if (elements.randomSymbolMinRow) {
-        elements.randomSymbolMinRow.classList.toggle('hidden', !hasSymbols);
+        elements.randomSymbolMinRow.classList.toggle('hidden', !showRow);
     }
-    el.disabled = !hasSymbols;
-    if (!hasSymbols) {
+    el.disabled = !showRow;
+    if (!showRow) {
         state.randomMinSymbols = 0;
         el.value = 0;
     } else {
@@ -4316,6 +4378,7 @@ function handleRandomIncludeLowerChange(event) {
         if (elements.randomMinLower) elements.randomMinLower.value = 0;
     }
     updateMinInputStates();
+    updateRandomZeroControl();
     validateMinimumTotals(true);
 }
 
@@ -4326,6 +4389,7 @@ function handleRandomIncludeUpperChange(event) {
         if (elements.randomMinUpper) elements.randomMinUpper.value = 0;
     }
     updateMinInputStates();
+    updateRandomZeroControl();
     validateMinimumTotals(true);
 }
 
@@ -4334,6 +4398,24 @@ function handleRandomExcludeInput() {
     const sanitized = sanitizeRandomExclude(elements.randomExclude.value || '');
     state.randomExclude = sanitized;
     elements.randomExclude.value = sanitized;
+}
+
+function handleRandomDigitRangeInput(event) {
+    const targetId = event?.target?.id || '';
+    const value = (event?.target?.value || '').trim();
+    if (targetId === 'randomDigitMin') {
+        state.randomDigitMin = value;
+    } else if (targetId === 'randomDigitMax') {
+        state.randomDigitMax = value;
+    }
+}
+
+function isDigitRangeRequested() {
+    if (state.randomAllowLeadingZero) return false;
+    if (!isDigitsOnlySelection()) return false;
+    const hasMin = Boolean((state.randomDigitMin || '').trim());
+    const hasMax = Boolean((state.randomDigitMax || '').trim());
+    return hasMin || hasMax;
 }
 
 function runRandomGenerator() {
@@ -4363,6 +4445,31 @@ function runRandomGenerator() {
         !hasSymbols
     ) {
         setStatus('Select at least one character set', true);
+        return;
+    }
+    const rangeRequested = isDigitRangeRequested();
+    // When restricted to digits without leading zeros, allow ranged integer output.
+    if (rangeRequested) {
+        const minValue = (state.randomDigitMin || '').trim();
+        const maxValue = (state.randomDigitMax || '').trim();
+        if (!minValue || !maxValue) {
+            setStatus('Enter both min and max to generate ranged digits', true);
+            return;
+        }
+        try {
+            const ranged = random_numeric_range_sequences(
+                state.randomCount,
+                minValue,
+                maxValue,
+                state.randomLength
+            );
+            const list = Array.isArray(ranged) ? ranged.map((item) => String(item || '')) : [];
+            updateRandomResults(list);
+            setStatus('Done', false);
+        } catch (err) {
+            updateRandomResults([]);
+            setStatus(`⚠️ ${err?.message || err}`, true);
+        }
         return;
     }
     const digits = state.randomIncludeDigits ? digitCharacters : '';

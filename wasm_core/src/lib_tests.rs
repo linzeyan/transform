@@ -110,6 +110,24 @@ fn random_sequences_internal_rejects_empty_pool() {
 }
 
 #[test]
+fn random_numeric_range_internal_generates_within_bounds() {
+    let outputs = random_numeric_range_internal(3, "10", "25", 3).expect("range ok");
+    assert_eq!(outputs.len(), 3);
+    for val in outputs {
+        let parsed: i32 = val.parse().expect("digit string");
+        assert!((10..=25).contains(&parsed));
+        assert!(!val.starts_with('0'));
+        assert!(val.len() <= 3);
+    }
+}
+
+#[test]
+fn random_numeric_range_internal_rejects_length_overflow() {
+    let err = random_numeric_range_internal(1, "1", "1000", 3).unwrap_err();
+    assert!(err.contains("length"), "unexpected err: {err}");
+}
+
+#[test]
 fn sanitize_helpers_clean_inputs() {
     assert_eq!(sanitize_digits("1a2a3"), vec!['1', '2', '3']);
     assert_eq!(sanitize_symbols("a!@#"), vec!['!', '#', '@']);

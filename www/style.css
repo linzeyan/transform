@@ -563,9 +563,9 @@ button#swap {
 
 .checkbox-row {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
 }
 
 .checkbox-row .checkbox {
@@ -577,15 +577,50 @@ button#swap {
 
 .checkbox-row .min-count,
 .symbol-min .min-count {
-    width: 56px;
-    min-width: 56px;
-    flex: 0 0 56px;
+    width: 80px;
+    min-width: 80px;
+    flex: 0 0 80px;
     border: 1px solid rgb(255 255 255 / 10%);
     border-radius: 8px;
     padding: 4px 6px;
     background: rgb(0 0 0 / 25%);
     color: var(--fg);
     font: inherit;
+}
+
+.checkbox-subrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: 28px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.checkbox-subrow .checkbox {
+    gap: 6px;
+}
+
+.range-row {
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 14px;
+}
+
+.range-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.range-field input {
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: rgb(0 0 0 / 25%);
+    color: var(--fg);
+    font: inherit;
+    width: 150px;
 }
 
 .min-count.hidden,
@@ -722,6 +757,15 @@ button#swap {
     }
 
     .checkbox-row .min-count {
+        width: 100%;
+    }
+
+    .checkbox-subrow {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .range-field input {
         width: 100%;
     }
 }

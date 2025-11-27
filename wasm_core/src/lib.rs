@@ -430,6 +430,20 @@ pub fn random_number_sequences(
     .map_err(|err| JsValue::from_str(&err))
 }
 
+#[wasm_bindgen]
+/// Generates digit-only sequences within an inclusive numeric range while enforcing the UI length
+/// cap; used when the Random tool is restricted to numbers without leading zeros.
+pub fn random_numeric_range_sequences(
+    count: u32,
+    min: &str,
+    max: &str,
+    max_length: u32,
+) -> Result<JsValue, JsValue> {
+    random_numeric_range_internal(count, min, max, max_length)
+        .and_then(|list| serde_wasm_bindgen::to_value(&list).map_err(|err| err.to_string()))
+        .map_err(|err| JsValue::from_str(&err))
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SshKeyPair {
@@ -884,6 +898,57 @@ fn random_sequences_internal(
             }
         }
         results.push(chars.into_iter().collect());
+    }
+    Ok(results)
+}
+
+fn random_numeric_range_internal(
+    count: u32,
+    min: &str,
+    max: &str,
+    max_length: u32,
+) -> Result<Vec<String>, String> {
+    if count == 0 {
+        return Err("count must be greater than zero".into());
+    }
+    if count > 256 {
+        return Err("count must be 256 or less".into());
+    }
+    if max_length == 0 {
+        return Err("length must be greater than zero".into());
+    }
+    if max_length > 2048 {
+        return Err("length must be 2048 or less".into());
+    }
+    let min_trimmed = min.trim();
+    let max_trimmed = max.trim();
+    if min_trimmed.is_empty() || max_trimmed.is_empty() {
+        return Err("min and max are required".into());
+    }
+    let min_value: i128 = min_trimmed
+        .parse()
+        .map_err(|_| "min must be a non-negative integer")?;
+    let max_value: i128 = max_trimmed
+        .parse()
+        .map_err(|_| "max must be a non-negative integer")?;
+    if min_value < 0 || max_value < 0 {
+        return Err("min and max must be non-negative".into());
+    }
+    if min_value > max_value {
+        return Err("min cannot exceed max".into());
+    }
+    let max_len_limit = max_length as usize;
+    if min_value.to_string().len() > max_len_limit || max_value.to_string().len() > max_len_limit {
+        return Err("range exceeds configured length".into());
+    }
+    let mut results = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        let value = random_integer_in_range(min_value, max_value);
+        let text = value.to_string();
+        if text.len() > max_len_limit {
+            return Err("range exceeds configured length".into());
+        }
+        results.push(text);
     }
     Ok(results)
 }

@@ -14,8 +14,8 @@ use wasm_core::{
     decrypt_bytes, encode_content, encode_content_bytes, encrypt_bytes, generate_insert_statements,
     generate_qr_code, generate_user_agents, generate_uuids, hash_content, hash_content_bytes,
     html_to_markdown_text, inspect_certificates, ipv4_info, jwt_decode, jwt_encode,
-    markdown_to_html_text, random_number_sequences, totp_token, transform_format, url_decode,
-    url_encode,
+    markdown_to_html_text, random_number_sequences, random_numeric_range_sequences, totp_token,
+    transform_format, url_decode, url_encode,
 };
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -82,6 +82,25 @@ fn kdf_random_salt_controls_exist() {
         INDEX_HTML.contains("id=\"argonSalt\""),
         "Argon2 salt input should be present"
     );
+}
+
+#[wasm_bindgen_test]
+fn random_workspace_exposes_minimum_and_range_controls() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    for id in [
+        "randomMinDigitsRow",
+        "randomMinLowerRow",
+        "randomMinUpperRow",
+        "randomDigitRangeRow",
+        "randomDigitMin",
+        "randomDigitMax",
+    ] {
+        assert!(
+            INDEX_HTML.contains(&format!("id=\"{id}\"")),
+            "Random workspace should expose control {id}"
+        );
+    }
 }
 
 #[wasm_bindgen_test]
@@ -158,6 +177,26 @@ fn number_bases_decimal_100_flow() {
     assert_eq!(field(&map, "octal"), "144");
     assert_eq!(field(&map, "decimal"), "100");
     assert_eq!(field(&map, "hex"), "64");
+}
+
+#[wasm_bindgen_test]
+fn random_numeric_range_sequences_respects_bounds() {
+    let values =
+        js_to_json(random_numeric_range_sequences(3, "5", "7", 3).expect("range sequences"));
+    let array = values
+        .as_array()
+        .cloned()
+        .unwrap_or_else(|| panic!("expected array, got {values:?}"));
+    assert_eq!(array.len(), 3);
+    for entry in array {
+        let text = entry.as_str().unwrap_or_default();
+        let parsed: i32 = text.parse().unwrap();
+        assert!(
+            (5..=7).contains(&parsed),
+            "value {parsed} fell outside range"
+        );
+        assert!(!text.starts_with('0'));
+    }
 }
 
 #[wasm_bindgen_test]
