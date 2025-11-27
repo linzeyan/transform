@@ -24,6 +24,7 @@ import initWasm, {
     html_to_markdown_text,
     random_number_sequences,
     generate_insert_statements,
+    generate_qr_code,
     inspect_schema,
     convert_timestamp,
     totp_token,
@@ -477,6 +478,12 @@ const toolGroups = [
                 label: 'Random',
                 description: 'Random strings with customizable charset.',
             },
+            // QR generator covers OTP/WiFi/custom text flows.
+            {
+                id: 'generator-qr',
+                label: 'QR Code',
+                description: 'Generate QR codes for OTP, WiFi, or custom text.',
+            },
             {
                 id: 'generator-totp',
                 label: 'TOTP',
@@ -523,6 +530,7 @@ const workspaceByTool = {
     'generator-uuid': 'uuidWorkspace',
     'generator-useragent': 'userAgentWorkspace',
     'generator-random': 'randomWorkspace',
+    'generator-qr': 'qrWorkspace',
     'generator-totp': 'totpWorkspace',
     'generator-sql': 'dataWorkspace',
     'generator-ssh': 'sshWorkspace',
@@ -541,6 +549,7 @@ const generatorTools = new Set([
     'generator-uuid',
     'generator-useragent',
     'generator-random',
+    'generator-qr',
     'generator-totp',
     'generator-sql',
     'generator-ssh',
@@ -552,6 +561,7 @@ const uuidToolSet = new Set(['generator-uuid']);
 const userAgentToolSet = new Set(['generator-useragent']);
 const randomToolSet = new Set(['generator-random']);
 const totpToolSet = new Set(['generator-totp']);
+const qrToolSet = new Set(['generator-qr']);
 const dataToolSet = new Set(['generator-sql']);
 const sshToolSet = new Set(['generator-ssh']);
 const implementedTools = new Set([
@@ -571,6 +581,7 @@ const implementedTools = new Set([
     'coder-kdf',
     'security-crypto',
     'generator-random',
+    'generator-qr',
     'generator-totp',
     'generator-sql',
     'fingerprint-browser',
@@ -601,6 +612,7 @@ const workspaceIds = [
     'uuidWorkspace',
     'userAgentWorkspace',
     'randomWorkspace',
+    'qrWorkspace',
     'totpWorkspace',
     'dataWorkspace',
     'sshWorkspace',
@@ -659,6 +671,22 @@ const state = {
     randomMinSymbols: 0,
     randomSymbols: new Set(),
     randomResults: [],
+    // QR generator caches the last preview so downloads work when returning to the tab.
+    qr: {
+        mode: 'otp',
+        format: 'png',
+        otpAccount: '',
+        otpSecret: '',
+        otpIssuer: '',
+        otpAlgorithm: 'SHA1',
+        otpPeriod: 30,
+        otpDigits: 6,
+        wifiType: 'WPA',
+        wifiPass: '',
+        wifiSsid: '',
+        customString: '',
+        lastResult: null,
+    },
     sshType: 'ed25519',
     sshBits: 4096,
     sshComment: '',
@@ -761,6 +789,9 @@ async function boot() {
             if (filled && filled.dataset.field) {
                 runTimestampConversion(filled.dataset.field, filled.value, true);
             }
+        }
+        if (isQrTool(state.currentTool)) {
+            activateQrTool();
         }
         if (isTotpTool(state.currentTool)) {
             activateTotpTool();
@@ -891,6 +922,27 @@ function cacheElements() {
     elements.randomSymbolMinRow = document.getElementById('randomSymbolMinRow');
     elements.randomGenerate = document.getElementById('randomGenerate');
     elements.randomResults = document.getElementById('randomResults');
+    // QR generator inputs are grouped by mode so we toggle rows on radio change.
+    elements.qrWorkspace = document.getElementById('qrWorkspace');
+    elements.qrModeOtp = document.getElementById('qrModeOtp');
+    elements.qrModeWifi = document.getElementById('qrModeWifi');
+    elements.qrModeCustom = document.getElementById('qrModeCustom');
+    elements.qrOtpAccount = document.getElementById('qrOtpAccount');
+    elements.qrOtpSecret = document.getElementById('qrOtpSecret');
+    elements.qrOtpIssuer = document.getElementById('qrOtpIssuer');
+    elements.qrOtpAlgorithm = document.getElementById('qrOtpAlgorithm');
+    elements.qrOtpPeriod = document.getElementById('qrOtpPeriod');
+    elements.qrOtpDigits = document.getElementById('qrOtpDigits');
+    elements.qrWifiType = document.getElementById('qrWifiType');
+    elements.qrWifiSsid = document.getElementById('qrWifiSsid');
+    elements.qrWifiPass = document.getElementById('qrWifiPass');
+    elements.qrCustomString = document.getElementById('qrCustomString');
+    elements.qrFormat = document.getElementById('qrFormat');
+    elements.qrGenerate = document.getElementById('qrGenerate');
+    elements.qrDownload = document.getElementById('qrDownload');
+    elements.qrPreview = document.getElementById('qrPreview');
+    elements.qrMeta = document.getElementById('qrMeta');
+    elements.qrError = document.getElementById('qrError');
     elements.sshWorkspace = document.getElementById('sshWorkspace');
     elements.sshType = document.getElementById('sshType');
     elements.sshBits = document.getElementById('sshBits');
@@ -1164,6 +1216,26 @@ function bindUI() {
     elements.randomMinSymbols?.addEventListener('input', () => handleRandomMinChange('symbols'));
     elements.randomSymbolToggles?.addEventListener('click', handleRandomSymbolToggle);
     elements.randomGenerate?.addEventListener('click', () => runRandomGenerator());
+    elements.qrModeOtp?.addEventListener('change', () => setQrMode('otp'));
+    elements.qrModeWifi?.addEventListener('change', () => setQrMode('wifi'));
+    elements.qrModeCustom?.addEventListener('change', () => setQrMode('custom'));
+    [
+        elements.qrOtpAccount,
+        elements.qrOtpSecret,
+        elements.qrOtpIssuer,
+        elements.qrOtpAlgorithm,
+        elements.qrOtpPeriod,
+        elements.qrOtpDigits,
+        elements.qrWifiType,
+        elements.qrWifiSsid,
+        elements.qrWifiPass,
+        elements.qrCustomString,
+    ].forEach((input) => input?.addEventListener('input', handleQrFieldChange));
+    elements.qrFormat?.addEventListener('change', (event) => {
+        state.qr.format = (event.target.value || 'png').toLowerCase();
+    });
+    elements.qrGenerate?.addEventListener('click', handleQrGenerate);
+    elements.qrDownload?.addEventListener('click', downloadQrImage);
     elements.sshGenerate?.addEventListener('click', runSshGenerator);
     elements.sshCopyPublic?.addEventListener('click', () => {
         const val = elements.sshPublic?.value || '';
@@ -1406,6 +1478,8 @@ function selectTool(toolId) {
         activateUserAgentTool();
     } else if (isRandomTool(toolId)) {
         activateRandomTool();
+    } else if (isQrTool(toolId)) {
+        activateQrTool();
     } else if (isTotpTool(toolId)) {
         activateTotpTool();
     } else if (isSshTool(toolId)) {
@@ -1434,6 +1508,7 @@ function updateBodyClasses(toolId) {
     document.body.classList.toggle('tool-uuid', isUUIDTool(toolId));
     document.body.classList.toggle('tool-useragent', isUserAgentTool(toolId));
     document.body.classList.toggle('tool-random', isRandomTool(toolId));
+    document.body.classList.toggle('tool-qr', isQrTool(toolId));
     document.body.classList.toggle('tool-cert', isCertTool(toolId));
     document.body.classList.toggle('tool-crypto', isCryptoTool(toolId));
 }
@@ -2001,6 +2076,10 @@ function isIPv4Tool(toolId) {
 
 function isRandomTool(toolId) {
     return randomToolSet.has(toolId);
+}
+
+function isQrTool(toolId) {
+    return qrToolSet.has(toolId);
 }
 
 function isTotpTool(toolId) {
@@ -3899,6 +3978,232 @@ function handleRandomResultsClick(event) {
     const value = row.dataset.randomValue || '';
     if (!value) return;
     copyText(value, 'Random string');
+}
+
+function setQrMode(mode, shouldRender = true) {
+    const nextMode = ['otp', 'wifi', 'custom'].includes(mode) ? mode : 'otp';
+    const changed = state.qr.mode !== nextMode;
+    state.qr.mode = nextMode;
+    if (elements.qrModeOtp) elements.qrModeOtp.checked = nextMode === 'otp';
+    if (elements.qrModeWifi) elements.qrModeWifi.checked = nextMode === 'wifi';
+    if (elements.qrModeCustom) elements.qrModeCustom.checked = nextMode === 'custom';
+    updateQrModeVisibility();
+    if (shouldRender) {
+        if (changed) {
+            state.qr.lastResult = null;
+            renderQrPlaceholder('Generate to see a 250 × 250 QR preview.');
+        } else if (state.qr.lastResult) {
+            renderQrResult(state.qr.lastResult);
+        } else {
+            renderQrPlaceholder('Generate to see a 250 × 250 QR preview.');
+        }
+    }
+}
+
+function activateQrTool() {
+    setQrMode(state.qr.mode || 'otp', false);
+    if (elements.qrOtpAccount) elements.qrOtpAccount.value = state.qr.otpAccount || '';
+    if (elements.qrOtpSecret) elements.qrOtpSecret.value = state.qr.otpSecret || '';
+    if (elements.qrOtpIssuer) elements.qrOtpIssuer.value = state.qr.otpIssuer || '';
+    if (elements.qrOtpAlgorithm) elements.qrOtpAlgorithm.value = state.qr.otpAlgorithm || 'SHA1';
+    if (elements.qrOtpPeriod) elements.qrOtpPeriod.value = state.qr.otpPeriod || 30;
+    if (elements.qrOtpDigits) elements.qrOtpDigits.value = state.qr.otpDigits || 6;
+    if (elements.qrWifiType) elements.qrWifiType.value = state.qr.wifiType || 'WPA';
+    if (elements.qrWifiSsid) elements.qrWifiSsid.value = state.qr.wifiSsid || '';
+    if (elements.qrWifiPass) elements.qrWifiPass.value = state.qr.wifiPass || '';
+    if (elements.qrCustomString) elements.qrCustomString.value = state.qr.customString || '';
+    if (elements.qrFormat) elements.qrFormat.value = state.qr.format || 'png';
+    updateQrModeVisibility();
+    if (state.qr.lastResult) {
+        renderQrResult(state.qr.lastResult);
+    } else {
+        renderQrPlaceholder('Generate to see a 250 × 250 QR preview.');
+    }
+    setStatus('Ready', false);
+}
+
+function updateQrModeVisibility() {
+    document.querySelectorAll('#qrWorkspace .qr-row[data-mode]').forEach((row) => {
+        const mode = row.dataset.mode || '';
+        row.classList.toggle('hidden', mode !== state.qr.mode);
+    });
+}
+
+function handleQrFieldChange(event) {
+    const { id, value } = event.target;
+    switch (id) {
+        case 'qrOtpAccount':
+            state.qr.otpAccount = value;
+            break;
+        case 'qrOtpSecret':
+            state.qr.otpSecret = value;
+            break;
+        case 'qrOtpIssuer':
+            state.qr.otpIssuer = value;
+            break;
+        case 'qrOtpAlgorithm':
+            state.qr.otpAlgorithm = value || 'SHA1';
+            break;
+        case 'qrOtpPeriod': {
+            const period = clampNumber(value, 1, 300, 30);
+            state.qr.otpPeriod = period;
+            event.target.value = period;
+            break;
+        }
+        case 'qrOtpDigits': {
+            const digits = clampNumber(value, 4, 10, 6);
+            state.qr.otpDigits = digits;
+            event.target.value = digits;
+            break;
+        }
+        case 'qrWifiType':
+            state.qr.wifiType = value || 'WPA';
+            break;
+        case 'qrWifiSsid':
+            state.qr.wifiSsid = value;
+            break;
+        case 'qrWifiPass':
+            state.qr.wifiPass = value;
+            break;
+        case 'qrCustomString':
+            state.qr.customString = value;
+            break;
+        default:
+            break;
+    }
+}
+
+function buildQrPayload() {
+    if (state.qr.mode === 'otp') {
+        return {
+            otpAccount: elements.qrOtpAccount?.value || state.qr.otpAccount || '',
+            otpSecret: elements.qrOtpSecret?.value || state.qr.otpSecret || '',
+            otpIssuer: elements.qrOtpIssuer?.value || state.qr.otpIssuer || '',
+            otpAlgorithm: elements.qrOtpAlgorithm?.value || state.qr.otpAlgorithm || 'SHA1',
+            otpPeriod: Number(elements.qrOtpPeriod?.value || state.qr.otpPeriod || 30),
+            otpDigits: Number(elements.qrOtpDigits?.value || state.qr.otpDigits || 6),
+        };
+    }
+    if (state.qr.mode === 'wifi') {
+        return {
+            wifiType: elements.qrWifiType?.value || state.qr.wifiType || 'WPA',
+            wifiSsid: elements.qrWifiSsid?.value || state.qr.wifiSsid || '',
+            wifiPass: elements.qrWifiPass?.value || state.qr.wifiPass || '',
+        };
+    }
+    return {
+        customString: elements.qrCustomString?.value || state.qr.customString || '',
+    };
+}
+
+function normalizeQrResult(result) {
+    const base = normalizeMapResult(result);
+    const source = Object.keys(base).length ? base : result || {};
+    const format = (source.format || source.Format || '').toString();
+    return {
+        kind: source.kind || source.Kind || '',
+        payload: source.payload || source.Payload || '',
+        format: format || 'png',
+        mime: source.mime || source.Mime || '',
+        width: Number(source.width ?? 250) || 250,
+        height: Number(source.height ?? 250) || 250,
+        dataUrl: source.dataUrl || source.data_url || '',
+        dataBase64: source.dataBase64 || source.data_base64 || '',
+        downloadName: source.downloadName || source.download_name || `qr-code.${format || 'png'}`,
+    };
+}
+
+function handleQrGenerate() {
+    if (!isQrTool(state.currentTool)) {
+        setStatus('Select the QR Code tool first', true);
+        return;
+    }
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    const payload = buildQrPayload();
+    try {
+        const raw = generate_qr_code(state.qr.mode, state.qr.format, payload);
+        const result = normalizeQrResult(raw);
+        if (!result.dataUrl) {
+            renderQrPlaceholder('No QR data returned');
+            setStatus('QR generation failed', true);
+            return;
+        }
+        state.qr.lastResult = result;
+        renderQrResult(result);
+        setStatus(`QR generated (${result.format.toUpperCase()})`, false);
+    } catch (err) {
+        console.error(err);
+        renderQrError(err?.message || String(err));
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function renderQrResult(result) {
+    if (!elements.qrPreview) return;
+    const size = Number(result.width || 250) || 250;
+    const height = Number(result.height || size) || size;
+    const payload = result.payload
+        ? escapeHTML(result.payload)
+        : '<span class="muted">(empty)</span>';
+    const meta = [];
+    if (result.kind) meta.push(`Kind: ${result.kind.toUpperCase()}`);
+    if (result.format) meta.push(`Format: ${result.format.toUpperCase()}`);
+    meta.push(`Size: ${size} × ${height}`);
+    elements.qrPreview.innerHTML = `
+        <div class="qr-image-frame">
+            <img src="${escapeAttr(result.dataUrl || '')}" alt="QR code" width="${size}" height="${height}" loading="lazy" />
+        </div>
+        <div class="qr-payload">${payload}</div>
+    `;
+    if (elements.qrMeta) {
+        elements.qrMeta.innerHTML = meta.length
+            ? meta.map((item) => `<span>${escapeHTML(item)}</span>`).join('')
+            : '';
+    }
+    if (elements.qrDownload) {
+        elements.qrDownload.removeAttribute('disabled');
+    }
+    if (elements.qrError) {
+        elements.qrError.textContent = '';
+    }
+}
+
+function renderQrPlaceholder(message) {
+    if (!elements.qrPreview) return;
+    elements.qrPreview.innerHTML = `<div class="muted">${escapeHTML(
+        message || 'Generate to see a QR preview'
+    )}</div>`;
+    if (elements.qrDownload) {
+        elements.qrDownload.setAttribute('disabled', 'disabled');
+    }
+    if (elements.qrMeta) {
+        elements.qrMeta.innerHTML = '';
+    }
+}
+
+function renderQrError(message) {
+    renderQrPlaceholder('QR generation failed');
+    if (elements.qrError) {
+        elements.qrError.textContent = message || 'Unable to generate QR code';
+    }
+}
+
+function downloadQrImage() {
+    const result = state.qr.lastResult;
+    if (!result || !result.dataUrl) {
+        setStatus('No QR code to download', true);
+        return;
+    }
+    const link = document.createElement('a');
+    link.href = result.dataUrl;
+    link.download = result.downloadName || `qr-code.${result.format || 'png'}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setStatus('QR downloaded', false);
 }
 
 function handleSshTypeChange(event) {

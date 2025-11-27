@@ -1068,6 +1068,173 @@
                     </section>
                 </div>
 
+                <!-- QR Code workspace: generates OTP/WiFi/custom payloads into 250×250 images. -->
+                <div id="qrWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>QR Code</h2>
+                                <p>Create 250×250 QR images for OTP, WiFi, or custom text.</p>
+                            </div>
+                            <div class="generator-actions">
+                                <button class="ghost-btn" id="qrDownload" disabled>Download</button>
+                                <button id="qrGenerate">Generate</button>
+                            </div>
+                        </div>
+                        <div class="qr-grid">
+                            <div class="qr-controls">
+                                <div class="qr-modes" role="group" aria-label="QR payload type">
+                                    <label class="checkbox">
+                                        <input
+                                            type="radio"
+                                            name="qrMode"
+                                            id="qrModeOtp"
+                                            value="otp"
+                                            checked
+                                        />
+                                        <span>OTP</span>
+                                    </label>
+                                    <label class="checkbox">
+                                        <input
+                                            type="radio"
+                                            name="qrMode"
+                                            id="qrModeWifi"
+                                            value="wifi"
+                                        />
+                                        <span>WiFi</span>
+                                    </label>
+                                    <label class="checkbox">
+                                        <input
+                                            type="radio"
+                                            name="qrMode"
+                                            id="qrModeCustom"
+                                            value="custom"
+                                        />
+                                        <span>Custom</span>
+                                    </label>
+                                </div>
+                                <div class="qr-row" data-mode="otp">
+                                    <label>
+                                        <span>Account</span>
+                                        <input
+                                            type="text"
+                                            id="qrOtpAccount"
+                                            spellcheck="false"
+                                            placeholder="user@example.com"
+                                        />
+                                    </label>
+                                    <label>
+                                        <span>Secret</span>
+                                        <input
+                                            type="text"
+                                            id="qrOtpSecret"
+                                            spellcheck="false"
+                                            placeholder="JBSWY3DPEHPK3PXP"
+                                        />
+                                    </label>
+                                    <label>
+                                        <span>Issuer</span>
+                                        <input
+                                            type="text"
+                                            id="qrOtpIssuer"
+                                            spellcheck="false"
+                                            placeholder="Transform"
+                                        />
+                                    </label>
+                                    <label>
+                                        <span>Algorithm</span>
+                                        <select id="qrOtpAlgorithm">
+                                            <option value="SHA1" selected>SHA1</option>
+                                            <option value="SHA256">SHA256</option>
+                                            <option value="SHA512">SHA512</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>Period (seconds)</span>
+                                        <input
+                                            type="number"
+                                            id="qrOtpPeriod"
+                                            min="1"
+                                            max="300"
+                                            value="30"
+                                        />
+                                    </label>
+                                    <label>
+                                        <span>Digits</span>
+                                        <input
+                                            type="number"
+                                            id="qrOtpDigits"
+                                            min="4"
+                                            max="10"
+                                            value="6"
+                                        />
+                                    </label>
+                                </div>
+                                <div class="qr-row hidden" data-mode="wifi">
+                                    <label>
+                                        <span>Type</span>
+                                        <select id="qrWifiType">
+                                            <option value="WPA" selected>WPA/WPA2</option>
+                                            <option value="WEP">WEP</option>
+                                            <option value="nopass">None</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>SSID</span>
+                                        <input
+                                            type="text"
+                                            id="qrWifiSsid"
+                                            spellcheck="false"
+                                            placeholder="MyNetwork"
+                                        />
+                                    </label>
+                                    <label>
+                                        <span>Password</span>
+                                        <input
+                                            type="text"
+                                            id="qrWifiPass"
+                                            spellcheck="false"
+                                            placeholder="Optional if open"
+                                        />
+                                    </label>
+                                </div>
+                                <div class="qr-row hidden" data-mode="custom">
+                                    <label>
+                                        <span>Text</span>
+                                        <input
+                                            type="text"
+                                            id="qrCustomString"
+                                            spellcheck="false"
+                                            placeholder="Any text to encode"
+                                        />
+                                    </label>
+                                </div>
+                                <div class="qr-row qr-format-row">
+                                    <label>
+                                        <span>Format</span>
+                                        <select id="qrFormat">
+                                            <option value="png">PNG</option>
+                                            <option value="jpg">JPG</option>
+                                            <option value="webp">WEBP</option>
+                                            <option value="svg">SVG</option>
+                                        </select>
+                                    </label>
+                                    <p class="muted qr-size-hint">
+                                        Output size fixed at 250 × 250.
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="qr-preview-wrap">
+                                <div class="qr-preview" id="qrPreview">
+                                    <div class="muted">Generate to see a 250 × 250 QR preview.</div>
+                                </div>
+                                <div class="qr-meta" id="qrMeta"></div>
+                                <div class="qr-error" id="qrError"></div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
                 <!-- TOTP workspace: computes RFC 6238 codes based on user-selected algorithm/period/digits. -->
                 <div id="totpWorkspace" class="tool-view hidden">
                     <section class="panel">

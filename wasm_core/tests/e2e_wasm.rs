@@ -3,6 +3,7 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64_STD;
 use bcrypt::BASE_64;
+use js_sys::{Object, Reflect}; // Build JS payloads for wasm bindings.
 use serde_json::Value as JsonValue;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
@@ -10,10 +11,10 @@ use wasm_bindgen_test::*;
 use wasm_core::{
     argon2_hash, argon2_verify, bcrypt_hash, bcrypt_verify, convert_number_base, convert_timestamp,
     convert_units, decode_content, decode_content_bytes, decrypt_bytes, encode_content,
-    encode_content_bytes, encrypt_bytes, generate_insert_statements, generate_user_agents,
-    generate_uuids, hash_content, hash_content_bytes, html_to_markdown_text, inspect_certificates,
-    ipv4_info, jwt_decode, jwt_encode, markdown_to_html_text, random_number_sequences, totp_token,
-    transform_format, url_decode, url_encode,
+    encode_content_bytes, encrypt_bytes, generate_insert_statements, generate_qr_code,
+    generate_user_agents, generate_uuids, hash_content, hash_content_bytes, html_to_markdown_text,
+    inspect_certificates, ipv4_info, jwt_decode, jwt_encode, markdown_to_html_text,
+    random_number_sequences, totp_token, transform_format, url_decode, url_encode,
 };
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -79,6 +80,37 @@ fn kdf_random_salt_controls_exist() {
     assert!(
         INDEX_HTML.contains("id=\"argonSalt\""),
         "Argon2 salt input should be present"
+    );
+}
+
+#[wasm_bindgen_test]
+fn qr_workspace_includes_core_controls() {
+    // Ensure the QR generator UI ships with mode radios, format select, and action buttons.
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    assert!(
+        INDEX_HTML.contains("id=\"qrWorkspace\""),
+        "workspace container should exist"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"qrModeOtp\""),
+        "OTP mode radio should be present"
+    );
+    assert!(
+        INDEX_HTML.contains("name=\"qrMode\""),
+        "QR mode radios should share the same name"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"qrFormat\""),
+        "format select should exist"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"qrGenerate\""),
+        "generate button should be wired"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"qrDownload\""),
+        "download control should exist"
     );
 }
 
@@ -203,6 +235,40 @@ fn ssh_key_generator_clamps_rsa_bits_and_supports_sk() {
     let sk_map = js_to_json(sk_res);
     assert_eq!(field(&sk_map, "keyType"), "ed25519-sk");
     assert!(field(&sk_map, "publicKey").contains("ssh-ed25519"));
+}
+
+#[wasm_bindgen_test]
+fn qr_generator_returns_png_data_url() {
+    // Smoke test the wasm binding: ensure data URL prefix and otpauth payload are present.
+    let payload = Object::new();
+    let set_field = |key: &str, value: JsValue| {
+        Reflect::set(&payload, &JsValue::from_str(key), &value).expect("set payload field");
+    };
+    set_field("otpAccount", JsValue::from_str("demo"));
+    set_field("otpSecret", JsValue::from_str("JBSWY3DPEHPK3PXP"));
+    set_field("otpIssuer", JsValue::from_str("Transform"));
+    set_field("otpAlgorithm", JsValue::from_str("SHA1"));
+    set_field("otpPeriod", JsValue::from_f64(30.0));
+    set_field("otpDigits", JsValue::from_f64(6.0));
+
+    let js_val = generate_qr_code("otp", "png", JsValue::from(payload)).expect("qr wasm call");
+    let obj = js_to_json(js_val);
+    let data_url = field(&obj, "dataUrl");
+    assert!(data_url.starts_with("data:image/png;base64,"));
+    assert_eq!(field(&obj, "format"), "png");
+    let payload_text = field(&obj, "payload");
+    assert!(payload_text.contains("otpauth://totp/Transform:demo"));
+
+    let width = obj
+        .get("width")
+        .and_then(|v| v.as_u64())
+        .unwrap_or_default();
+    let height = obj
+        .get("height")
+        .and_then(|v| v.as_u64())
+        .unwrap_or_default();
+    assert_eq!(width, 250);
+    assert_eq!(height, 250);
 }
 
 #[wasm_bindgen_test]

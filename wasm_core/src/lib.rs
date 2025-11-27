@@ -1,6 +1,7 @@
 // Core Wasm entry: binds Rust helpers (converters, encoders, generators) into JS via wasm_bindgen.
 use std::collections::{BTreeMap, HashSet};
 use std::convert::TryInto;
+use std::io::Cursor;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 use std::sync::OnceLock;
@@ -24,10 +25,12 @@ use crc::{CRC_32_ISCSI, CRC_64_ECMA_182, CRC_64_GO_ISO, Crc};
 use data_encoding::{BASE32, BASE32_NOPAD, BASE32HEX, BASE32HEX_NOPAD};
 use hmac::digest::KeyInit;
 use hmac::{Hmac, Mac};
+use image::{DynamicImage, ImageBuffer, ImageFormat, Luma};
 use js_sys::Date;
 use md5::Md5;
 use num_bigint::BigInt;
 use password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use qrcode::{EcLevel, QrCode, render::svg};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -109,6 +112,9 @@ const LOREM_WORDS: &[&str] = &[
     "commodo",
     "consequat",
 ];
+
+/// Fixed square dimension (pixels) for QR outputs so the frontend preview and downloads align.
+const QR_CODE_SIZE: u32 = 250;
 
 fn node_id() -> &'static [u8; 6] {
     NODE_ID.get_or_init(|| {
@@ -513,6 +519,259 @@ fn generate_ssh_key_internal(
         resident,
         verify_required,
     })
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct QrRequest {
+    otp_account: Option<String>,
+    otp_secret: Option<String>,
+    otp_issuer: Option<String>,
+    otp_algorithm: Option<String>,
+    otp_period: Option<u32>,
+    otp_digits: Option<u32>,
+    wifi_type: Option<String>,
+    wifi_pass: Option<String>,
+    wifi_ssid: Option<String>,
+    custom_string: Option<String>,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct QrResponse {
+    kind: String,
+    payload: String,
+    format: String,
+    mime: String,
+    width: u32,
+    height: u32,
+    data_base64: String,
+    data_url: String,
+    download_name: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum QrKind {
+    Otp,
+    Wifi,
+    Custom,
+}
+
+impl QrKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            QrKind::Otp => "otp",
+            QrKind::Wifi => "wifi",
+            QrKind::Custom => "custom",
+        }
+    }
+}
+
+fn parse_qr_kind(kind: &str) -> Result<QrKind, String> {
+    let normalized = kind.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "otp" => Ok(QrKind::Otp),
+        "wifi" => Ok(QrKind::Wifi),
+        "custom" => Ok(QrKind::Custom),
+        _ => Err("kind must be otp, wifi, or custom".into()),
+    }
+}
+
+#[wasm_bindgen]
+/// Renders a 250×250 QR code for OTP, WiFi, or custom payloads. Accepts a kind (otp/wifi/custom),
+/// output format (png/jpg/svg/webp), and a JSON payload that mirrors the UI fields.
+pub fn generate_qr_code(kind: &str, format: &str, payload: JsValue) -> Result<JsValue, JsValue> {
+    let request: QrRequest = serde_wasm_bindgen::from_value(payload)
+        .map_err(|err| JsValue::from_str(&format!("invalid QR payload: {err}")))?;
+    generate_qr_code_internal(kind, format, request)
+        .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
+        .map_err(|err| JsValue::from_str(&err))
+}
+
+fn generate_qr_code_internal(
+    kind: &str,
+    format: &str,
+    payload: QrRequest,
+) -> Result<QrResponse, String> {
+    let qr_kind = parse_qr_kind(kind)?;
+    let content = build_qr_payload(qr_kind, &payload)?;
+    let fmt = format.trim().to_ascii_lowercase();
+
+    let (data_base64, mime) = match fmt.as_str() {
+        "png" => encode_bitmap_qr(&content, ImageFormat::Png)?,
+        "jpg" | "jpeg" => encode_bitmap_qr(&content, ImageFormat::Jpeg)?,
+        "webp" => encode_bitmap_qr(&content, ImageFormat::WebP)?,
+        "svg" => encode_svg_qr(&content)?,
+        _ => return Err("format must be png, jpg, svg, or webp".into()),
+    };
+
+    let ext = if fmt == "jpeg" { "jpg" } else { fmt.as_str() };
+    let data_url = format!("data:{};base64,{}", mime, data_base64);
+    Ok(QrResponse {
+        kind: qr_kind.as_str().into(),
+        payload: content,
+        format: ext.into(),
+        mime,
+        width: QR_CODE_SIZE,
+        height: QR_CODE_SIZE,
+        data_base64,
+        data_url,
+        download_name: format!("qr-{}.{}", qr_kind.as_str(), ext),
+    })
+}
+
+fn build_qr_payload(kind: QrKind, payload: &QrRequest) -> Result<String, String> {
+    match kind {
+        QrKind::Otp => build_otp_payload(payload),
+        QrKind::Wifi => build_wifi_payload(payload),
+        QrKind::Custom => build_custom_payload(payload),
+    }
+}
+
+fn build_otp_payload(payload: &QrRequest) -> Result<String, String> {
+    let secret_raw = payload.otp_secret.as_deref().unwrap_or("").trim();
+    if secret_raw.is_empty() {
+        return Err("otpSecret is required".into());
+    }
+    let secret: String = secret_raw
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .map(|ch| ch.to_ascii_uppercase())
+        .collect();
+
+    let account = payload.otp_account.as_deref().unwrap_or("account").trim();
+    let issuer = payload.otp_issuer.as_deref().unwrap_or("").trim();
+    let algorithm = payload
+        .otp_algorithm
+        .as_deref()
+        .unwrap_or("SHA1")
+        .trim()
+        .to_ascii_uppercase();
+    let digits = payload.otp_digits.unwrap_or(6).clamp(4, 10);
+    let period = payload.otp_period.unwrap_or(30).clamp(1, 300);
+
+    let mut label = if issuer.is_empty() {
+        urlencoding::encode(account).into_owned()
+    } else {
+        format!(
+            "{}:{}",
+            urlencoding::encode(issuer),
+            urlencoding::encode(account)
+        )
+    };
+    if label.is_empty() {
+        label = "account".into();
+    }
+
+    let mut params = vec![
+        format!("secret={}", urlencoding::encode(&secret)),
+        format!("algorithm={}", algorithm),
+        format!("digits={digits}"),
+        format!("period={period}"),
+    ];
+    if !issuer.is_empty() {
+        params.push(format!("issuer={}", urlencoding::encode(issuer)));
+    }
+    Ok(format!("otpauth://totp/{}?{}", label, params.join("&")))
+}
+
+fn build_wifi_payload(payload: &QrRequest) -> Result<String, String> {
+    let ssid = payload.wifi_ssid.as_deref().unwrap_or("").trim();
+    if ssid.is_empty() {
+        return Err("wifiSsid is required".into());
+    }
+    let wifi_type_raw = payload.wifi_type.as_deref().unwrap_or("WPA");
+    let wifi_type_norm = wifi_type_raw.trim();
+    let wifi_type_upper = wifi_type_norm.to_ascii_uppercase();
+    let wifi_type = match wifi_type_upper.as_str() {
+        "WPA" | "WPA2" => "WPA",
+        "WEP" => "WEP",
+        "NOPASS" | "NONE" => "nopass",
+        other => return Err(format!("unsupported wifiType: {other}")),
+    };
+
+    let pass = payload.wifi_pass.as_deref().unwrap_or("").trim();
+    let mut text = String::from("WIFI:");
+    text.push_str("T:");
+    text.push_str(wifi_type);
+    text.push(';');
+    text.push_str("S:");
+    text.push_str(&escape_wifi_field(ssid));
+    text.push(';');
+    if wifi_type != "nopass" && !pass.is_empty() {
+        text.push_str("P:");
+        text.push_str(&escape_wifi_field(pass));
+        text.push(';');
+    }
+    text.push(';');
+    Ok(text)
+}
+
+fn build_custom_payload(payload: &QrRequest) -> Result<String, String> {
+    let custom = payload
+        .custom_string
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if custom.is_empty() {
+        return Err("customString cannot be empty".into());
+    }
+    Ok(custom)
+}
+
+fn escape_wifi_field(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' | ';' | ',' | ':' | '"' | '\'' => {
+                escaped.push('\\');
+                escaped.push(ch);
+            }
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
+fn render_qr_code_matrix(content: &str) -> Result<QrCode, String> {
+    QrCode::with_error_correction_level(content.as_bytes(), EcLevel::Q)
+        .map_err(|err| format!("invalid QR content: {err}"))
+}
+
+fn render_qr_image(content: &str) -> Result<ImageBuffer<Luma<u8>, Vec<u8>>, String> {
+    let code = render_qr_code_matrix(content)?;
+    Ok(code
+        .render::<Luma<u8>>()
+        .min_dimensions(QR_CODE_SIZE, QR_CODE_SIZE)
+        .max_dimensions(QR_CODE_SIZE, QR_CODE_SIZE)
+        .build())
+}
+
+fn encode_bitmap_qr(content: &str, format: ImageFormat) -> Result<(String, String), String> {
+    let image = render_qr_image(content)?;
+    let mut buffer = Vec::new();
+    let mut cursor = Cursor::new(&mut buffer);
+    DynamicImage::ImageLuma8(image)
+        .write_to(&mut cursor, format)
+        .map_err(|err| format!("encode image failed: {err}"))?;
+    let mime = match format {
+        ImageFormat::Png => "image/png",
+        ImageFormat::Jpeg => "image/jpeg",
+        ImageFormat::WebP => "image/webp",
+        _ => "image/octet-stream",
+    };
+    Ok((STANDARD.encode(buffer), mime.into()))
+}
+
+fn encode_svg_qr(content: &str) -> Result<(String, String), String> {
+    let code = render_qr_code_matrix(content)?;
+    let svg_text = code
+        .render::<svg::Color>()
+        .min_dimensions(QR_CODE_SIZE, QR_CODE_SIZE)
+        .max_dimensions(QR_CODE_SIZE, QR_CODE_SIZE)
+        .build();
+    Ok((STANDARD.encode(svg_text.as_bytes()), "image/svg+xml".into()))
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -1,6 +1,7 @@
 use super::*;
 use crate::cert;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as B64_STD; // Base64 encoder used by QR tests.
 use bcrypt::BASE_64;
 use chrono::{TimeZone, Utc};
 use data_encoding::{BASE32, BASE32HEX};
@@ -453,6 +454,90 @@ fn totp_token_internal_validates_inputs() {
 
     let err = totp_token_internal("JBSWY3DPEHPK3PXP", "SHA256", 30, 3).unwrap_err();
     assert!(err.contains("digits must be between 4 and 10"));
+}
+
+#[test]
+fn qr_code_internal_produces_png_with_otpauth() {
+    // Ensure the QR helper preserves the otpauth URI and PNG signature.
+    let qr = generate_qr_code_internal(
+        "otp",
+        "png",
+        QrRequest {
+            otp_account: Some("demo".into()),
+            otp_secret: Some("JBSWY3DPEHPK3PXP".into()),
+            otp_issuer: Some("Transform".into()),
+            otp_algorithm: Some("SHA1".into()),
+            otp_period: Some(30),
+            otp_digits: Some(6),
+            ..Default::default()
+        },
+    )
+    .expect("qr generated");
+
+    assert_eq!(qr.format, "png");
+    assert_eq!(qr.mime, "image/png");
+    assert_eq!(qr.width, QR_CODE_SIZE);
+    assert_eq!(qr.height, QR_CODE_SIZE);
+    assert!(qr.payload.starts_with("otpauth://totp/Transform:demo"));
+    assert!(qr.data_url.starts_with("data:image/png;base64,"));
+
+    let bytes = B64_STD
+        .decode(qr.data_base64.as_bytes())
+        .expect("decode png");
+    assert!(
+        bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+        "png header must be present"
+    );
+}
+
+#[test]
+fn qr_code_internal_escapes_wifi_payload() {
+    // WiFi QR codes must escape separators so they remain parseable on scan.
+    let qr = generate_qr_code_internal(
+        "wifi",
+        "svg",
+        QrRequest {
+            wifi_type: Some("WPA".into()),
+            wifi_pass: Some("p@ss;word".into()),
+            wifi_ssid: Some("Cafe;Net".into()),
+            ..Default::default()
+        },
+    )
+    .expect("wifi qr");
+
+    assert_eq!(qr.format, "svg");
+    assert_eq!(qr.mime, "image/svg+xml");
+    assert!(qr.payload.contains("Cafe\\;Net"));
+    assert!(qr.payload.contains("p@ss\\;word"));
+    assert!(qr.data_url.starts_with("data:image/svg+xml;base64,"));
+
+    let svg_bytes = B64_STD
+        .decode(qr.data_base64.as_bytes())
+        .expect("decode svg");
+    let svg_text = String::from_utf8(svg_bytes).expect("utf8 svg");
+    assert!(svg_text.contains("<svg"), "SVG payload should render");
+}
+
+#[test]
+fn qr_code_internal_outputs_webp_signature() {
+    // WebP output should include the RIFF/WEBP signature bytes for download validation.
+    let qr = generate_qr_code_internal(
+        "custom",
+        "webp",
+        QrRequest {
+            custom_string: Some("hello webp".into()),
+            ..Default::default()
+        },
+    )
+    .expect("webp qr");
+
+    assert_eq!(qr.format, "webp");
+    assert_eq!(qr.mime, "image/webp");
+    let bytes = B64_STD
+        .decode(qr.data_base64.as_bytes())
+        .expect("decode webp");
+    assert!(bytes.starts_with(b"RIFF"));
+    assert!(bytes.len() > 12 && &bytes[8..12] == b"WEBP");
 }
 
 #[test]
