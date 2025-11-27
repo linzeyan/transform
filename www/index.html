@@ -97,6 +97,65 @@
                     </section>
                 </div>
 
+                <!-- Image Converter workspace: converts common raster formats and keeps alpha intact. -->
+                <div id="imageWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Image Converter</h2>
+                                <p>JPG / PNG / WebP / AVIF → pick a target format.</p>
+                            </div>
+                            <div class="panel-actions">
+                                <label class="ghost-btn file-label" for="imageFile"
+                                    >Select image</label
+                                >
+                                <input
+                                    type="file"
+                                    id="imageFile"
+                                    class="hidden"
+                                    accept=".png,.jpg,.jpeg,.webp,.avif,image/*"
+                                />
+                            </div>
+                        </div>
+                        <div class="image-meta" id="imageInputMeta">No image selected</div>
+                        <div class="image-controls">
+                            <label>
+                                <span>Convert to</span>
+                                <select id="imageTargetFormat"></select>
+                            </label>
+                        </div>
+                        <div class="image-options" id="imageOptions"></div>
+                        <div class="image-preview-grid">
+                            <div class="image-card">
+                                <div class="image-card-head">
+                                    <h3>Original</h3>
+                                    <p class="muted">Shows the selected file</p>
+                                </div>
+                                <div class="image-frame" id="imageOriginalPreview">
+                                    <div class="muted">Select an image to preview</div>
+                                </div>
+                            </div>
+                            <div class="image-card">
+                                <div class="image-card-head">
+                                    <h3>Converted</h3>
+                                    <p class="muted">Updated after conversion</p>
+                                </div>
+                                <div class="image-frame" id="imageOutputPreview">
+                                    <div class="muted">Run a conversion to see the result</div>
+                                </div>
+                                <div class="image-meta" id="imageOutputMeta"></div>
+                            </div>
+                        </div>
+                        <div class="image-footer">
+                            <div class="image-actions">
+                                <button id="imageConvert" type="button">Convert</button>
+                                <button id="imageDownload" type="button" disabled>Download</button>
+                            </div>
+                            <div class="image-error" id="imageError"></div>
+                        </div>
+                    </section>
+                </div>
+
                 <div id="coderWorkspace" class="tool-view hidden">
                     <section class="panel">
                         <div class="panel-header coder-header">

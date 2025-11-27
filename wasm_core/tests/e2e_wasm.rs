@@ -9,12 +9,13 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
 
 use wasm_core::{
-    argon2_hash, argon2_verify, bcrypt_hash, bcrypt_verify, convert_number_base, convert_timestamp,
-    convert_units, decode_content, decode_content_bytes, decrypt_bytes, encode_content,
-    encode_content_bytes, encrypt_bytes, generate_insert_statements, generate_qr_code,
-    generate_user_agents, generate_uuids, hash_content, hash_content_bytes, html_to_markdown_text,
-    inspect_certificates, ipv4_info, jwt_decode, jwt_encode, markdown_to_html_text,
-    random_number_sequences, totp_token, transform_format, url_decode, url_encode,
+    argon2_hash, argon2_verify, bcrypt_hash, bcrypt_verify, convert_image_format,
+    convert_number_base, convert_timestamp, convert_units, decode_content, decode_content_bytes,
+    decrypt_bytes, encode_content, encode_content_bytes, encrypt_bytes, generate_insert_statements,
+    generate_qr_code, generate_user_agents, generate_uuids, hash_content, hash_content_bytes,
+    html_to_markdown_text, inspect_certificates, ipv4_info, jwt_decode, jwt_encode,
+    markdown_to_html_text, random_number_sequences, totp_token, transform_format, url_decode,
+    url_encode,
 };
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -84,6 +85,24 @@ fn kdf_random_salt_controls_exist() {
 }
 
 #[wasm_bindgen_test]
+fn image_converter_workspace_has_controls() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    for id in [
+        "imageWorkspace",
+        "imageFile",
+        "imageTargetFormat",
+        "imageConvert",
+        "imageDownload",
+    ] {
+        assert!(
+            INDEX_HTML.contains(&format!("id=\"{id}\"")),
+            "expected image converter control {id}"
+        );
+    }
+}
+
+#[wasm_bindgen_test]
 fn qr_workspace_includes_core_controls() {
     // Ensure the QR generator UI ships with mode radios, format select, and action buttons.
     const INDEX_HTML: &str =
@@ -149,6 +168,36 @@ fn format_converter_json_to_yaml() {
         yaml.contains("name: Ada") && yaml.contains("age: 27"),
         "yaml output should contain converted fields"
     );
+}
+
+#[wasm_bindgen_test]
+fn image_converter_png_to_webp_via_wasm() {
+    // Generate a tiny PNG on the fly to avoid shipping fixtures in the wasm bundle.
+    let mut png_bytes = Vec::new();
+    let png = image::DynamicImage::new_rgba8(1, 1);
+    png.write_to(
+        &mut std::io::Cursor::new(&mut png_bytes),
+        image::ImageFormat::Png,
+    )
+    .expect("encode png fixture");
+    let js_val = convert_image_format("png", "webp", &png_bytes, JsValue::NULL)
+        .expect("png -> webp conversion");
+    let obj = js_to_json(js_val);
+    let data_url = obj
+        .get("data_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    assert!(data_url.starts_with("data:image/webp;base64,"));
+    let width = obj
+        .get("width")
+        .and_then(|v| v.as_u64())
+        .unwrap_or_default();
+    let height = obj
+        .get("height")
+        .and_then(|v| v.as_u64())
+        .unwrap_or_default();
+    assert_eq!((width, height), (1, 1));
+    assert_eq!(field(&obj, "format"), "webp");
 }
 
 #[wasm_bindgen_test]

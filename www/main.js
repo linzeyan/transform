@@ -6,6 +6,7 @@ import initWasm, {
     generate_user_agents,
     convert_number_base,
     convert_units,
+    convert_image_format,
     ipv4_info,
     url_encode,
     url_decode,
@@ -50,6 +51,41 @@ const formats = [
     'TOON',
     'MsgPack',
 ];
+
+// Image converter supports these formats.
+const imageFormats = ['jpg', 'png', 'webp', 'avif'];
+const imageFormatLabels = {
+    jpg: 'JPG',
+    png: 'PNG',
+    webp: 'WebP',
+    avif: 'AVIF',
+};
+// Per-format tunables the Rust encoder actually supports.
+const imageFormatOptions = {
+    jpg: [{ key: 'quality', type: 'range', min: 1, max: 100, label: 'Quality', defaultValue: 85 }],
+    png: [
+        {
+            key: 'compression',
+            type: 'range',
+            min: 0,
+            max: 9,
+            label: 'Compression',
+            hint: '0 = store, 9 = maximum',
+            defaultValue: 6,
+        },
+    ],
+    webp: [],
+    avif: [
+        { key: 'quality', type: 'range', min: 1, max: 100, label: 'Quality', defaultValue: 80 },
+        { key: 'speed', type: 'range', min: 1, max: 10, label: 'Speed (1=best)', defaultValue: 4 },
+        {
+            key: 'lossless',
+            type: 'checkbox',
+            label: 'Force lossless (quality=100)',
+            defaultValue: false,
+        },
+    ],
+};
 
 const samples = {
     JSON: '{\n  "name": "Ricky",\n  "age": 27\n}',
@@ -426,6 +462,11 @@ const toolGroups = [
                 description: 'Convert between structured data formats.',
             },
             {
+                id: 'converter-image',
+                label: 'Image Converter',
+                description: 'JPG/PNG/WebP/AVIF with alpha preservation.',
+            },
+            {
                 id: 'converter-html-md',
                 label: 'HTML ↔ Markdown',
                 description: 'Convert between Markdown and HTML.',
@@ -515,6 +556,7 @@ const toolGroups = [
 
 const workspaceByTool = {
     format: 'converterWorkspace',
+    'converter-image': 'imageWorkspace',
     'converter-html-md': 'pairWorkspace',
     'converter-number-bases': 'numberWorkspace',
     'converter-units': 'unitWorkspace',
@@ -538,6 +580,7 @@ const workspaceByTool = {
     'security-ssl': 'certWorkspace',
 };
 
+const imageTools = new Set(['converter-image']);
 const coderMainTools = new Set(['coder-encode', 'coder-decode', 'coder-hash']);
 const pairTools = new Set(['converter-html-md', 'coder-url', 'coder-jwt']);
 const kdfTools = new Set(['coder-kdf']);
@@ -566,6 +609,7 @@ const dataToolSet = new Set(['generator-sql']);
 const sshToolSet = new Set(['generator-ssh']);
 const implementedTools = new Set([
     'format',
+    'converter-image',
     'converter-html-md',
     'generator-uuid',
     'generator-useragent',
@@ -601,6 +645,7 @@ toolGroups.forEach((group) => {
 const elements = {};
 const workspaceIds = [
     'converterWorkspace',
+    'imageWorkspace',
     'coderWorkspace',
     'pairWorkspace',
     'numberWorkspace',
@@ -656,6 +701,22 @@ const state = {
     urlBase: '',
     urlHash: '',
     urlHadQuestionMark: false,
+    // Image converter keeps the selected file and last conversion handy for downloads.
+    image: {
+        fileBytes: null,
+        fileName: '',
+        fileSize: 0,
+        detectedFormat: '',
+        targetFormat: 'webp',
+        previewUrl: '',
+        result: null,
+        optionsByFormat: {
+            jpg: { quality: 85 },
+            png: { compression: 6 },
+            webp: {},
+            avif: { quality: 80, speed: 4, lossless: false },
+        },
+    },
     numberSyncing: false,
     unitSyncing: false,
     randomIncludeDigits: true,
@@ -825,6 +886,17 @@ function cacheElements() {
     elements.formatOutput = document.getElementById('formatOutput');
     elements.minifyOutput = document.getElementById('minifyOutput');
     elements.status = document.getElementById('status');
+    elements.imageWorkspace = document.getElementById('imageWorkspace');
+    elements.imageFile = document.getElementById('imageFile');
+    elements.imageTargetFormat = document.getElementById('imageTargetFormat');
+    elements.imageConvert = document.getElementById('imageConvert');
+    elements.imageDownload = document.getElementById('imageDownload');
+    elements.imageInputMeta = document.getElementById('imageInputMeta');
+    elements.imageOriginalPreview = document.getElementById('imageOriginalPreview');
+    elements.imageOutputPreview = document.getElementById('imageOutputPreview');
+    elements.imageOutputMeta = document.getElementById('imageOutputMeta');
+    elements.imageError = document.getElementById('imageError');
+    elements.imageOptions = document.getElementById('imageOptions');
     elements.coderWorkspace = document.getElementById('coderWorkspace');
     elements.coderInput = document.getElementById('coderInput');
     elements.coderResults = document.getElementById('coderResults');
@@ -1100,6 +1172,13 @@ function bindUI() {
     elements.minifyOutput?.addEventListener('click', () =>
         handleFormatField(elements.output, elements.to?.value, true)
     );
+    elements.imageFile?.addEventListener('change', handleImageFileChange);
+    elements.imageTargetFormat?.addEventListener('change', (event) => {
+        state.image.targetFormat = (event.target.value || 'webp').trim().toLowerCase();
+        renderImageOptions(state.image.targetFormat);
+    });
+    elements.imageConvert?.addEventListener('click', handleImageConvert);
+    elements.imageDownload?.addEventListener('click', handleImageDownload);
     elements.coderInput?.addEventListener('input', () => scheduleCoder());
     elements.coderModeText?.addEventListener('change', () => setCoderInputMode('text'));
     elements.coderModeFile?.addEventListener('change', () => setCoderInputMode('file'));
@@ -1437,6 +1516,10 @@ function selectTool(toolId) {
         scheduleConvert(true);
         return;
     }
+    if (isImageTool(toolId)) {
+        activateImageTool();
+        return;
+    }
     if (coderMainTools.has(toolId)) {
         const nextMode = coderToolModes[toolId] || 'encode';
         const changed = state.coderMode !== nextMode;
@@ -1497,6 +1580,7 @@ function selectTool(toolId) {
 
 function updateBodyClasses(toolId) {
     document.body.classList.toggle('tool-format', toolId === 'format');
+    document.body.classList.toggle('tool-image', isImageTool(toolId));
     document.body.classList.toggle('tool-coder', coderMainTools.has(toolId));
     document.body.classList.toggle('tool-pair', pairTools.has(toolId));
     document.body.classList.toggle('tool-kdf', isKdfTool(toolId));
@@ -2068,6 +2152,10 @@ function isUrlTool(toolId) {
 
 function isTimestampTool(toolId) {
     return timestampTools.has(toolId);
+}
+
+function isImageTool(toolId) {
+    return imageTools.has(toolId);
 }
 
 function isIPv4Tool(toolId) {
@@ -2740,6 +2828,359 @@ function renderIPv4Row(label, value) {
       <span class="click-copy" data-copy-value="${attrValue}">${safeValue}</span>
     </div>
   `;
+}
+
+// Image converter: reads uploads, calls wasm for transcoding, and keeps preview/download in sync.
+function activateImageTool() {
+    renderImageFormatSelect();
+    renderImageOptions(state.image.targetFormat || 'webp');
+    renderImageInputMeta();
+    renderImageOriginalPreview();
+    renderImageOutput(state.image.result);
+    renderImageError('');
+    setStatus('Ready', false);
+}
+
+async function handleImageFileChange(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) {
+        resetImageState();
+        renderImageInputMeta();
+        renderImageOriginalPreview();
+        renderImageOutput(null);
+        return;
+    }
+    try {
+        const buffer = await file.arrayBuffer();
+        state.image.fileBytes = new Uint8Array(buffer);
+        state.image.fileName = file.name;
+        state.image.fileSize = file.size;
+        state.image.detectedFormat =
+            detectImageFormat(state.image.fileBytes, file.name) || state.image.detectedFormat;
+        state.image.result = null;
+        renderImageInputMeta();
+        renderImageOriginalPreview();
+        renderImageOptions(state.image.targetFormat || elements.imageTargetFormat?.value || 'webp');
+        renderImageOutput(null);
+        setStatus('Image loaded', false);
+    } catch (err) {
+        console.error(err);
+        renderImageError(err?.message || String(err));
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function renderImageFormatSelect() {
+    if (!elements.imageTargetFormat) return;
+    if (!elements.imageTargetFormat.options.length) {
+        elements.imageTargetFormat.innerHTML = imageFormats
+            .map(
+                (fmt) =>
+                    `<option value="${fmt}">${imageFormatLabels[fmt] || fmt.toUpperCase()}</option>`
+            )
+            .join('');
+    }
+    const next = state.image.targetFormat || elements.imageTargetFormat.value || 'webp';
+    elements.imageTargetFormat.value = next;
+    renderImageOptions(next);
+}
+
+function renderImageInputMeta() {
+    if (!elements.imageInputMeta) return;
+    if (!(state.image.fileBytes && state.image.fileBytes.length)) {
+        elements.imageInputMeta.textContent = 'No image selected';
+        if (elements.imageConvert) elements.imageConvert.setAttribute('disabled', 'disabled');
+        if (elements.imageDownload) elements.imageDownload.setAttribute('disabled', 'disabled');
+        return;
+    }
+    const format = (state.image.detectedFormat || '').toUpperCase() || 'UNKNOWN';
+    const sizeLabel = formatByteSize(state.image.fileSize || state.image.fileBytes.length);
+    const name = state.image.fileName || 'Image';
+    elements.imageInputMeta.textContent = `${name} • ${sizeLabel} • ${format}`;
+    if (elements.imageConvert) elements.imageConvert.removeAttribute('disabled');
+}
+
+function renderImageOriginalPreview() {
+    if (!elements.imageOriginalPreview) return;
+    if (state.image.previewUrl) {
+        URL.revokeObjectURL(state.image.previewUrl);
+        state.image.previewUrl = '';
+    }
+    if (!(state.image.fileBytes && state.image.fileBytes.length)) {
+        elements.imageOriginalPreview.innerHTML =
+            '<div class="muted">Select an image to preview</div>';
+        return;
+    }
+    const blob = new Blob([state.image.fileBytes], {
+        type: imageMimeFromFormat(state.image.detectedFormat) || 'application/octet-stream',
+    });
+    const url = URL.createObjectURL(blob);
+    state.image.previewUrl = url;
+    elements.imageOriginalPreview.innerHTML = `<img src="${escapeAttr(
+        url
+    )}" alt="Selected image preview" loading="lazy" />`;
+}
+
+function renderImageOutput(result) {
+    const target = result || state.image.result;
+    if (!elements.imageOutputPreview) return;
+    if (!target || !target.dataUrl) {
+        elements.imageOutputPreview.innerHTML =
+            '<div class="muted">Run a conversion to see the result</div>';
+        if (elements.imageOutputMeta) elements.imageOutputMeta.textContent = '';
+        if (elements.imageDownload) elements.imageDownload.setAttribute('disabled', 'disabled');
+        return;
+    }
+    elements.imageOutputPreview.innerHTML = `<img src="${escapeAttr(
+        target.dataUrl
+    )}" alt="Converted preview" loading="lazy" />`;
+    if (elements.imageOutputMeta) {
+        const bits = [];
+        if (target.width && target.height) {
+            bits.push(`${target.width} × ${target.height}`);
+        }
+        if (target.mime) bits.push(target.mime);
+        if (target.downloadName) bits.push(target.downloadName);
+        elements.imageOutputMeta.textContent = bits.join(' · ');
+    }
+    if (elements.imageDownload) elements.imageDownload.removeAttribute('disabled');
+    if (elements.imageError) elements.imageError.textContent = '';
+}
+
+function renderImageError(message) {
+    if (elements.imageError) {
+        elements.imageError.textContent = message || '';
+    }
+}
+
+function resetImageState() {
+    if (state.image.previewUrl) {
+        URL.revokeObjectURL(state.image.previewUrl);
+    }
+    state.image.previewUrl = '';
+    state.image.fileBytes = null;
+    state.image.fileName = '';
+    state.image.fileSize = 0;
+    state.image.detectedFormat = '';
+    state.image.result = null;
+}
+
+function renderImageOptions(format) {
+    if (!elements.imageOptions) return;
+    const normalizedFormat = (format || elements.imageTargetFormat?.value || 'webp')
+        .toString()
+        .trim()
+        .toLowerCase();
+    const specs = imageFormatOptions[normalizedFormat] || [];
+    const existing = state.image.optionsByFormat[normalizedFormat] || {};
+    const opts = { ...existing };
+    specs.forEach((spec) => {
+        if (spec.type === 'note') return;
+        if (opts[spec.key] === undefined && spec.defaultValue !== undefined) {
+            opts[spec.key] = spec.defaultValue;
+        }
+    });
+    state.image.optionsByFormat[normalizedFormat] = opts;
+    if (!specs.length) {
+        elements.imageOptions.innerHTML =
+            '<div class="image-option-note">No adjustable options for this format.</div>';
+        return;
+    }
+    elements.imageOptions.innerHTML = specs
+        .map((spec) => {
+            if (spec.type === 'note') {
+                return `<div class="image-option-note">${escapeHTML(spec.text || '')}</div>`;
+            }
+            const value = opts[spec.key] ?? spec.defaultValue ?? '';
+            if (spec.type === 'checkbox') {
+                const checked = value ? 'checked' : '';
+                return `<label>
+                    <span>${escapeHTML(spec.label || spec.key)}</span>
+                    <input type="checkbox" data-image-opt="${spec.key}" ${checked} />
+                </label>`;
+            }
+            return `<label>
+                <span>${escapeHTML(spec.label || spec.key)}${spec.hint ? ` — ${escapeHTML(spec.hint)}` : ''}</span>
+                <input type="${spec.type}" data-image-opt="${spec.key}" min="${spec.min ?? ''}" max="${spec.max ?? ''}" value="${escapeAttr(value)}" />
+            </label>`;
+        })
+        .join('');
+    elements.imageOptions.querySelectorAll('[data-image-opt]').forEach((input) => {
+        input.addEventListener('input', handleImageOptionChange);
+        input.addEventListener('change', handleImageOptionChange);
+    });
+}
+
+function handleImageOptionChange(event) {
+    const key = event.target?.dataset?.imageOpt;
+    if (!key) return;
+    const format = (state.image.targetFormat || elements.imageTargetFormat?.value || 'webp')
+        .toString()
+        .trim()
+        .toLowerCase();
+    const current = { ...(state.image.optionsByFormat[format] || {}) };
+    if (event.target.type === 'checkbox') {
+        current[key] = Boolean(event.target.checked);
+    } else {
+        const num = Number(event.target.value);
+        current[key] = Number.isFinite(num) ? num : event.target.value;
+    }
+    state.image.optionsByFormat[format] = current;
+}
+
+function handleImageConvert() {
+    if (!isImageTool(state.currentTool)) {
+        setStatus('Select the Image Converter tool', true);
+        return;
+    }
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    if (!(state.image.fileBytes && state.image.fileBytes.length)) {
+        setStatus('Select an image before converting', true);
+        return;
+    }
+    const target = elements.imageTargetFormat?.value || state.image.targetFormat || 'webp';
+    state.image.targetFormat = (target || '').toString().trim().toLowerCase();
+    const fromFormat =
+        detectImageFormat(state.image.fileBytes, state.image.fileName) ||
+        state.image.detectedFormat ||
+        'png';
+    const options = state.image.optionsByFormat[target] || {};
+    try {
+        const raw = convert_image_format(fromFormat, target, state.image.fileBytes, options);
+        const normalized = normalizeImageResult(raw);
+        state.image.result = normalized;
+        renderImageOutput(normalized);
+        setStatus(`Converted to ${normalized.format.toUpperCase()}`, false);
+    } catch (err) {
+        console.error(err);
+        renderImageError(err?.message || String(err));
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function handleImageDownload() {
+    if (!isImageTool(state.currentTool)) {
+        setStatus('Select the Image Converter tool', true);
+        return;
+    }
+    const result = state.image.result;
+    if (!result || !result.dataUrl) {
+        setStatus('No converted image to download', true);
+        return;
+    }
+    const link = document.createElement('a');
+    link.href = result.dataUrl;
+    link.download = result.downloadName || `converted.${result.format || 'png'}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setStatus('Download ready', false);
+}
+
+function normalizeImageResult(result) {
+    const base = normalizeMapResult(result);
+    const source = Object.keys(base).length ? base : result || {};
+    const format = (source.format || source.Format || '').toString() || 'png';
+    return {
+        format,
+        mime: source.mime || source.Mime || '',
+        width: Number(source.width ?? source.Width ?? 0) || 0,
+        height: Number(source.height ?? source.Height ?? 0) || 0,
+        dataBase64: source.data_base64 || source.dataBase64 || '',
+        dataUrl: source.data_url || source.dataUrl || '',
+        downloadName: source.download_name || source.downloadName || `converted.${format}`,
+    };
+}
+
+function detectImageFormat(bytes, filename = '') {
+    const ext = normalizeImageExt(filename.split('.').pop() || '');
+    const magic = detectImageMagic(bytes);
+    return magic || ext;
+}
+
+function normalizeImageExt(ext) {
+    const lower = (ext || '').toLowerCase();
+    switch (lower) {
+        case 'jpg':
+        case 'jpeg':
+            return 'jpg';
+        case 'png':
+            return 'png';
+        case 'webp':
+            return 'webp';
+        case 'avif':
+            return 'avif';
+        default:
+            return '';
+    }
+}
+
+function detectImageMagic(bytes) {
+    if (!(bytes && bytes.length)) return '';
+    // PNG signature: 89 50 4E 47 0D 0A 1A 0A
+    if (
+        bytes[0] === 0x89 &&
+        bytes[1] === 0x50 &&
+        bytes[2] === 0x4e &&
+        bytes[3] === 0x47 &&
+        bytes[4] === 0x0d &&
+        bytes[5] === 0x0a &&
+        bytes[6] === 0x1a &&
+        bytes[7] === 0x0a
+    ) {
+        return 'png';
+    }
+    // JPEG starts with FF D8.
+    if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+        return 'jpg';
+    }
+    if (bytes.length > 12) {
+        const riff = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+        const webp = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+        if (riff === 'RIFF' && webp === 'WEBP') {
+            return 'webp';
+        }
+        const box = String.fromCharCode(bytes[4], bytes[5], bytes[6], bytes[7]);
+        const brand = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+        if (box === 'ftyp') {
+            if (['avif', 'avis', 'mif1', 'mvif'].includes(brand)) {
+                return 'avif';
+            }
+        }
+    }
+    return '';
+}
+
+function imageMimeFromFormat(format) {
+    switch ((format || '').toLowerCase()) {
+        case 'png':
+            return 'image/png';
+        case 'jpg':
+        case 'jpeg':
+            return 'image/jpeg';
+        case 'webp':
+            return 'image/webp';
+        case 'avif':
+            return 'image/avif';
+        default:
+            return '';
+    }
+}
+
+function formatByteSize(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let value = bytes;
+    let idx = 0;
+    while (value >= 1024 && idx < units.length - 1) {
+        value /= 1024;
+        idx += 1;
+    }
+    const rounded = value >= 10 || value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
+    return `${rounded} ${units[idx]}`;
 }
 
 function activateUUIDTool() {
@@ -5363,7 +5804,8 @@ async function copyText(value, label) {
 }
 
 function escapeHTML(value = '') {
-    return value
+    const text = value == null ? '' : String(value);
+    return text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')

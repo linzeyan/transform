@@ -45,6 +45,7 @@ use wasm_bindgen::prelude::*;
 
 mod cert;
 mod convert;
+mod images;
 
 /// Wasm entry point that installs a panic hook so Rust panics appear in the browser console.
 #[wasm_bindgen(start)]
@@ -2220,6 +2221,20 @@ pub fn transform_format(from: &str, to: &str, input: &str) -> Result<String, JsV
 /// mirroring the "Prettify / Minify" buttons in the UI.
 pub fn format_content_text(format: &str, input: &str, minify: bool) -> Result<String, JsValue> {
     convert::format_content(format, input, minify).map_err(|err| JsValue::from_str(&err))
+}
+
+#[wasm_bindgen]
+/// Converts image bytes (JPG/PNG/WebP/AVIF) and returns data URLs for download in the UI.
+pub fn convert_image_format(
+    from: &str,
+    to: &str,
+    bytes: &[u8],
+    options: JsValue,
+) -> Result<JsValue, JsValue> {
+    let opts: images::ImageOptions = serde_wasm_bindgen::from_value(options).unwrap_or_default();
+    images::convert_image_bytes(from, to, bytes, opts)
+        .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
+        .map_err(|err| JsValue::from_str(&err))
 }
 
 #[wasm_bindgen]
