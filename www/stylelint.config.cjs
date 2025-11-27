@@ -6,11 +6,11 @@ module.exports = {
     ],
     overrides: [
         {
-            files: ['**/*.scss'],
+            files: ['*.scss'],
             customSyntax: 'postcss-scss',
         },
         {
-            files: ['**/*.less'],
+            files: ['*.less'],
             customSyntax: 'postcss-less',
         },
     ],

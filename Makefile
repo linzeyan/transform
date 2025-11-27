@@ -1,36 +1,37 @@
 WASM_CORE ?= --manifest-path wasm_core/Cargo.toml
 DEPS = prettier stylelint stylelint-config-standard htmlhint eslint @eslint/js eslint-config-prettier
 
-.PHONY: all build fmt lint test serve clean e2e frontend-fmt frontend-lint
+.PHONY: all build fmt lint test serve clean frontend-fmt frontend-lint test-all
 
-all: build serve
+all: frontend-lint build serve
 
 fmt:
 	cargo fmt $(WASM_CORE)
 
-lint:
+lint: fmt
 	cargo clippy $(WASM_CORE) -- -D warnings
 
 test:
 	cargo test $(WASM_CORE) --all
+	@command -v wasm-pack >/dev/null || (cargo install wasm-pack)
 	wasm-pack test --chrome --headless wasm_core
+
+test-all: lint frontend-lint test
 
 frontend-fmt:
 	@npm ls $(DEPS) --depth=0 --silent >/dev/null 2>&1 || npm i -D $(DEPS)
-	npx prettier "www/*.{js,jsx,ts,tsx,css,scss,html}" --write
+	npx prettier --config www/prettier.json "www/*.{json,cjs,js,jsx,ts,tsx,css,scss,html}" --write
 
 frontend-lint: frontend-fmt
-	npx htmlhint "www/*.html"
-	npx stylelint "www/*.{css,scss,sass,less}" --fix
-	npx eslint -c www/eslint.config.cjs www/main.js --fix
+	npx htmlhint --config www/htmlhint.json "www/*.html"
+	npx stylelint --config www/stylelint.config.cjs "www/*.{css,scss,sass,less}" --fix
+	npx eslint --config www/eslint.config.cjs www/main.js --fix
 
-build: fmt lint test
-	@command -v wasm-pack >/dev/null || (cargo install wasm-pack)
-	cd wasm_core && \
-	wasm-pack build --target web --out-dir ../www/pkg
+build: lint test
+	wasm-pack build wasm_core --target web --out-dir ../www/pkg
 
 serve:
-	cd www && npx --yes serve
+	npx serve www
 
 clean:
 	cargo clean $(WASM_CORE)
