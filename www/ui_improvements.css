@@ -331,7 +331,7 @@ button:hover {
     margin-bottom: 24px;
 }
 
-.coder-output-group > header {
+.coder-output-group>header {
     font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
@@ -366,7 +366,7 @@ button:hover {
     box-shadow: 0 4px 16px rgb(0 0 0 / 20%);
 }
 
-.coder-output-block > header {
+.coder-output-block>header {
     font-size: 13px;
     font-weight: 600;
     text-transform: uppercase;
@@ -544,6 +544,8 @@ button:hover {
     background: linear-gradient(180deg, rgb(5 6 10 / 98%) 0%, rgb(8 9 16 / 98%) 100%);
     backdrop-filter: blur(24px);
     box-shadow: 4px 0 24px rgb(0 0 0 / 30%);
+    transition: var(--transition-smooth);
+    position: relative;
 }
 
 .sidebar-brand {
@@ -551,11 +553,70 @@ button:hover {
     border-bottom: 1px solid rgb(122 162 247 / 20%);
 }
 
+.sidebar-brand-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: var(--transition-smooth);
+}
+
 .sidebar-brand strong {
     background: linear-gradient(135deg, var(--accent) 0%, #9db4ff 100%);
     -webkit-text-fill-color: transparent;
     background-clip: text;
     font-size: 18px;
+}
+
+.sidebar-collapse-btn {
+    position: absolute;
+    top: 16px;
+    right: 8px;
+    background: linear-gradient(135deg, rgb(122 162 247 / 20%) 0%, rgb(122 162 247 / 10%) 100%);
+    border: 1px solid rgb(122 162 247 / 30%);
+    color: var(--fg);
+    padding: 10px 8px;
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    z-index: 10;
+    box-shadow: 2px 2px 8px rgb(0 0 0 / 20%);
+}
+
+.sidebar-collapse-btn:hover {
+    background: linear-gradient(135deg, rgb(122 162 247 / 30%) 0%, rgb(122 162 247 / 15%) 100%);
+    border-color: var(--accent);
+    transform: scale(1.05);
+    box-shadow: 3px 3px 12px rgb(0 0 0 / 30%);
+}
+
+/* Collapsed sidebar state */
+body.sidebar-collapsed #sidebar {
+    width: 60px;
+}
+
+body.sidebar-collapsed .sidebar-brand-content {
+    opacity: 0;
+    width: 0;
+    overflow: hidden;
+}
+
+body.sidebar-collapsed .sidebar-collapse-btn {
+    transform: rotate(180deg);
+    right: 8px;
+}
+
+body.sidebar-collapsed .sidebar-collapse-btn:hover {
+    transform: rotate(180deg) scale(1.05);
+}
+
+body.sidebar-collapsed #toolGroups {
+    opacity: 0;
+    pointer-events: none;
+}
+
+body.sidebar-collapsed .app-shell {
+    grid-template-columns: 60px 6px 1fr;
 }
 
 #toolGroups .tool-buttons button {

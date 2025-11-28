@@ -885,6 +885,7 @@ async function boot() {
 function cacheElements() {
     elements.sidebar = document.getElementById('sidebar');
     elements.sidebarToggle = document.getElementById('sidebarToggle');
+    elements.sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
     elements.sidebarBackdrop = document.getElementById('sidebarBackdrop');
     elements.toolGroups = document.getElementById('toolGroups');
     elements.toolName = document.getElementById('toolName');
@@ -1164,6 +1165,7 @@ function initCoderControls() {
 
 function bindUI() {
     elements.sidebarToggle?.addEventListener('click', toggleSidebar);
+    elements.sidebarCollapseBtn?.addEventListener('click', toggleSidebarCollapse);
     elements.sidebarBackdrop?.addEventListener('click', closeSidebar);
     elements.swap?.addEventListener('click', () => {
         if (state.currentTool !== 'format') return;
@@ -1449,6 +1451,21 @@ function toggleSidebar() {
 
 function closeSidebar() {
     document.body.classList.remove('sidebar-open');
+}
+
+function toggleSidebarCollapse() {
+    document.body.classList.toggle('sidebar-collapsed');
+    const isCollapsed = document.body.classList.contains('sidebar-collapsed');
+    if (elements.sidebarCollapseBtn) {
+        elements.sidebarCollapseBtn.setAttribute(
+            'aria-label',
+            isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+        );
+        elements.sidebarCollapseBtn.setAttribute(
+            'title',
+            isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+        );
+    }
 }
 
 function closeSidebarOnMobile() {
