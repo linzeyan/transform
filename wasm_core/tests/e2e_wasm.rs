@@ -411,9 +411,179 @@ fn timestamp_sql_datetime_to_epoch() {
     let map = js_to_json(
         convert_timestamp("sql_datetime", "2025-01-02 03:04:05").expect("timestamp conversion"),
     );
-    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05+00:00");
+    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05Z");
     assert_eq!(field(&map, "timestamp_seconds"), "1735787045");
     assert_eq!(field(&map, "timestamp_milliseconds"), "1735787045000");
+}
+
+#[wasm_bindgen_test]
+fn timestamp_converter_supports_new_formats() {
+    let map = js_to_json(
+        convert_timestamp("sql_datetime", "2025-01-02 03:04:05").expect("timestamp conversion"),
+    );
+
+    // Test ISO 8601 format (basic format without nanoseconds)
+    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05Z");
+
+    // Test RFC 3339 format (with nanoseconds)
+    let rfc3339 = field(&map, "rfc3339");
+    assert!(rfc3339.starts_with("2025-01-02T03:04:05."));
+    assert!(rfc3339.ends_with("Z"));
+
+    // Test RFC 2822 format
+    assert_eq!(field(&map, "rfc2822"), "Thu, 2 Jan 2025 03:04:05 +0000");
+
+    // Test ISO 9075 format (SQL timestamp with timezone)
+    assert_eq!(field(&map, "iso9075"), "2025-01-02 03:04:05+00:00");
+
+    // Test RFC 7231 format (HTTP date format)
+    assert_eq!(field(&map, "rfc7231"), "Thu, 02 Jan 2025 03:04:05 GMT");
+
+    // Test SQL formats
+    assert_eq!(field(&map, "sql_datetime"), "2025-01-02 03:04:05");
+    assert_eq!(field(&map, "sql_date"), "2025-01-02");
+
+    // Test Unix timestamp formats
+    assert_eq!(field(&map, "timestamp_seconds"), "1735787045");
+    assert_eq!(field(&map, "timestamp_milliseconds"), "1735787045000");
+    assert_eq!(field(&map, "timestamp_microseconds"), "1735787045000000");
+    assert_eq!(field(&map, "timestamp_nanoseconds"), "1735787045000000000");
+
+    // Test browser timezone formats exist
+    assert!(
+        map.get("browser_iso8601")
+            .and_then(|v| v.as_str())
+            .is_some()
+    );
+    assert!(
+        map.get("browser_rfc3339")
+            .and_then(|v| v.as_str())
+            .is_some()
+    );
+    assert!(
+        map.get("browser_rfc2822")
+            .and_then(|v| v.as_str())
+            .is_some()
+    );
+    assert!(
+        map.get("browser_iso9075")
+            .and_then(|v| v.as_str())
+            .is_some()
+    );
+    assert!(
+        map.get("browser_rfc7231")
+            .and_then(|v| v.as_str())
+            .is_some()
+    );
+    assert!(
+        map.get("browser_sql_datetime")
+            .and_then(|v| v.as_str())
+            .is_some()
+    );
+    assert!(
+        map.get("browser_sql_date")
+            .and_then(|v| v.as_str())
+            .is_some()
+    );
+}
+
+#[wasm_bindgen_test]
+fn timestamp_converter_now_source_returns_result() {
+    let map = js_to_json(convert_timestamp("now", "").expect("timestamp conversion for now"));
+
+    // Verify we get a populated map
+    assert!(field(&map, "iso8601").len() > 0);
+    assert!(field(&map, "rfc3339").len() > 0);
+
+    // Verify RFC 3339 has nanoseconds (contains dot)
+    assert!(field(&map, "rfc3339").contains('.'));
+}
+
+#[wasm_bindgen_test]
+fn timestamp_converter_from_iso8601() {
+    let map = js_to_json(
+        convert_timestamp("iso8601", "2025-01-02T03:04:05Z").expect("timestamp conversion"),
+    );
+
+    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05Z");
+    assert!(field(&map, "rfc3339").starts_with("2025-01-02T03:04:05."));
+    assert_eq!(field(&map, "rfc2822"), "Thu, 2 Jan 2025 03:04:05 +0000");
+    assert_eq!(field(&map, "iso9075"), "2025-01-02 03:04:05+00:00");
+    assert_eq!(field(&map, "rfc7231"), "Thu, 02 Jan 2025 03:04:05 GMT");
+}
+
+#[wasm_bindgen_test]
+fn timestamp_converter_from_rfc3339_with_nanos() {
+    let map = js_to_json(
+        convert_timestamp("rfc3339", "2025-01-02T03:04:05.123456789Z")
+            .expect("timestamp conversion"),
+    );
+
+    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05Z");
+    assert_eq!(field(&map, "rfc3339"), "2025-01-02T03:04:05.123456789Z");
+    assert_eq!(field(&map, "rfc2822"), "Thu, 2 Jan 2025 03:04:05 +0000");
+}
+
+#[wasm_bindgen_test]
+fn timestamp_converter_from_iso9075() {
+    let map = js_to_json(
+        convert_timestamp("iso9075", "2025-01-02 03:04:05+00:00").expect("timestamp conversion"),
+    );
+
+    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05Z");
+    assert!(field(&map, "rfc3339").starts_with("2025-01-02T03:04:05."));
+    assert_eq!(field(&map, "iso9075"), "2025-01-02 03:04:05+00:00");
+}
+
+#[wasm_bindgen_test]
+fn timestamp_converter_from_rfc7231() {
+    let map = js_to_json(
+        convert_timestamp("rfc7231", "Thu, 02 Jan 2025 03:04:05 GMT")
+            .expect("timestamp conversion"),
+    );
+
+    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05Z");
+    assert!(field(&map, "rfc3339").starts_with("2025-01-02T03:04:05."));
+    assert_eq!(field(&map, "rfc7231"), "Thu, 02 Jan 2025 03:04:05 GMT");
+}
+
+#[wasm_bindgen_test]
+fn timestamp_workspace_has_new_format_controls() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+
+    // Check that new format inputs exist
+    for id in [
+        "timestampIso",       // ISO 8601
+        "timestampRfc3339",   // RFC 3339
+        "timestampRfc",       // RFC 2822
+        "timestampIso9075",   // ISO 9075
+        "timestampRfc7231",   // RFC 7231
+        "timestampSql",       // SQL datetime
+        "timestampSqlDate",   // SQL date
+        "timestampSeconds",   // Unix seconds
+        "timestampMillis",    // Unix milliseconds
+        "timestampMicros",    // Unix microseconds
+        "timestampNanos",     // Unix nanoseconds
+        "browserIso8601",     // Browser ISO 8601 (readonly)
+        "browserRfc3339",     // Browser RFC 3339 (readonly)
+        "browserRfc2822",     // Browser RFC 2822 (readonly)
+        "browserIso9075",     // Browser ISO 9075 (readonly)
+        "browserRfc7231",     // Browser RFC 7231 (readonly)
+        "browserSqlDatetime", // Browser SQL datetime (readonly)
+        "browserSqlDate",     // Browser SQL date (readonly)
+    ] {
+        assert!(
+            INDEX_HTML.contains(&format!("id=\"{id}\"")),
+            "timestamp converter should have control {id}"
+        );
+    }
+
+    // Check that Now button exists
+    assert!(
+        INDEX_HTML.contains("data-preset=\"now\""),
+        "timestamp converter should have Now button"
+    );
 }
 
 #[wasm_bindgen_test]

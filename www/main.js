@@ -176,13 +176,24 @@ const unitKeys = [
 
 const timestampFields = [
     { key: 'iso8601', id: 'timestampIso' },
+    { key: 'rfc3339', id: 'timestampRfc3339' },
     { key: 'rfc2822', id: 'timestampRfc' },
+    { key: 'iso9075', id: 'timestampIso9075' },
+    { key: 'rfc7231', id: 'timestampRfc7231' },
     { key: 'sql_datetime', id: 'timestampSql' },
     { key: 'sql_date', id: 'timestampSqlDate' },
     { key: 'timestamp_seconds', id: 'timestampSeconds' },
     { key: 'timestamp_milliseconds', id: 'timestampMillis' },
     { key: 'timestamp_microseconds', id: 'timestampMicros' },
     { key: 'timestamp_nanoseconds', id: 'timestampNanos' },
+    // Browser timezone fields (readonly)
+    { key: 'browser_iso8601', id: 'browserIso8601', readonly: true },
+    { key: 'browser_rfc3339', id: 'browserRfc3339', readonly: true },
+    { key: 'browser_rfc2822', id: 'browserRfc2822', readonly: true },
+    { key: 'browser_iso9075', id: 'browserIso9075', readonly: true },
+    { key: 'browser_rfc7231', id: 'browserRfc7231', readonly: true },
+    { key: 'browser_sql_datetime', id: 'browserSqlDatetime', readonly: true },
+    { key: 'browser_sql_date', id: 'browserSqlDate', readonly: true },
 ];
 
 const digitCharacters = '0123456789';
@@ -1566,6 +1577,12 @@ function selectTool(toolId) {
     if (!meta) return;
     const previousTool = state.currentTool;
     state.currentTool = toolId;
+
+    // Stop timestamp updates when switching away from timestamp tool
+    if (previousTool === 'converter-timestamp' && toolId !== 'converter-timestamp') {
+        stopTimestampUpdates();
+    }
+
     elements.toolName && (elements.toolName.textContent = meta.label);
     elements.toolDesc && (elements.toolDesc.textContent = meta.description || '');
     updateBodyClasses(toolId);
@@ -1844,13 +1861,13 @@ function runCoder() {
         const hashes = state.hashUseHmac
             ? state.coder.inputMode === 'file'
                 ? hash_content_hmac_bytes(
-                    fileBytes || new Uint8Array(),
-                    utf8ToBytes(state.hashHmacSecret || '')
-                )
+                      fileBytes || new Uint8Array(),
+                      utf8ToBytes(state.hashHmacSecret || '')
+                  )
                 : hash_content_hmac(text, state.hashHmacSecret || '')
             : state.coder.inputMode === 'file'
-                ? hash_content_bytes(fileBytes || new Uint8Array())
-                : hash_content(text);
+              ? hash_content_bytes(fileBytes || new Uint8Array())
+              : hash_content(text);
         const map = normalizeMapResult(hashes);
         state.lastHashResults = map;
         renderHashResults(map);
@@ -1874,8 +1891,8 @@ function updateCoderTexts() {
             state.coderMode === 'hash'
                 ? 'Hash Digests'
                 : state.coderMode === 'decode'
-                    ? 'Decode'
-                    : 'Encodings';
+                  ? 'Decode'
+                  : 'Encodings';
         elements.coderResultHeading.textContent = heading;
     }
     if (elements.coderResultHint) {
@@ -1949,8 +1966,8 @@ function renderCoderEmpty() {
         state.coderMode === 'decode'
             ? 'Paste encoded text to decode'
             : state.coder.inputMode === 'file'
-                ? 'Select a file to process'
-                : 'Enter content to see results';
+              ? 'Select a file to process'
+              : 'Enter content to see results';
     elements.coderResults.innerHTML = `<div class="muted">${message}</div>`;
     updateCoderActionsVisibility();
 }
@@ -2177,8 +2194,9 @@ function renderEntryRow(entry) {
     let actionMarkup = '';
     if (toggleGroup) {
         const upperActive = state.encodeCaseMap[toggleGroup] !== false;
-        actionMarkup = `<button type="button" data-encode-group="${toggleGroup}" data-upper="${upperActive ? 'true' : 'false'
-            }">Toggle Case</button>`;
+        actionMarkup = `<button type="button" data-encode-group="${toggleGroup}" data-upper="${
+            upperActive ? 'true' : 'false'
+        }">Toggle Case</button>`;
     } else if (clickable) {
         actionMarkup = '<span class="copy-hint">Click to copy</span>';
     } else {
@@ -4191,28 +4209,30 @@ function renderCertCard(entry, list) {
     const ku = formatBadgeList(entry.keyUsage || [], 'Key Usage');
     const eku = formatBadgeList(entry.extendedKeyUsage || [], 'Extended Key Usage');
     const basic = entry.basicConstraints
-        ? `<div class="cert-block"><span>Basic Constraints</span><code>${entry.basicConstraints.ca ? 'CA' : 'End-entity'
-        }${entry.basicConstraints.pathLen !== null &&
-            entry.basicConstraints.pathLen !== undefined
-            ? ` · pathLen=${entry.basicConstraints.pathLen}`
-            : ''
-        }</code></div>`
+        ? `<div class="cert-block"><span>Basic Constraints</span><code>${
+              entry.basicConstraints.ca ? 'CA' : 'End-entity'
+          }${
+              entry.basicConstraints.pathLen !== null &&
+              entry.basicConstraints.pathLen !== undefined
+                  ? ` · pathLen=${entry.basicConstraints.pathLen}`
+                  : ''
+          }</code></div>`
         : '';
     const issuerHint =
         entry.issuerPosition && entry.issuerPosition !== entry.position
             ? `Chain issuer: #${entry.issuerPosition}`
             : role === 'Root'
-                ? 'Self-signed'
-                : '';
+              ? 'Self-signed'
+              : '';
     const akid = entry.authorityKeyId
         ? `<div class="cert-block"><span>Authority Key ID</span><code>${escapeHTML(
-            entry.authorityKeyId
-        )}</code></div>`
+              entry.authorityKeyId
+          )}</code></div>`
         : '';
     const skid = entry.subjectKeyId
         ? `<div class="cert-block"><span>Subject Key ID</span><code>${escapeHTML(
-            entry.subjectKeyId
-        )}</code></div>`
+              entry.subjectKeyId
+          )}</code></div>`
         : '';
     const fingerprints = entry.fingerprints || {};
     return `
@@ -4240,8 +4260,8 @@ function renderCertCard(entry, list) {
         <div class="cert-block">
           <span>Public Key</span>
           <code>${escapeHTML(
-        `${entry.publicKeyAlgorithm || ''} · ${entry.publicKeyBits || 0} bits`
-    )}</code>
+              `${entry.publicKeyAlgorithm || ''} · ${entry.publicKeyBits || 0} bits`
+          )}</code>
         </div>
         <div class="cert-block">
           <span>Valid From</span>
@@ -4254,8 +4274,8 @@ function renderCertCard(entry, list) {
           <div><label>SHA-256</label><code>${escapeHTML(fingerprints.sha256 || '')}</code></div>
           <div><label>SHA-1</label><code>${escapeHTML(fingerprints.sha1 || '')}</code></div>
           <div><label>SPKI SHA-256</label><code>${escapeHTML(
-        fingerprints.spkiSha256 || ''
-    )}</code></div>
+              fingerprints.spkiSha256 || ''
+          )}</code></div>
         </div>
       </div>
       ${san || ''}
@@ -5124,12 +5144,96 @@ function handleTimestampPreset(event) {
     const button = event.target.closest('button[data-preset]');
     if (!button) return;
     const preset = button.dataset.preset;
+
+    // If "Now" is already active, stop updates
+    if (preset === 'now' && timestampUpdateTimer) {
+        stopTimestampUpdates();
+        return;
+    }
+
     const entry = buildTimestampPreset(preset);
     if (!entry) return;
     const target = document.querySelector(`#timestampWorkspace input[data-field="${entry.field}"]`);
     if (!target) return;
     target.value = entry.value;
     runTimestampConversion(entry.field, entry.value);
+
+    // If "Now" preset is selected, start dynamic updates
+    if (preset === 'now') {
+        startTimestampUpdates();
+    } else {
+        stopTimestampUpdates();
+    }
+}
+
+// Global timer for timestamp updates
+let timestampUpdateTimer = null;
+
+function startTimestampUpdates() {
+    // Clear any existing timer
+    stopTimestampUpdates();
+
+    // Update immediately
+    updateAllTimestampFields();
+
+    // Set up timer to update every second
+    timestampUpdateTimer = setInterval(() => {
+        updateAllTimestampFields();
+    }, 1000);
+
+    // Update button state
+    const nowButton = document.querySelector('button[data-preset="now"]');
+    if (nowButton) {
+        nowButton.textContent = 'Stop';
+        nowButton.classList.add('active');
+    }
+}
+
+function stopTimestampUpdates() {
+    if (timestampUpdateTimer) {
+        clearInterval(timestampUpdateTimer);
+        timestampUpdateTimer = null;
+    }
+
+    // Reset button state
+    const nowButton = document.querySelector('button[data-preset="now"]');
+    if (nowButton) {
+        nowButton.textContent = 'Now';
+        nowButton.classList.remove('active');
+    }
+}
+
+function updateAllTimestampFields() {
+    if (!state.wasmReady) return;
+
+    // Use "now" source to get high-precision timestamp from Rust
+    try {
+        const record = normalizeMapResult(convert_timestamp('now', ''));
+        state.timestampUpdating = true;
+
+        timestampFields.forEach(({ id, key, readonly }) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            const value = record[key] ?? '';
+
+            // For readonly fields, always update
+            // For editable fields, only update if they're currently showing "now" time
+            if (readonly || isNowFieldValue(input.value, key)) {
+                input.value = value;
+            }
+        });
+
+        state.timestampUpdating = false;
+    } catch (err) {
+        state.timestampUpdating = false;
+        console.error('Timestamp update failed:', err);
+    }
+}
+
+function isNowFieldValue(_value, _field) {
+    // Check if the current value appears to be from a recent "now" update
+    // This is a heuristic - in practice, we'll update all fields when "Now" is active
+    return true;
 }
 
 function buildTimestampPreset(kind) {
@@ -5172,11 +5276,15 @@ function runTimestampConversion(field, value, silent = false) {
     try {
         const record = normalizeMapResult(convert_timestamp(field, value));
         state.timestampUpdating = true;
-        timestampFields.forEach(({ id, key }) => {
+        timestampFields.forEach(({ id, key, readonly }) => {
             const input = document.getElementById(id);
             if (!input) return;
             const nextValue = record[key] ?? '';
-            input.value = key === field ? nextValue || value : nextValue;
+            // For readonly fields, always update
+            // For editable fields, update unless it's the current input field
+            if (readonly || key !== field) {
+                input.value = nextValue || (key === field ? value : nextValue);
+            }
         });
         state.timestampUpdating = false;
         if (!silent) {
@@ -5185,7 +5293,7 @@ function runTimestampConversion(field, value, silent = false) {
     } catch (err) {
         state.timestampUpdating = false;
         if (!silent) {
-            setStatus(`⚠️ ${err?.message || err}`, true);
+            setStatus(err?.message || err?.toString() || 'Conversion failed', true);
         }
     }
 }
@@ -5280,8 +5388,9 @@ function renderTotpResult(result) {
         elements.totpCode.textContent = result.code || '';
     }
     if (elements.totpPeriodLabel) {
-        elements.totpPeriodLabel.textContent = `${result.algorithm || 'SHA256'
-            } · every ${result.period || 30}s`;
+        elements.totpPeriodLabel.textContent = `${
+            result.algorithm || 'SHA256'
+        } · every ${result.period || 30}s`;
     }
     if (elements.totpRemainingLabel) {
         elements.totpRemainingLabel.textContent = `${result.remaining || 0}s remaining`;
@@ -5632,31 +5741,31 @@ function renderDataColumnCard(tableName, column) {
         <label>
           <span>Min</span>
           <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(
-            column.name
-        )}" data-field="min" value="${escapeAttr(
-            minValue
-        )}" placeholder="${escapeAttr(minPlaceholder)}"${disabledAttr} />
+              column.name
+          )}" data-field="min" value="${escapeAttr(
+              minValue
+          )}" placeholder="${escapeAttr(minPlaceholder)}"${disabledAttr} />
         </label>
         <label>
           <span>Max</span>
           <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(
-            column.name
-        )}" data-field="max" value="${escapeAttr(
-            maxValue
-        )}" placeholder="${escapeAttr(maxPlaceholder)}"${disabledAttr} />
+              column.name
+          )}" data-field="max" value="${escapeAttr(
+              maxValue
+          )}" placeholder="${escapeAttr(maxPlaceholder)}"${disabledAttr} />
         </label>
         <label>
           <span>Allowed (comma)</span>
           <input type="text" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(
-            column.name
-        )}" data-field="allowed" value="${escapeAttr(
-            allowedValue
-        )}" placeholder="e.g. 10,20"${disabledAttr} />
+              column.name
+          )}" data-field="allowed" value="${escapeAttr(
+              allowedValue
+          )}" placeholder="e.g. 10,20"${disabledAttr} />
         </label>
       </div>`
         : column.enum_values?.length
-            ? `<div class="muted">Enum values: ${escapeHTML(column.enum_values.join(', '))}</div>`
-            : '<div class="muted">Text columns use lorem ipsum</div>';
+          ? `<div class="muted">Enum values: ${escapeHTML(column.enum_values.join(', '))}</div>`
+          : '<div class="muted">Text columns use lorem ipsum</div>';
     return `<div class="${cardClass}">
     <header>
       <div class="data-column-header-info">
@@ -5665,8 +5774,9 @@ function renderDataColumnCard(tableName, column) {
       </div>
       <label class="data-include-toggle">
         <input type="checkbox" data-table="${escapeAttr(
-        tableName
-    )}" data-column="${escapeAttr(column.name)}" data-field="include" ${include ? 'checked' : ''
+            tableName
+        )}" data-column="${escapeAttr(column.name)}" data-field="include" ${
+            include ? 'checked' : ''
         } />
         <span>Include</span>
       </label>

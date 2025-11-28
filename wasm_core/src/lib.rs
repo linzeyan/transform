@@ -2578,18 +2578,51 @@ fn convert_timestamp_internal(
     source: &str,
     value: &str,
 ) -> Result<BTreeMap<String, String>, String> {
-    // Normalize any supported representation (RFC3339, SQL datetime, or the
+    // Normalize any supported representation (RFC3339, ISO8601, SQL datetime, or the
     // different epoch precisions) into a UTC DateTime so we can fan out into
     // all of the formats surfaced in the UI/spec.
-    let dt = parse_timestamp_from_source(source, value)?;
+    let dt = if source == "now" {
+        Utc::now()
+    } else {
+        parse_timestamp_from_source(source, value)?
+    };
     let mut map = BTreeMap::new();
-    map.insert("iso8601".into(), dt.to_rfc3339());
+
+    // ISO 8601 format (basic format, without nanoseconds)
+    map.insert(
+        "iso8601".into(),
+        dt.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+    );
+
+    // RFC 3339 format (with nanoseconds for full precision)
+    map.insert(
+        "rfc3339".into(),
+        dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
+    );
+
+    // RFC 2822 format
     map.insert("rfc2822".into(), dt.to_rfc2822());
+
+    // ISO 9075 format (SQL timestamp with timezone)
+    map.insert(
+        "iso9075".into(),
+        dt.format("%Y-%m-%d %H:%M:%S+00:00").to_string(),
+    );
+
+    // RFC 7231 format (HTTP date format)
+    map.insert(
+        "rfc7231".into(),
+        dt.format("%a, %d %b %Y %H:%M:%S GMT").to_string(),
+    );
+
+    // SQL formats
     map.insert(
         "sql_datetime".into(),
         dt.format("%Y-%m-%d %H:%M:%S").to_string(),
     );
     map.insert("sql_date".into(), dt.format("%Y-%m-%d").to_string());
+
+    // Unix timestamp formats
     map.insert("timestamp_seconds".into(), dt.timestamp().to_string());
     map.insert(
         "timestamp_milliseconds".into(),
@@ -2603,6 +2636,35 @@ fn convert_timestamp_internal(
         "timestamp_nanoseconds".into(),
         timestamp_value(&dt, TimestampUnit::Nanoseconds),
     );
+
+    // Browser timezone formats (using local time)
+    let local_dt = dt.with_timezone(&chrono::Local);
+    map.insert(
+        "browser_iso8601".into(),
+        local_dt.format("%Y-%m-%dT%H:%M:%S%z").to_string(),
+    );
+    map.insert(
+        "browser_rfc3339".into(),
+        local_dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, false),
+    );
+    map.insert("browser_rfc2822".into(), local_dt.to_rfc2822());
+    map.insert(
+        "browser_iso9075".into(),
+        local_dt.format("%Y-%m-%d %H:%M:%S%:z").to_string(),
+    );
+    map.insert(
+        "browser_rfc7231".into(),
+        local_dt.format("%a, %d %b %Y %H:%M:%S %Z").to_string(),
+    );
+    map.insert(
+        "browser_sql_datetime".into(),
+        local_dt.format("%Y-%m-%d %H:%M:%S").to_string(),
+    );
+    map.insert(
+        "browser_sql_date".into(),
+        local_dt.format("%Y-%m-%d").to_string(),
+    );
+
     Ok(map)
 }
 
@@ -2632,6 +2694,10 @@ fn parse_timestamp_from_source(source: &str, value: &str) -> Result<DateTime<Utc
         "sql_datetime" => parse_sql_datetime(trimmed),
         "sql_date" => parse_sql_date(trimmed),
         "rfc2822" => parse_textual_timestamp(trimmed),
+        "rfc3339" => parse_rfc3339_timestamp(trimmed),
+        "iso8601" => parse_iso8601_timestamp(trimmed),
+        "iso9075" => parse_iso9075_timestamp(trimmed),
+        "rfc7231" => parse_rfc7231_timestamp(trimmed),
         _ => parse_textual_timestamp(trimmed),
     }
 }
@@ -2684,6 +2750,62 @@ fn parse_textual_timestamp(value: &str) -> Result<DateTime<Utc>, String> {
             .ok_or_else(|| "invalid datetime".to_string());
     }
     Err("unable to parse timestamp".into())
+}
+
+// Parse RFC 3339 format (with optional nanoseconds)
+fn parse_rfc3339_timestamp(value: &str) -> Result<DateTime<Utc>, String> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|dt| dt.with_timezone(&Utc))
+        .map_err(|_| "invalid RFC 3339 timestamp".to_string())
+}
+
+// Parse ISO 8601 format (basic format without nanoseconds)
+fn parse_iso8601_timestamp(value: &str) -> Result<DateTime<Utc>, String> {
+    // Try basic ISO 8601 format first: 2025-01-02T03:04:05Z
+    if let Ok(dt) = DateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%SZ") {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    // Fall back to general RFC 3339 parsing
+    parse_rfc3339_timestamp(value)
+}
+
+// Parse ISO 9075 format (SQL timestamp with timezone)
+fn parse_iso9075_timestamp(value: &str) -> Result<DateTime<Utc>, String> {
+    // Try format: 2025-01-02 03:04:05+00:00
+    if let Ok(dt) = DateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S%z") {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    // Try without timezone: 2025-01-02 03:04:05
+    if let Ok(naive) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
+        return Utc
+            .from_local_datetime(&naive)
+            .single()
+            .ok_or_else(|| "invalid datetime".to_string());
+    }
+    Err("invalid ISO 9075 timestamp".to_string())
+}
+
+// Parse RFC 7231 format (HTTP date format)
+fn parse_rfc7231_timestamp(value: &str) -> Result<DateTime<Utc>, String> {
+    // Try format: Wed, 02 Oct 2002 13:00:00 GMT
+    if let Ok(dt) = DateTime::parse_from_str(value, "%a, %d %b %Y %H:%M:%S GMT") {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%a, %d %b %Y %H:%M:%S GMT") {
+        return Ok(DateTime::from_naive_utc_and_offset(dt, Utc));
+    }
+    // Try RFC 850 format: Wednesday, 02-Oct-02 13:00:00 GMT
+    if let Ok(dt) = DateTime::parse_from_str(value, "%A, %d-%b-%y %H:%M:%S GMT") {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    // Try ANSI C asctime format: Wed Oct  2 13:00:00 2002
+    if let Ok(naive) = NaiveDateTime::parse_from_str(value, "%a %b  %e %H:%M:%S %Y") {
+        return Utc
+            .from_local_datetime(&naive)
+            .single()
+            .ok_or_else(|| "invalid datetime".to_string());
+    }
+    Err("invalid RFC 7231 timestamp".to_string())
 }
 
 fn parse_sql_datetime(value: &str) -> Result<DateTime<Utc>, String> {
