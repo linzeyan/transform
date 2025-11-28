@@ -6,6 +6,7 @@
         <title>transform</title>
         <link rel="icon" type="image/svg+xml" href="favicon.svg" />
         <link rel="stylesheet" href="style.css" />
+        <link rel="stylesheet" href="ui_improvements.css" />
     </head>
     <body>
         <!-- Single-page toolbox driven by wasm_core exports. Sidebar selects a workspace panel on the right. -->
@@ -423,14 +424,15 @@
 
                 <!-- Crypto workspace: encrypt/decrypt text or files with modern AEAD ciphers. -->
                 <div id="cryptoWorkspace" class="tool-view hidden">
-                    <section class="panel">
+                    <!-- Configuration Section -->
+                    <section class="panel crypto-config">
                         <div class="panel-header">
                             <div>
-                                <h2>Encrypt</h2>
-                                <p>Encrypt text or files with AES-GCM or (X)ChaCha20.</p>
+                                <h2>Configuration</h2>
+                                <p>Select algorithm and manage keys.</p>
                             </div>
                             <div class="panel-actions">
-                                <label>
+                                <label class="algo-select">
                                     <span>Algorithm</span>
                                     <select id="cryptoAlgorithm">
                                         <option value="aes-256-gcm">AES-256-GCM</option>
@@ -442,93 +444,143 @@
                                 </label>
                             </div>
                         </div>
-                        <div class="kdf-inline">
-                            <label>
-                                <span>Key (Base64)</span>
-                                <input
-                                    id="cryptoKey"
-                                    spellcheck="false"
-                                    placeholder="Leave blank to auto-generate"
-                                />
-                            </label>
-                            <label>
-                                <span>Nonce (Base64)</span>
-                                <input
-                                    id="cryptoNonce"
-                                    spellcheck="false"
-                                    placeholder="Leave blank to auto-generate"
-                                />
-                            </label>
-                        </div>
-                        <div class="kdf-actions">
-                            <button id="cryptoGenerateKey" type="button">Generate key</button>
-                            <button id="cryptoGenerateNonce" type="button">Generate nonce</button>
-                        </div>
-                        <div class="kdf-inline">
-                            <label class="checkbox">
-                                <input
-                                    type="radio"
-                                    name="cryptoInputMode"
-                                    id="cryptoModeText"
-                                    value="text"
-                                    checked
-                                />
-                                <span>Encrypt text</span>
-                            </label>
-                            <label class="checkbox">
-                                <input
-                                    type="radio"
-                                    name="cryptoInputMode"
-                                    id="cryptoModeFile"
-                                    value="file"
-                                />
-                                <span>Encrypt file</span>
-                            </label>
-                            <input type="file" id="cryptoFile" class="hidden" />
-                            <div id="cryptoFileMeta" class="muted hidden">No file selected</div>
-                        </div>
-                        <textarea
-                            id="cryptoPlaintext"
-                            spellcheck="false"
-                            placeholder="Paste text to encrypt or switch to file mode"
-                        ></textarea>
-                        <div class="panel-actions">
-                            <button id="cryptoEncrypt" type="button">Encrypt</button>
+                        <div class="crypto-params">
+                            <div class="param-group">
+                                <label for="cryptoKey">Key (Base64)</label>
+                                <div class="input-with-action">
+                                    <input
+                                        id="cryptoKey"
+                                        spellcheck="false"
+                                        placeholder="Auto-generated if empty"
+                                    />
+                                    <button
+                                        id="cryptoGenerateKey"
+                                        type="button"
+                                        class="ghost-btn"
+                                        title="Generate Random Key"
+                                    >
+                                        ↻
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="param-group">
+                                <label for="cryptoNonce">Nonce (Base64)</label>
+                                <div class="input-with-action">
+                                    <input
+                                        id="cryptoNonce"
+                                        spellcheck="false"
+                                        placeholder="Auto-generated if empty"
+                                    />
+                                    <button
+                                        id="cryptoGenerateNonce"
+                                        type="button"
+                                        class="ghost-btn"
+                                        title="Generate Random Nonce"
+                                    >
+                                        ↻
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Ciphertext</h2>
-                                <p>Base64 output (includes auth tag)</p>
+
+                    <!-- Operations Section -->
+                    <div class="crypto-operations">
+                        <!-- Encrypt Column -->
+                        <section class="panel crypto-panel">
+                            <div class="panel-header">
+                                <h3>Encrypt</h3>
+                                <div class="crypto-mode-switch">
+                                    <label
+                                        ><input
+                                            type="radio"
+                                            name="cryptoInputMode"
+                                            id="cryptoModeText"
+                                            value="text"
+                                            checked
+                                        />
+                                        Text</label
+                                    >
+                                    <label
+                                        ><input
+                                            type="radio"
+                                            name="cryptoInputMode"
+                                            id="cryptoModeFile"
+                                            value="file"
+                                        />
+                                        File</label
+                                    >
+                                </div>
                             </div>
-                            <div class="panel-actions">
-                                <button id="cryptoCopyCiphertext" type="button">Copy</button>
+                            <div class="panel-body">
+                                <input type="file" id="cryptoFile" class="hidden" />
+                                <div id="cryptoFileMeta" class="file-meta hidden">
+                                    No file selected
+                                </div>
+
+                                <textarea
+                                    id="cryptoPlaintext"
+                                    spellcheck="false"
+                                    placeholder="Enter text to encrypt..."
+                                ></textarea>
+
+                                <div class="action-row">
+                                    <button id="cryptoEncrypt" type="button" class="primary-btn">
+                                        Encrypt 🔒
+                                    </button>
+                                </div>
+
+                                <div class="result-box">
+                                    <label>Ciphertext (Output)</label>
+                                    <div class="textarea-wrapper">
+                                        <textarea
+                                            id="cryptoCiphertext"
+                                            spellcheck="false"
+                                            placeholder="Result will appear here..."
+                                        ></textarea>
+                                        <button
+                                            id="cryptoCopyCiphertext"
+                                            type="button"
+                                            class="ghost-btn sm-btn copy-overlay"
+                                        >
+                                            Copy
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                        <textarea
-                            id="cryptoCiphertext"
-                            spellcheck="false"
-                            placeholder="Ciphertext will appear here (editable for decrypt)"
-                        ></textarea>
-                        <div class="panel-header">
-                            <div>
-                                <h2>Decrypt</h2>
-                                <p>
-                                    Paste ciphertext, key, and nonce to recover the original bytes.
-                                </p>
+                        </section>
+
+                        <!-- Decrypt Column -->
+                        <section class="panel crypto-panel">
+                            <div class="panel-header">
+                                <h3>Decrypt</h3>
                             </div>
-                            <div class="panel-actions">
-                                <button id="cryptoDecrypt" type="button">Decrypt</button>
+                            <div class="panel-body">
+                                <label class="input-label">Ciphertext (Input)</label>
+                                <textarea
+                                    id="cryptoDecryptInput"
+                                    spellcheck="false"
+                                    placeholder="Paste ciphertext here..."
+                                ></textarea>
+
+                                <div class="action-row">
+                                    <button id="cryptoDecrypt" type="button" class="primary-btn">
+                                        Unlock 🔓
+                                    </button>
+                                </div>
+
+                                <div class="result-box">
+                                    <label>Plaintext (Output)</label>
+                                    <textarea
+                                        id="cryptoDecryptOutput"
+                                        spellcheck="false"
+                                        readonly
+                                        placeholder="Decrypted text..."
+                                    ></textarea>
+                                </div>
                             </div>
-                        </div>
-                        <textarea
-                            id="cryptoDecryptOutput"
-                            spellcheck="false"
-                            readonly
-                            placeholder="Plaintext or Base64 output will render here"
-                        ></textarea>
-                    </section>
+                        </section>
+                    </div>
                 </div>
 
                 <div id="pairWorkspace" class="tool-view hidden">
@@ -860,32 +912,51 @@
                     <section class="panel">
                         <div class="panel-header">
                             <div>
-                                <h2>User-Agent</h2>
-                                <p>Pick a browser and OS to fetch realistic strings</p>
-                            </div>
-                            <div class="generator-actions">
-                                <select id="uaBrowser">
-                                    <option value="">All Browsers</option>
-                                    <option value="chrome">Chrome</option>
-                                    <option value="firefox">Firefox</option>
-                                    <option value="opera">Opera</option>
-                                    <option value="safari">Safari</option>
-                                    <option value="edge">Edge</option>
-                                    <option value="vivaldi">Vivaldi</option>
-                                    <option value="yandex">Yandex</option>
-                                </select>
-                                <select id="uaOS">
-                                    <option value="">All Platforms</option>
-                                    <option value="windows">Windows</option>
-                                    <option value="macos">macOS</option>
-                                    <option value="chrome-os">ChromeOS</option>
-                                    <option value="android">Android</option>
-                                    <option value="ios">iOS</option>
-                                </select>
+                                <h2>User-Agent Generator</h2>
+                                <p>Generate realistic browser user agent strings</p>
                             </div>
                         </div>
-                        <div id="uaResults" class="ua-results">
-                            <div class="muted">Choose filters to generate user agents</div>
+
+                        <!-- Filters Section -->
+                        <div class="ua-filters">
+                            <h3 class="ua-section-title">Filters</h3>
+                            <div class="ua-filters-grid">
+                                <label class="ua-filter-field">
+                                    <span>Browser</span>
+                                    <select id="uaBrowser">
+                                        <option value="">All Browsers</option>
+                                        <option value="chrome">Chrome</option>
+                                        <option value="firefox">Firefox</option>
+                                        <option value="safari">Safari</option>
+                                        <option value="edge">Edge</option>
+                                        <option value="vivaldi">Vivaldi</option>
+                                        <option value="yandex">Yandex</option>
+                                    </select>
+                                </label>
+                                <label class="ua-filter-field">
+                                    <span>Platform</span>
+                                    <select id="uaOS">
+                                        <option value="">All Platforms</option>
+                                        <option value="windows">Windows</option>
+                                        <option value="macos">macOS</option>
+                                        <option value="android">Android</option>
+                                        <option value="ios">iOS</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Results Section -->
+                        <div class="ua-results-section">
+                            <div class="ua-results-header">
+                                <h3 class="ua-section-title">Generated User Agents</h3>
+                                <span class="ua-count" id="uaCount"></span>
+                            </div>
+                            <div id="uaResults" class="ua-results">
+                                <div class="ua-placeholder">
+                                    Choose filters above to generate user agents
+                                </div>
+                            </div>
                         </div>
                     </section>
                 </div>
@@ -895,85 +966,164 @@
                         <div class="panel-header">
                             <div>
                                 <h2>SSH Key Generator</h2>
-                                <p>Generate OpenSSH public/private key pairs.</p>
+                                <p>
+                                    Generate OpenSSH public/private key pairs for secure
+                                    authentication
+                                </p>
                             </div>
                             <div class="generator-actions">
                                 <button id="sshGenerate">Generate</button>
                             </div>
                         </div>
-                        <div class="ssh-grid">
-                            <label>
-                                <span>Type</span>
-                                <select id="sshType">
-                                    <option value="ed25519" selected>Ed25519</option>
-                                    <option value="ed25519-sk">Ed25519 SK</option>
-                                    <option value="rsa">RSA</option>
-                                </select>
-                            </label>
-                            <label class="ssh-bits-row">
-                                <span>Bits (RSA)</span>
-                                <input
-                                    type="number"
-                                    id="sshBits"
-                                    min="2048"
-                                    max="8192"
-                                    value="4096"
-                                    disabled
-                                />
-                            </label>
-                            <label>
-                                <span>Format</span>
-                                <select id="sshFormat">
-                                    <option value="openssh" selected>OpenSSH</option>
-                                    <option value="pem">PEM</option>
-                                </select>
-                            </label>
-                            <label>
-                                <span>KDF Rounds</span>
-                                <input type="number" id="sshKdf" min="16" max="500" value="16" />
-                            </label>
-                            <label class="ssh-comment">
-                                <span>Comment</span>
-                                <input
-                                    type="text"
-                                    id="sshComment"
+
+                        <!-- Key Type & Format Section -->
+                        <div class="ssh-section">
+                            <h3 class="ssh-section-title">Key Configuration</h3>
+                            <div class="ssh-config-grid">
+                                <label class="ssh-config-field">
+                                    <span>Key Type</span>
+                                    <select id="sshType">
+                                        <option value="ed25519" selected>Ed25519</option>
+                                        <option value="ed25519-sk">Ed25519 SK</option>
+                                        <option value="rsa">RSA</option>
+                                    </select>
+                                    <small class="ssh-field-hint">Recommended: Ed25519</small>
+                                </label>
+                                <label class="ssh-config-field ssh-bits-row">
+                                    <span>Key Size (RSA)</span>
+                                    <input
+                                        type="number"
+                                        id="sshBits"
+                                        min="2048"
+                                        max="8192"
+                                        value="4096"
+                                        disabled
+                                    />
+                                    <small class="ssh-field-hint">2048-8192 bits</small>
+                                </label>
+                                <label class="ssh-config-field">
+                                    <span>Format</span>
+                                    <select id="sshFormat">
+                                        <option value="openssh" selected>OpenSSH</option>
+                                        <option value="pem">PEM</option>
+                                    </select>
+                                    <small class="ssh-field-hint">Output format</small>
+                                </label>
+                                <label class="ssh-config-field">
+                                    <span>KDF Rounds</span>
+                                    <input
+                                        type="number"
+                                        id="sshKdf"
+                                        min="16"
+                                        max="500"
+                                        value="16"
+                                    />
+                                    <small class="ssh-field-hint">16-500 (higher = slower)</small>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Comment Section -->
+                        <div class="ssh-section">
+                            <h3 class="ssh-section-title">Key Comment</h3>
+                            <div class="ssh-comment-wrapper">
+                                <label class="ssh-comment-field">
+                                    <span>Comment (optional)</span>
+                                    <input
+                                        type="text"
+                                        id="sshComment"
+                                        spellcheck="false"
+                                        placeholder="user@host (e.g., alice@server.example.com)"
+                                    />
+                                    <small class="ssh-field-hint"
+                                        >Helps identify the key's purpose or owner</small
+                                    >
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Security Key Options (for ed25519-sk) -->
+                        <div class="ssh-section ssh-sk-section hidden" id="sshSkOptions">
+                            <h3 class="ssh-section-title">Security Key Options</h3>
+                            <div class="ssh-sk-options">
+                                <label class="ssh-checkbox-option ssh-sk-resident">
+                                    <input type="checkbox" id="sshResident" />
+                                    <div class="ssh-checkbox-content">
+                                        <span class="ssh-checkbox-label">Resident Key</span>
+                                        <small class="ssh-checkbox-hint"
+                                            >Store key on hardware token</small
+                                        >
+                                    </div>
+                                </label>
+                                <label class="ssh-checkbox-option ssh-sk-verify">
+                                    <input type="checkbox" id="sshVerify" />
+                                    <div class="ssh-checkbox-content">
+                                        <span class="ssh-checkbox-label">Verify Required</span>
+                                        <small class="ssh-checkbox-hint"
+                                            >Require touch on each use</small
+                                        >
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Keys Section (Public + Private) -->
+                    <section class="panel">
+                        <!-- Public Key Section -->
+                        <div class="ssh-key-section">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Public Key</h2>
+                                    <p>Add this to authorized_keys on remote servers</p>
+                                </div>
+                                <div class="panel-actions">
+                                    <button class="ghost-btn" id="sshCopyPublic">Copy</button>
+                                </div>
+                            </div>
+                            <div class="ssh-key-display">
+                                <textarea
+                                    id="sshPublic"
                                     spellcheck="false"
-                                    placeholder="user@host"
-                                />
-                            </label>
-                            <label class="ssh-sk-option ssh-sk-resident hidden">
-                                <input type="checkbox" id="sshResident" />
-                                <span>Resident (store on hardware token)</span>
-                            </label>
-                            <label class="ssh-sk-option ssh-sk-verify hidden">
-                                <input type="checkbox" id="sshVerify" />
-                                <span>Verify required (touch on each use)</span>
-                            </label>
-                        </div>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Public Key</h2>
-                                <p>authorized_keys format</p>
-                            </div>
-                            <div class="panel-actions">
-                                <button class="ghost-btn" id="sshCopyPublic">Copy</button>
+                                    readonly
+                                    placeholder="Public key will appear here after generation"
+                                ></textarea>
+                                <div class="ssh-key-hint">
+                                    <span>💡</span>
+                                    <span
+                                        >Paste this into ~/.ssh/authorized_keys on your server</span
+                                    >
+                                </div>
                             </div>
                         </div>
-                        <textarea id="sshPublic" spellcheck="false" readonly></textarea>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Private Key</h2>
-                                <p>OpenSSH PEM</p>
+
+                        <!-- Private Key Section -->
+                        <div class="ssh-key-section ssh-key-section-divider">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Private Key</h2>
+                                    <p>Keep this secure and never share it</p>
+                                </div>
+                                <div class="panel-actions">
+                                    <button class="ghost-btn" id="sshCopyPrivate">Copy</button>
+                                </div>
                             </div>
-                            <div class="panel-actions">
-                                <button class="ghost-btn" id="sshCopyPrivate">Copy</button>
+                            <div class="ssh-key-display">
+                                <textarea
+                                    id="sshPrivate"
+                                    spellcheck="false"
+                                    readonly
+                                    placeholder="Private key will appear here after generation"
+                                ></textarea>
+                                <div class="ssh-key-hint ssh-key-warning">
+                                    <span>⚠️</span>
+                                    <span
+                                        >Keep this private key secure. Save it to
+                                        ~/.ssh/id_ed25519</span
+                                    >
+                                </div>
                             </div>
                         </div>
-                        <textarea id="sshPrivate" spellcheck="false" readonly></textarea>
                     </section>
                 </div>
 
@@ -983,11 +1133,37 @@
                         <div class="panel-header">
                             <div>
                                 <h2>Browser Fingerprint</h2>
-                                <p>Inspect what the browser exposes without permissions</p>
+                                <p>
+                                    Inspect what the browser exposes without permissions via
+                                    standard Web APIs
+                                </p>
+                            </div>
+                            <div class="panel-actions">
+                                <button class="ghost-btn" id="fingerprintRefresh">Refresh</button>
+                                <button
+                                    class="ghost-btn"
+                                    id="fingerprintCopyAll"
+                                    style="display: none"
+                                >
+                                    Copy All
+                                </button>
                             </div>
                         </div>
-                        <div id="fingerprintSummary" class="fingerprint-summary">
-                            Showing values available via standard Web APIs.
+                        <div class="fingerprint-controls">
+                            <div id="fingerprintSummary" class="fingerprint-summary">
+                                <span class="fingerprint-summary-text"
+                                    >Loading fingerprint data…</span
+                                >
+                                <span class="fingerprint-count" id="fingerprintCount"></span>
+                            </div>
+                            <div class="fingerprint-search">
+                                <input
+                                    type="text"
+                                    id="fingerprintSearch"
+                                    placeholder="Search fingerprint data..."
+                                    spellcheck="false"
+                                />
+                            </div>
                         </div>
                         <div id="fingerprintGrid" class="fingerprint-grid">
                             <div class="muted">Loading…</div>

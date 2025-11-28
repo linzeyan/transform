@@ -1,0 +1,633 @@
+/* ============================================
+   PREMIUM UI IMPROVEMENTS
+   Enhanced design for transform toolbox
+   ============================================ */
+
+/* === GLOBAL ENHANCEMENTS === */
+:root {
+    --bg-gradient: linear-gradient(135deg, #05060a 0%, #0a0c14 100%);
+    --card-bg: rgb(255 255 255 / 3%);
+    --card-border: rgb(255 255 255 / 8%);
+    --card-hover-border: rgb(122 162 247 / 30%);
+    --input-bg: rgb(0 0 0 / 30%);
+    --input-focus-bg: rgb(0 0 0 / 40%);
+    --accent-glow: 0 0 20px rgb(122 162 247 / 15%);
+    --success: #7dcfb6;
+    --warning: #ffd93d;
+    --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body {
+    background: var(--bg-gradient);
+    background-attachment: fixed;
+}
+
+/* === CUSTOM SCROLLBARS === */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgb(0 0 0 / 20%);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgb(255 255 255 / 12%);
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgb(255 255 255 / 20%);
+    background-clip: padding-box;
+}
+
+/* === ENHANCED INPUTS & TEXTAREAS === */
+input:not([type='checkbox'], [type='radio']),
+select,
+textarea {
+    transition: var(--transition-smooth);
+    border: 1px solid var(--card-border);
+    background: var(--input-bg);
+}
+
+input:not([type='checkbox'], [type='radio']):focus,
+select:focus,
+textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgb(122 162 247 / 12%);
+    background: var(--input-focus-bg);
+    transform: translateY(-1px);
+}
+
+input:not([type='checkbox'], [type='radio']):hover:not(:focus),
+select:hover:not(:focus),
+textarea:hover:not(:focus) {
+    border-color: rgb(255 255 255 / 15%);
+}
+
+/* === ENHANCED BUTTONS === */
+button {
+    transition: var(--transition-smooth);
+    position: relative;
+    overflow: hidden;
+}
+
+button::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 20%);
+    transform: translate(-50%, -50%);
+    transition:
+        width 0.6s,
+        height 0.6s;
+}
+
+button:active::before {
+    width: 300px;
+    height: 300px;
+}
+
+button:active {
+    transform: scale(0.97);
+}
+
+button:hover {
+    box-shadow: 0 4px 12px rgb(0 0 0 / 30%);
+}
+
+/* === PASSWORD HASHERS (KDF) IMPROVEMENTS === */
+.kdf-note {
+    background: rgb(122 162 247 / 8%);
+    border: 1px solid rgb(122 162 247 / 20%);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin: 0 18px 18px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.kdf-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 28px;
+    padding: 24px;
+}
+
+.kdf-card {
+    background: linear-gradient(135deg, rgb(255 255 255 / 4%) 0%, rgb(255 255 255 / 2%) 100%);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 26px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    transition: var(--transition-smooth);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+}
+
+.kdf-card:hover {
+    border-color: var(--card-hover-border);
+    transform: translateY(-3px);
+    box-shadow:
+        var(--accent-glow),
+        0 8px 24px rgb(0 0 0 / 25%);
+}
+
+.kdf-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 1px solid rgb(255 255 255 / 10%);
+    padding-bottom: 18px;
+}
+
+.kdf-card-head h3 {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent) 0%, #9db4ff 100%);
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.kdf-card-head .muted {
+    margin-top: 6px;
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.kdf-status {
+    font-size: 10px;
+    padding: 5px 10px;
+    border-radius: 14px;
+    background: rgb(255 255 255 / 8%);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border: 1px solid rgb(255 255 255 / 10%);
+}
+
+.kdf-inline {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.kdf-inline label {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.kdf-inline label span {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.kdf-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.kdf-actions button {
+    flex: 1;
+    padding: 12px;
+    font-weight: 600;
+    border-radius: 10px;
+}
+
+.kdf-verify {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.kdf-verify input {
+    padding: 12px 14px;
+    border-radius: 10px;
+}
+
+.kdf-verify button {
+    padding: 12px 20px;
+    white-space: nowrap;
+}
+
+/* === JWT ENCODE/DECODE IMPROVEMENTS === */
+#pairWorkspace .panel {
+    background: linear-gradient(135deg, rgb(255 255 255 / 4%) 0%, rgb(255 255 255 / 1%) 100%);
+}
+
+.jwt-controls {
+    background: rgb(122 162 247 / 5%);
+    padding: 16px;
+    border-radius: 10px;
+    border: 1px solid rgb(122 162 247 / 15%);
+}
+
+.jwt-controls label {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.jwt-controls label span {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* === URL ENCODE/DECODE IMPROVEMENTS === */
+.query-panel {
+    background: linear-gradient(135deg, rgb(122 162 247 / 5%) 0%, rgb(122 162 247 / 2%) 100%);
+    border: 1px solid rgb(122 162 247 / 20%);
+    border-radius: 12px;
+    padding: 18px;
+    margin: 0 18px 18px;
+}
+
+.query-panel-head h3 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.query-row {
+    background: rgb(255 255 255 / 4%);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    transition: var(--transition-smooth);
+}
+
+.query-row:hover {
+    border-color: var(--card-hover-border);
+    background: rgb(255 255 255 / 6%);
+    transform: translateX(2px);
+}
+
+.query-row input {
+    background: rgb(0 0 0 / 30%);
+    border: 1px solid rgb(255 255 255 / 10%);
+    padding: 10px 12px;
+    border-radius: 8px;
+    transition: var(--transition-smooth);
+}
+
+.query-row input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgb(122 162 247 / 10%);
+}
+
+/* === HASH PAGE IMPROVEMENTS === */
+.hash-controls {
+    background: rgb(255 255 255 / 3%);
+    padding: 16px;
+    border-radius: 10px;
+    border: 1px solid var(--card-border);
+}
+
+.hash-controls label {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.hash-controls label span {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+}
+
+.hash-controls select,
+.hash-controls input {
+    padding: 10px 12px;
+    border-radius: 8px;
+}
+
+#hashHmacSecret {
+    background: rgb(255 123 123 / 8%);
+    border: 1px solid rgb(255 123 123 / 20%);
+}
+
+/* === BASE ENCODERS/DECODERS IMPROVEMENTS === */
+.coder-output-group {
+    margin-bottom: 24px;
+}
+
+.coder-output-group > header {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid rgb(122 162 247 / 20%);
+}
+
+.coder-output-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.coder-output-block {
+    background: linear-gradient(135deg, rgb(255 255 255 / 5%) 0%, rgb(255 255 255 / 2%) 100%);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transition: var(--transition-smooth);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 10%);
+}
+
+.coder-output-block:hover {
+    border-color: var(--card-hover-border);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 20%);
+}
+
+.coder-output-block > header {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fg);
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.coder-entry {
+    background: rgb(0 0 0 / 20%);
+    border-radius: 10px;
+    padding: 12px;
+    transition: var(--transition-smooth);
+}
+
+.coder-entry:hover {
+    background: rgb(0 0 0 / 30%);
+}
+
+.coder-entry textarea {
+    background: rgb(0 0 0 / 30%);
+    border: 1px solid rgb(255 255 255 / 8%);
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 90px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.coder-entry-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.coder-entry-meta button {
+    background: rgb(122 162 247 / 15%);
+    border: 1px solid rgb(122 162 247 / 30%);
+    padding: 4px 10px;
+    font-size: 11px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+.coder-entry-meta button:hover {
+    background: rgb(122 162 247 / 25%);
+}
+
+/* === SSL INSPECTOR IMPROVEMENTS === */
+.cert-card {
+    background: linear-gradient(135deg, rgb(255 255 255 / 5%) 0%, rgb(255 255 255 / 2%) 100%);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    padding: 20px;
+    transition: var(--transition-smooth);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+}
+
+.cert-card:hover {
+    border-color: var(--card-hover-border);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgb(0 0 0 / 25%);
+}
+
+.cert-card-head h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 6px;
+}
+
+.cert-chip {
+    display: inline-block;
+    background: rgb(122 162 247 / 15%);
+    border: 1px solid rgb(122 162 247 / 30%);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.cert-valid {
+    background: rgb(125 207 182 / 10%);
+    border: 1px solid rgb(125 207 182 / 30%);
+    border-radius: 10px;
+    padding: 10px 14px;
+}
+
+.cert-valid.expired {
+    background: rgb(255 123 123 / 10%);
+    border-color: rgb(255 123 123 / 30%);
+}
+
+.cert-meta-grid {
+    background: rgb(0 0 0 / 20%);
+    border-radius: 10px;
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+}
+
+.cert-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cert-block span {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+}
+
+.cert-block code {
+    font-size: 13px;
+    color: var(--fg);
+    word-break: break-all;
+    line-height: 1.5;
+}
+
+.cert-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.cert-badge {
+    background: rgb(255 255 255 / 8%);
+    border: 1px solid rgb(255 255 255 / 15%);
+    border-radius: 16px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    transition: var(--transition-smooth);
+}
+
+.cert-badge:hover {
+    background: rgb(255 255 255 / 12%);
+    border-color: var(--accent);
+}
+
+.cert-fingerprints {
+    background: rgb(0 0 0 / 25%);
+    border-radius: 10px;
+    padding: 14px;
+    margin-top: 12px;
+}
+
+.cert-fingerprints label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+
+.cert-fingerprints code {
+    font-size: 12px;
+    color: var(--accent);
+    word-break: break-all;
+    line-height: 1.6;
+}
+
+/* === ENHANCED SIDEBAR === */
+#sidebar {
+    background: linear-gradient(180deg, rgb(5 6 10 / 98%) 0%, rgb(8 9 16 / 98%) 100%);
+    backdrop-filter: blur(24px);
+    box-shadow: 4px 0 24px rgb(0 0 0 / 30%);
+}
+
+.sidebar-brand {
+    background: linear-gradient(135deg, rgb(122 162 247 / 12%) 0%, rgb(122 162 247 / 4%) 100%);
+    border-bottom: 1px solid rgb(122 162 247 / 20%);
+}
+
+.sidebar-brand strong {
+    background: linear-gradient(135deg, var(--accent) 0%, #9db4ff 100%);
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-size: 18px;
+}
+
+#toolGroups .tool-buttons button {
+    transition: var(--transition-smooth);
+    margin-bottom: 2px;
+}
+
+#toolGroups .tool-buttons button:hover {
+    background: rgb(255 255 255 / 5%);
+    border-color: rgb(255 255 255 / 10%);
+    transform: translateX(2px);
+}
+
+#toolGroups .tool-buttons button.active {
+    background: linear-gradient(90deg, rgb(122 162 247 / 20%) 0%, rgb(122 162 247 / 8%) 100%);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px 10px 10px 4px;
+    box-shadow: 0 2px 8px rgb(122 162 247 / 20%);
+}
+
+/* === ANIMATIONS === */
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slide-in {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.tool-view {
+    animation: fade-in 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.kdf-card,
+.cert-card,
+.coder-output-block {
+    animation: slide-in 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* === RESPONSIVE IMPROVEMENTS === */
+@media (width <=768px) {
+    .kdf-grid {
+        grid-template-columns: 1fr;
+        padding: 16px;
+        gap: 20px;
+    }
+
+    .kdf-inline {
+        grid-template-columns: 1fr;
+    }
+
+    .coder-output-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .cert-meta-grid {
+        grid-template-columns: 1fr;
+    }
+}

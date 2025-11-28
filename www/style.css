@@ -1016,6 +1016,228 @@ button#swap {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* SSH Key Generator - Improved UI Styles */
+.ssh-section {
+    padding: 18px;
+    border-bottom: 1px solid var(--border);
+}
+
+.ssh-section:last-child {
+    border-bottom: none;
+}
+
+.ssh-section.hidden {
+    display: none;
+}
+
+.ssh-section-title {
+    margin: 0 0 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.ssh-config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.ssh-config-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ssh-config-field span {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 500;
+}
+
+.ssh-config-field input,
+.ssh-config-field select {
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: rgb(0 0 0 / 25%);
+    color: var(--fg);
+    font: inherit;
+    font-size: 13px;
+}
+
+.ssh-config-field input:focus,
+.ssh-config-field select:focus {
+    outline: 1px solid var(--accent);
+    border-color: transparent;
+}
+
+.ssh-config-field input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.ssh-field-hint {
+    font-size: 11px;
+    color: var(--muted);
+    opacity: 0.7;
+}
+
+.ssh-comment-wrapper {
+    padding: 0;
+}
+
+.ssh-comment-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ssh-comment-field span {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 500;
+}
+
+.ssh-comment-field input {
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: rgb(0 0 0 / 25%);
+    color: var(--fg);
+    font: inherit;
+    font-size: 13px;
+    width: 100%;
+}
+
+.ssh-comment-field input:focus {
+    outline: 1px solid var(--accent);
+    border-color: transparent;
+}
+
+.ssh-sk-section {
+    padding-top: 18px;
+}
+
+.ssh-sk-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ssh-checkbox-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgb(255 255 255 / 2%);
+    cursor: pointer;
+    transition:
+        border-color 0.2s,
+        background 0.2s;
+}
+
+.ssh-checkbox-option:hover {
+    border-color: rgb(255 255 255 / 15%);
+    background: rgb(255 255 255 / 3%);
+}
+
+.ssh-checkbox-option input[type='checkbox'] {
+    margin-top: 2px;
+    cursor: pointer;
+}
+
+.ssh-checkbox-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.ssh-checkbox-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--fg);
+}
+
+.ssh-checkbox-hint {
+    font-size: 11px;
+    color: var(--muted);
+    opacity: 0.8;
+}
+
+.ssh-key-section {
+    display: flex;
+    flex-direction: column;
+}
+
+.ssh-key-section .panel-header {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+}
+
+.ssh-key-section .ssh-key-display {
+    padding: 16px 18px;
+}
+
+.ssh-key-section-divider {
+    border-top: 1px solid var(--border);
+    padding-top: 0;
+    margin-top: 0;
+}
+
+.ssh-key-section-divider .panel-header {
+    padding-top: 18px;
+    margin-top: 18px;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+
+.ssh-key-display {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ssh-key-display textarea {
+    min-height: 120px;
+    font-family:
+        JetBrains Mono,
+        SFMono-Regular,
+        Menlo,
+        Consolas,
+        monospace;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.ssh-key-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: rgb(255 255 255 / 3%);
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.ssh-key-warning {
+    background: rgb(255 123 123 / 8%);
+    border: 1px solid rgb(255 123 123 / 20%);
+    color: #ff9d9d;
+}
+
+.ssh-key-hint span:first-child {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+/* Legacy styles for backward compatibility */
 .ssh-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -1328,71 +1550,265 @@ body.tool-generator .converter-only {
     flex-wrap: wrap;
 }
 
+/* User-Agent Generator - Improved UI Styles */
+.ua-filters {
+    padding: 18px;
+    border-bottom: 1px solid var(--border);
+}
+
+.ua-section-title {
+    margin: 0 0 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.ua-filters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.ua-filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ua-filter-field span {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 500;
+}
+
+.ua-filter-field select {
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: rgb(0 0 0 / 25%);
+    color: var(--fg);
+    font: inherit;
+    font-size: 13px;
+}
+
+.ua-filter-field select:focus {
+    outline: 1px solid var(--accent);
+    border-color: transparent;
+}
+
+.ua-results-section {
+    padding: 18px;
+}
+
+.ua-results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.ua-results-header .ua-section-title {
+    margin: 0;
+}
+
+.ua-count {
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+}
+
 .ua-results {
-    padding: 16px 18px 24px;
     display: flex;
     flex-direction: column;
     gap: 12px;
+    margin: 0;
+}
+
+.ua-placeholder {
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    background: rgb(255 255 255 / 2%);
 }
 
 .ua-card {
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px 14px;
+    border-radius: 8px;
+    padding: 14px 16px;
     background: rgb(255 255 255 / 2%);
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 10px;
     cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.ua-card:hover {
+    border-color: var(--accent);
+    background: rgb(122 162 247 / 8%);
+    transform: translateX(2px);
+}
+
+.ua-card::after {
+    content: '📋';
+    position: absolute;
+    right: 16px;
+    top: 14px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    font-size: 14px;
+}
+
+.ua-card:hover::after {
+    opacity: 0.6;
 }
 
 .ua-card code {
     font-size: 13px;
     word-break: break-all;
+    line-height: 1.5;
+    color: var(--fg);
+    font-family:
+        JetBrains Mono,
+        SFMono-Regular,
+        Menlo,
+        Consolas,
+        monospace;
 }
 
 .ua-meta {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
+    padding-top: 8px;
+    border-top: 1px solid rgb(255 255 255 / 8%);
 }
 
 .ua-meta span {
     display: flex;
-    gap: 4px;
+    gap: 6px;
     align-items: baseline;
 }
 
 .ua-meta span strong {
     font-weight: 600;
     color: var(--fg);
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+}
+
+/* Browser Fingerprint - Improved UI Styles */
+.fingerprint-controls {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .fingerprint-summary {
-    padding: 0 18px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.fingerprint-summary-text {
     color: var(--muted);
+    font-size: 13px;
+}
+
+.fingerprint-count {
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.fingerprint-search {
+    width: 100%;
+}
+
+.fingerprint-search input {
+    width: 100%;
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: rgb(0 0 0 / 25%);
+    color: var(--fg);
+    font: inherit;
+    font-size: 13px;
+}
+
+.fingerprint-search input:focus {
+    outline: 1px solid var(--accent);
+    border-color: transparent;
+}
+
+.fingerprint-search input::placeholder {
+    color: var(--muted);
+    opacity: 0.6;
 }
 
 .fingerprint-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding: 0 18px 18px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+    padding: 18px;
 }
 
 .fingerprint-group {
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 12px 14px;
+    border-radius: 10px;
+    padding: 14px 16px;
     background: rgb(255 255 255 / 2%);
+    transition:
+        border-color 0.2s,
+        background 0.2s;
+}
+
+.fingerprint-group:hover {
+    border-color: rgb(255 255 255 / 15%);
+    background: rgb(255 255 255 / 3%);
+}
+
+.fingerprint-group.hidden {
+    display: none;
+}
+
+.fingerprint-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgb(255 255 255 / 8%);
 }
 
 .fingerprint-group h3 {
-    margin: 0 0 8px;
-    font-size: 14px;
-    letter-spacing: 0.01em;
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--fg);
+}
+
+.fingerprint-group-count {
+    font-size: 11px;
+    color: var(--muted);
+    background: rgb(255 255 255 / 8%);
+    padding: 2px 8px;
+    border-radius: 999px;
 }
 
 .fingerprint-list {
@@ -1401,31 +1817,63 @@ body.tool-generator .converter-only {
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
 }
 
 .fingerprint-list li {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    border-bottom: 1px dashed rgb(255 255 255 / 6%);
-    padding-bottom: 6px;
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: rgb(0 0 0 / 15%);
+    transition: background 0.2s;
+    cursor: pointer;
+    position: relative;
 }
 
-.fingerprint-list li:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
+.fingerprint-list li:hover {
+    background: rgb(0 0 0 / 25%);
+}
+
+.fingerprint-list li.hidden {
+    display: none;
+}
+
+.fingerprint-list li::after {
+    content: '📋';
+    position: absolute;
+    right: 12px;
+    top: 10px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    font-size: 12px;
+}
+
+.fingerprint-list li:hover::after {
+    opacity: 0.5;
 }
 
 .fp-label {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
-    letter-spacing: 0.02em;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-weight: 500;
 }
 
 .fingerprint-list code {
     font-size: 13px;
     overflow-wrap: break-word;
+    word-break: break-all;
+    color: var(--fg);
+    line-height: 1.5;
+}
+
+@media (width <= 768px) {
+    .fingerprint-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .cert-grid {
@@ -2252,4 +2700,149 @@ body.tool-generator .converter-only {
     .diff-textarea {
         width: 100%;
     }
+}
+
+/* Crypto Workspace New UI */
+.crypto-config {
+    margin-bottom: 16px;
+}
+
+.crypto-params {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+    padding: 18px;
+}
+
+.param-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.param-group label {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 500;
+}
+
+.input-with-action {
+    display: flex;
+    gap: 8px;
+}
+
+.input-with-action input {
+    flex: 1;
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: rgb(0 0 0 / 25%);
+    color: var(--fg);
+    font: inherit;
+}
+
+.input-with-action input:focus {
+    outline: 1px solid var(--accent);
+    border-color: transparent;
+}
+
+.crypto-operations {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 16px;
+}
+
+.crypto-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.crypto-mode-switch {
+    display: flex;
+    gap: 12px;
+    font-size: 13px;
+}
+
+.crypto-mode-switch label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: var(--muted);
+}
+
+.crypto-mode-switch input:checked + span,
+.crypto-mode-switch label:has(input:checked) {
+    color: var(--fg);
+    font-weight: 500;
+}
+
+.panel-body {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1;
+}
+
+.action-row {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.primary-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.result-box {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.result-box label {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.textarea-wrapper {
+    position: relative;
+}
+
+.copy-overlay {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 4px 10px;
+    font-size: 12px;
+    backdrop-filter: blur(4px);
+    background: rgb(0 0 0 / 40%);
+    border-color: rgb(255 255 255 / 10%);
+}
+
+.copy-overlay:hover {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+}
+
+.file-meta {
+    padding: 12px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
 }

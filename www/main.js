@@ -993,6 +993,7 @@ function cacheElements() {
     elements.uaBrowser = document.getElementById('uaBrowser');
     elements.uaOS = document.getElementById('uaOS');
     elements.uaResults = document.getElementById('uaResults');
+    elements.uaCount = document.getElementById('uaCount');
     elements.randomWorkspace = document.getElementById('randomWorkspace');
     elements.randomIncludeDigits = document.getElementById('randomIncludeDigits');
     elements.randomLength = document.getElementById('randomLength');
@@ -1052,6 +1053,7 @@ function cacheElements() {
     elements.sshCopyPrivate = document.getElementById('sshCopyPrivate');
     elements.sshResident = document.getElementById('sshResident');
     elements.sshVerify = document.getElementById('sshVerify');
+    elements.sshSkOptions = document.getElementById('sshSkOptions');
     elements.timestampInputs = document.querySelectorAll('#timestampWorkspace input[data-field]');
     elements.hashEncoding = document.getElementById('hashEncoding');
     elements.hashControls = document.getElementById('hashControls');
@@ -1090,6 +1092,7 @@ function cacheElements() {
     elements.cryptoNonce = document.getElementById('cryptoNonce');
     elements.cryptoPlaintext = document.getElementById('cryptoPlaintext');
     elements.cryptoCiphertext = document.getElementById('cryptoCiphertext');
+    elements.cryptoDecryptInput = document.getElementById('cryptoDecryptInput');
     elements.cryptoDecryptOutput = document.getElementById('cryptoDecryptOutput');
     elements.cryptoEncrypt = document.getElementById('cryptoEncrypt');
     elements.cryptoDecrypt = document.getElementById('cryptoDecrypt');
@@ -1103,6 +1106,10 @@ function cacheElements() {
     elements.appShell = document.querySelector('.app-shell');
     elements.fingerprintGrid = document.getElementById('fingerprintGrid');
     elements.fingerprintSummary = document.getElementById('fingerprintSummary');
+    elements.fingerprintRefresh = document.getElementById('fingerprintRefresh');
+    elements.fingerprintCopyAll = document.getElementById('fingerprintCopyAll');
+    elements.fingerprintSearch = document.getElementById('fingerprintSearch');
+    elements.fingerprintCount = document.getElementById('fingerprintCount');
     elements.certInput = document.getElementById('certInput');
     elements.certResults = document.getElementById('certResults');
     elements.certSummary = document.getElementById('certSummary');
@@ -1223,13 +1230,6 @@ function bindUI() {
         state.selectedDecoder = event.target.value;
         updateCoderTexts();
         scheduleCoder(true);
-    });
-    elements.hashToggleCase?.addEventListener('click', () => {
-        state.hashUppercase = !state.hashUppercase;
-        elements.hashToggleCase.dataset.upper = state.hashUppercase ? 'true' : 'false';
-        if (state.lastHashResults) {
-            renderHashResults(state.lastHashResults);
-        }
     });
     elements.coderResults?.addEventListener('click', (event) => {
         const toggle = event.target.closest('button[data-encode-group]');
@@ -1371,6 +1371,10 @@ function bindUI() {
     elements.sshVerify?.addEventListener('change', handleSshVerifyChange);
     elements.randomResults?.addEventListener('click', handleRandomResultsClick);
     elements.randomCopyAll?.addEventListener('click', handleRandomCopyAll);
+    // Fingerprint tool event listeners
+    elements.fingerprintRefresh?.addEventListener('click', () => refreshFingerprint(false));
+    elements.fingerprintCopyAll?.addEventListener('click', handleFingerprintCopyAll);
+    elements.fingerprintSearch?.addEventListener('input', handleFingerprintSearch);
     elements.kdfAlgoSelect = document.getElementById('kdfAlgoSelect');
     elements.kdfCards = document.querySelectorAll('.kdf-card');
     elements.kdfAlgoSelect?.addEventListener('change', (ev) => {
@@ -1823,13 +1827,13 @@ function runCoder() {
         const hashes = state.hashUseHmac
             ? state.coder.inputMode === 'file'
                 ? hash_content_hmac_bytes(
-                      fileBytes || new Uint8Array(),
-                      utf8ToBytes(state.hashHmacSecret || '')
-                  )
+                    fileBytes || new Uint8Array(),
+                    utf8ToBytes(state.hashHmacSecret || '')
+                )
                 : hash_content_hmac(text, state.hashHmacSecret || '')
             : state.coder.inputMode === 'file'
-              ? hash_content_bytes(fileBytes || new Uint8Array())
-              : hash_content(text);
+                ? hash_content_bytes(fileBytes || new Uint8Array())
+                : hash_content(text);
         const map = normalizeMapResult(hashes);
         state.lastHashResults = map;
         renderHashResults(map);
@@ -1853,8 +1857,8 @@ function updateCoderTexts() {
             state.coderMode === 'hash'
                 ? 'Hash Digests'
                 : state.coderMode === 'decode'
-                  ? 'Decode'
-                  : 'Encodings';
+                    ? 'Decode'
+                    : 'Encodings';
         elements.coderResultHeading.textContent = heading;
     }
     if (elements.coderResultHint) {
@@ -1888,7 +1892,7 @@ function updateCoderTexts() {
         elements.decodeVariant.value = state.selectedDecoder;
     }
     if (elements.hashToggleCase) {
-        const showToggle = state.coderMode === 'hash';
+        const showToggle = state.coderMode === 'hash' && state.hashEncoding === 'base16';
         elements.hashToggleCase.classList.toggle('hidden', !showToggle);
         if (showToggle) {
             elements.hashToggleCase.dataset.upper = state.hashUppercase ? 'true' : 'false';
@@ -1928,15 +1932,15 @@ function renderCoderEmpty() {
         state.coderMode === 'decode'
             ? 'Paste encoded text to decode'
             : state.coder.inputMode === 'file'
-              ? 'Select a file to process'
-              : 'Enter content to see results';
+                ? 'Select a file to process'
+                : 'Enter content to see results';
     elements.coderResults.innerHTML = `<div class="muted">${message}</div>`;
     updateCoderActionsVisibility();
 }
 
 function updateCoderActionsVisibility() {
     if (!elements.coderResultActions) return;
-    const showHash = state.coderMode === 'hash';
+    const showHash = state.coderMode === 'hash' && state.hashEncoding === 'base16';
     const showDownload = state.coderMode === 'decode' && Boolean(state.coder.decodedBytes?.length);
     const showAny = showHash || showDownload;
     elements.coderResultActions.classList.toggle('hidden', !showAny);
@@ -2156,9 +2160,8 @@ function renderEntryRow(entry) {
     let actionMarkup = '';
     if (toggleGroup) {
         const upperActive = state.encodeCaseMap[toggleGroup] !== false;
-        actionMarkup = `<button type="button" data-encode-group="${toggleGroup}" data-upper="${
-            upperActive ? 'true' : 'false'
-        }">Toggle Case</button>`;
+        actionMarkup = `<button type="button" data-encode-group="${toggleGroup}" data-upper="${upperActive ? 'true' : 'false'
+            }">Toggle Case</button>`;
     } else if (clickable) {
         actionMarkup = '<span class="copy-hint">Click to copy</span>';
     } else {
@@ -3321,7 +3324,8 @@ function activateUserAgentTool() {
     state.currentOSFilter = elements.uaOS?.value || '';
     if (!state.wasmReady) {
         if (elements.uaResults) {
-            elements.uaResults.innerHTML = '<div class="muted">Waiting for WebAssembly...</div>';
+            elements.uaResults.innerHTML =
+                '<div class="ua-placeholder">Waiting for WebAssembly...</div>';
         }
         return;
     }
@@ -3350,12 +3354,29 @@ function refreshUserAgents(force = false) {
     }
 }
 
+/**
+ * Renders user agent list with improved UI structure and click-to-copy functionality.
+ */
 function renderUserAgents(list) {
     if (!elements.uaResults) return;
+
+    const count = list.length || 0;
+
+    // Update count badge
+    if (elements.uaCount) {
+        if (count > 0) {
+            elements.uaCount.textContent = `${count} ${count === 1 ? 'agent' : 'agents'}`;
+        } else {
+            elements.uaCount.textContent = '';
+        }
+    }
+
     if (!list.length) {
-        elements.uaResults.innerHTML = '<div class="muted">No user agents for this filter</div>';
+        elements.uaResults.innerHTML =
+            '<div class="ua-placeholder">No user agents found for the selected filters</div>';
         return;
     }
+
     const cards = list
         .map((entry) => {
             const browserName = entry.browserName || 'Unknown';
@@ -3381,6 +3402,8 @@ function renderUserAgents(list) {
         })
         .join('');
     elements.uaResults.innerHTML = cards;
+
+    // Add click handlers for copying user agents
     elements.uaResults.querySelectorAll('.ua-card').forEach((card) => {
         card.addEventListener('click', () => {
             const value = card.dataset.ua || '';
@@ -3626,24 +3649,48 @@ function collectFingerprintFacts() {
     return dedupeFacts(facts);
 }
 
+/**
+ * Renders fingerprint facts with improved UI structure including group counts and click-to-copy.
+ */
 function renderFingerprintFacts(facts = []) {
+    const total = facts.length || 0;
+
+    // Update summary
     if (elements.fingerprintSummary) {
-        const total = facts.length || 0;
-        elements.fingerprintSummary.textContent = total
-            ? `${total} signals collected from this browser`
-            : 'No data available';
+        const summaryText = elements.fingerprintSummary.querySelector('.fingerprint-summary-text');
+        if (summaryText) {
+            summaryText.textContent = total ? 'Fingerprint data collected' : 'No data available';
+        }
     }
+
+    // Update count badge
+    if (elements.fingerprintCount) {
+        elements.fingerprintCount.textContent = total ? `${total} signals` : '';
+    }
+
+    // Show/hide Copy All button
+    if (elements.fingerprintCopyAll) {
+        elements.fingerprintCopyAll.style.display = total > 0 ? 'inline-flex' : 'none';
+    }
+
     if (!elements.fingerprintGrid) return;
     if (!facts.length) {
         elements.fingerprintGrid.innerHTML = '<div class="muted">No data detected.</div>';
         return;
     }
+
+    // Store facts for search functionality
+    state.fingerprintFacts = facts;
+
+    // Group facts by category
     const groups = facts.reduce((acc, fact) => {
         const key = fact.group || 'Other';
         if (!acc[key]) acc[key] = [];
         acc[key].push(fact);
         return acc;
     }, {});
+
+    // Render sections with improved structure
     const sections = Object.keys(groups)
         .sort()
         .map((group) => {
@@ -3651,15 +3698,114 @@ function renderFingerprintFacts(facts = []) {
                 .map((entry) => {
                     const label = escapeHTML(entry.label || '');
                     const value = escapeHTML(entry.value || '');
-                    return `<li><span class="fp-label">${label}</span><code>${value}</code></li>`;
+                    const searchableText = `${label} ${value}`.toLowerCase();
+                    return `<li data-search-text="${escapeAttr(searchableText)}" data-value="${escapeAttr(value)}">
+                        <span class="fp-label">${label}</span>
+                        <code>${value}</code>
+                    </li>`;
                 })
                 .join('');
-            return `<div class="fingerprint-group"><h3>${escapeHTML(
-                group
-            )}</h3><ul class="fingerprint-list">${items}</ul></div>`;
+            const count = groups[group].length;
+            return `<div class="fingerprint-group" data-group="${escapeAttr(group)}">
+                <div class="fingerprint-group-header">
+                    <h3>${escapeHTML(group)}</h3>
+                    <span class="fingerprint-group-count">${count}</span>
+                </div>
+                <ul class="fingerprint-list">${items}</ul>
+            </div>`;
         })
         .join('');
     elements.fingerprintGrid.innerHTML = sections;
+
+    // Add click handlers for copying individual values
+    elements.fingerprintGrid.querySelectorAll('.fingerprint-list li').forEach((li) => {
+        li.addEventListener('click', () => {
+            const value = li.dataset.value || '';
+            if (value) {
+                copyText(value, 'Fingerprint value');
+            }
+        });
+    });
+
+    // Apply current search filter if any
+    if (elements.fingerprintSearch?.value) {
+        handleFingerprintSearch({ target: elements.fingerprintSearch });
+    }
+}
+
+/**
+ * Handles search input to filter fingerprint data.
+ */
+function handleFingerprintSearch(event) {
+    const query = (event?.target?.value || '').toLowerCase().trim();
+    if (!elements.fingerprintGrid) return;
+
+    const groups = elements.fingerprintGrid.querySelectorAll('.fingerprint-group');
+    let visibleCount = 0;
+
+    groups.forEach((group) => {
+        const items = group.querySelectorAll('.fingerprint-list li');
+        let groupVisibleCount = 0;
+
+        items.forEach((item) => {
+            const searchText = item.dataset.searchText || '';
+            const matches = !query || searchText.includes(query);
+
+            if (matches) {
+                item.classList.remove('hidden');
+                groupVisibleCount++;
+            } else {
+                item.classList.add('hidden');
+            }
+        });
+
+        // Hide group if no items visible
+        if (groupVisibleCount === 0) {
+            group.classList.add('hidden');
+        } else {
+            group.classList.remove('hidden');
+            visibleCount += groupVisibleCount;
+        }
+    });
+
+    // Update count badge
+    if (elements.fingerprintCount) {
+        const total = state.fingerprintFacts?.length || 0;
+        if (query && visibleCount !== total) {
+            elements.fingerprintCount.textContent = `${visibleCount} of ${total} signals`;
+        } else {
+            elements.fingerprintCount.textContent = total ? `${total} signals` : '';
+        }
+    }
+}
+
+/**
+ * Copies all fingerprint data to clipboard in a formatted way.
+ */
+function handleFingerprintCopyAll() {
+    if (!state.fingerprintFacts || state.fingerprintFacts.length === 0) {
+        setStatus('No fingerprint data to copy', true);
+        return;
+    }
+
+    // Format as grouped text
+    const groups = state.fingerprintFacts.reduce((acc, fact) => {
+        const key = fact.group || 'Other';
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(fact);
+        return acc;
+    }, {});
+
+    const lines = Object.keys(groups)
+        .sort()
+        .flatMap((group) => {
+            const header = `\n=== ${group} ===\n`;
+            const items = groups[group].map((fact) => `${fact.label}: ${fact.value}`);
+            return [header, ...items];
+        });
+
+    const allText = lines.join('\n');
+    copyText(allText, 'All fingerprint data');
 }
 
 function storageAvailable(type) {
@@ -4028,30 +4174,28 @@ function renderCertCard(entry, list) {
     const ku = formatBadgeList(entry.keyUsage || [], 'Key Usage');
     const eku = formatBadgeList(entry.extendedKeyUsage || [], 'Extended Key Usage');
     const basic = entry.basicConstraints
-        ? `<div class="cert-block"><span>Basic Constraints</span><code>${
-              entry.basicConstraints.ca ? 'CA' : 'End-entity'
-          }${
-              entry.basicConstraints.pathLen !== null &&
-              entry.basicConstraints.pathLen !== undefined
-                  ? ` · pathLen=${entry.basicConstraints.pathLen}`
-                  : ''
-          }</code></div>`
+        ? `<div class="cert-block"><span>Basic Constraints</span><code>${entry.basicConstraints.ca ? 'CA' : 'End-entity'
+        }${entry.basicConstraints.pathLen !== null &&
+            entry.basicConstraints.pathLen !== undefined
+            ? ` · pathLen=${entry.basicConstraints.pathLen}`
+            : ''
+        }</code></div>`
         : '';
     const issuerHint =
         entry.issuerPosition && entry.issuerPosition !== entry.position
             ? `Chain issuer: #${entry.issuerPosition}`
             : role === 'Root'
-              ? 'Self-signed'
-              : '';
+                ? 'Self-signed'
+                : '';
     const akid = entry.authorityKeyId
         ? `<div class="cert-block"><span>Authority Key ID</span><code>${escapeHTML(
-              entry.authorityKeyId
-          )}</code></div>`
+            entry.authorityKeyId
+        )}</code></div>`
         : '';
     const skid = entry.subjectKeyId
         ? `<div class="cert-block"><span>Subject Key ID</span><code>${escapeHTML(
-              entry.subjectKeyId
-          )}</code></div>`
+            entry.subjectKeyId
+        )}</code></div>`
         : '';
     const fingerprints = entry.fingerprints || {};
     return `
@@ -4079,8 +4223,8 @@ function renderCertCard(entry, list) {
         <div class="cert-block">
           <span>Public Key</span>
           <code>${escapeHTML(
-              `${entry.publicKeyAlgorithm || ''} · ${entry.publicKeyBits || 0} bits`
-          )}</code>
+        `${entry.publicKeyAlgorithm || ''} · ${entry.publicKeyBits || 0} bits`
+    )}</code>
         </div>
         <div class="cert-block">
           <span>Valid From</span>
@@ -4093,8 +4237,8 @@ function renderCertCard(entry, list) {
           <div><label>SHA-256</label><code>${escapeHTML(fingerprints.sha256 || '')}</code></div>
           <div><label>SHA-1</label><code>${escapeHTML(fingerprints.sha1 || '')}</code></div>
           <div><label>SPKI SHA-256</label><code>${escapeHTML(
-              fingerprints.spkiSha256 || ''
-          )}</code></div>
+        fingerprints.spkiSha256 || ''
+    )}</code></div>
         </div>
       </div>
       ${san || ''}
@@ -4888,15 +5032,28 @@ function runSshGenerator() {
     }
 }
 
+/**
+ * Updates SSH UI visibility based on selected key type.
+ * Shows/hides RSA bits input and Security Key options as needed.
+ */
 function updateSshVisibility() {
     const isRsa = state.sshType === 'rsa';
     const isSk = state.sshType.endsWith('-sk');
+
+    // Show/hide RSA bits input
     if (elements.sshBitsRow) {
         elements.sshBitsRow.classList.toggle('hidden', !isRsa);
     }
     if (elements.sshBits) {
         elements.sshBits.disabled = !isRsa;
     }
+
+    // Show/hide Security Key options section
+    if (elements.sshSkOptions) {
+        elements.sshSkOptions.classList.toggle('hidden', !isSk);
+    }
+
+    // Legacy support: also update individual option elements
     document.querySelectorAll('.ssh-sk-option').forEach((el) => {
         el.classList.toggle('hidden', !isSk);
     });
@@ -4926,6 +5083,7 @@ function renderSshOutputs() {
 function handleHashEncodingChange(event) {
     const value = event?.target?.value || 'base16';
     state.hashEncoding = value;
+    updateCoderActionsVisibility();
     if (state.lastHashResults) renderHashResults(state.lastHashResults);
 }
 
@@ -5105,9 +5263,8 @@ function renderTotpResult(result) {
         elements.totpCode.textContent = result.code || '';
     }
     if (elements.totpPeriodLabel) {
-        elements.totpPeriodLabel.textContent = `${
-            result.algorithm || 'SHA256'
-        } · every ${result.period || 30}s`;
+        elements.totpPeriodLabel.textContent = `${result.algorithm || 'SHA256'
+            } · every ${result.period || 30}s`;
     }
     if (elements.totpRemainingLabel) {
         elements.totpRemainingLabel.textContent = `${result.remaining || 0}s remaining`;
@@ -5458,31 +5615,31 @@ function renderDataColumnCard(tableName, column) {
         <label>
           <span>Min</span>
           <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(
-              column.name
-          )}" data-field="min" value="${escapeAttr(
-              minValue
-          )}" placeholder="${escapeAttr(minPlaceholder)}"${disabledAttr} />
+            column.name
+        )}" data-field="min" value="${escapeAttr(
+            minValue
+        )}" placeholder="${escapeAttr(minPlaceholder)}"${disabledAttr} />
         </label>
         <label>
           <span>Max</span>
           <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(
-              column.name
-          )}" data-field="max" value="${escapeAttr(
-              maxValue
-          )}" placeholder="${escapeAttr(maxPlaceholder)}"${disabledAttr} />
+            column.name
+        )}" data-field="max" value="${escapeAttr(
+            maxValue
+        )}" placeholder="${escapeAttr(maxPlaceholder)}"${disabledAttr} />
         </label>
         <label>
           <span>Allowed (comma)</span>
           <input type="text" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(
-              column.name
-          )}" data-field="allowed" value="${escapeAttr(
-              allowedValue
-          )}" placeholder="e.g. 10,20"${disabledAttr} />
+            column.name
+        )}" data-field="allowed" value="${escapeAttr(
+            allowedValue
+        )}" placeholder="e.g. 10,20"${disabledAttr} />
         </label>
       </div>`
         : column.enum_values?.length
-          ? `<div class="muted">Enum values: ${escapeHTML(column.enum_values.join(', '))}</div>`
-          : '<div class="muted">Text columns use lorem ipsum</div>';
+            ? `<div class="muted">Enum values: ${escapeHTML(column.enum_values.join(', '))}</div>`
+            : '<div class="muted">Text columns use lorem ipsum</div>';
     return `<div class="${cardClass}">
     <header>
       <div class="data-column-header-info">
@@ -5491,9 +5648,8 @@ function renderDataColumnCard(tableName, column) {
       </div>
       <label class="data-include-toggle">
         <input type="checkbox" data-table="${escapeAttr(
-            tableName
-        )}" data-column="${escapeAttr(column.name)}" data-field="include" ${
-            include ? 'checked' : ''
+        tableName
+    )}" data-column="${escapeAttr(column.name)}" data-field="include" ${include ? 'checked' : ''
         } />
         <span>Include</span>
       </label>
@@ -5668,7 +5824,7 @@ function activateKdfTool() {
 
 function refreshKdfSalts() {
     seedKdfInputs(true);
-    setStatus('已重新產生鹽值', false);
+    setStatus('Salts regenerated', false);
 }
 
 function setKdfAlgorithm(algo) {
@@ -5718,7 +5874,7 @@ async function runBcryptHash() {
     state.kdf.bcryptCost = cost;
     if (elements.bcryptCost) elements.bcryptCost.value = cost;
     try {
-        setKdfStatus('bcryptStatus', '產生中…');
+        setKdfStatus('bcryptStatus', 'Generating...');
         const saltInput = getInputValue(elements.bcryptSalt);
         const hash = await bcrypt_hash(password, cost, saltInput || undefined);
         if (elements.bcryptSalt) {
@@ -6045,7 +6201,7 @@ function handleCryptoDecrypt() {
         return;
     }
     const algo = elements.cryptoAlgorithm?.value || 'aes-256-gcm';
-    const cipher = elements.cryptoCiphertext?.value?.trim();
+    const cipher = elements.cryptoDecryptInput?.value?.trim();
     const key = elements.cryptoKey?.value?.trim();
     const nonce = elements.cryptoNonce?.value?.trim();
     if (!cipher) {
