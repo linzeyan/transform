@@ -1016,6 +1016,7 @@ function cacheElements() {
     elements.randomSymbolMinRow = document.getElementById('randomSymbolMinRow');
     elements.randomGenerate = document.getElementById('randomGenerate');
     elements.randomResults = document.getElementById('randomResults');
+    elements.randomCopyAll = document.getElementById('randomCopyAll');
     // QR generator inputs are grouped by mode so we toggle rows on radio change.
     elements.qrWorkspace = document.getElementById('qrWorkspace');
     elements.qrModeOtp = document.getElementById('qrModeOtp');
@@ -1369,6 +1370,7 @@ function bindUI() {
     elements.sshResident?.addEventListener('change', handleSshResidentChange);
     elements.sshVerify?.addEventListener('change', handleSshVerifyChange);
     elements.randomResults?.addEventListener('click', handleRandomResultsClick);
+    elements.randomCopyAll?.addEventListener('click', handleRandomCopyAll);
     elements.kdfAlgoSelect = document.getElementById('kdfAlgoSelect');
     elements.kdfCards = document.querySelectorAll('.kdf-card');
     elements.kdfAlgoSelect?.addEventListener('change', (ev) => {
@@ -4539,21 +4541,37 @@ function runRandomGenerator() {
     }
 }
 
+/**
+ * Updates the random results display with generated strings.
+ * Shows/hides the "Copy All" button based on whether there are results.
+ */
 function updateRandomResults(values) {
     state.randomResults = Array.isArray(values)
         ? values.filter((value) => typeof value === 'string' && value.length > 0)
         : [];
     if (!elements.randomResults) return;
+
+    // Show/hide "Copy All" button
+    if (elements.randomCopyAll) {
+        if (state.randomResults.length > 0) {
+            elements.randomCopyAll.style.display = 'inline-flex';
+        } else {
+            elements.randomCopyAll.style.display = 'none';
+        }
+    }
+
     if (!state.randomResults.length) {
         elements.randomResults.innerHTML =
             '<div class="random-placeholder">Click Generate to produce strings</div>';
         return;
     }
+
+    // Render results with improved structure
     const items = state.randomResults
         .map(
             (value) => `
         <div class="random-result-item" data-random-value="${escapeAttr(value)}">
-          ${escapeHTML(value)}
+          <span class="random-result-text">${escapeHTML(value)}</span>
         </div>
       `
         )
@@ -4561,12 +4579,27 @@ function updateRandomResults(values) {
     elements.randomResults.innerHTML = items;
 }
 
+/**
+ * Handles clicking on individual result items to copy them.
+ */
 function handleRandomResultsClick(event) {
     const row = event.target.closest('.random-result-item');
     if (!row) return;
     const value = row.dataset.randomValue || '';
     if (!value) return;
     copyText(value, 'Random string');
+}
+
+/**
+ * Copies all generated random strings to clipboard, one per line.
+ */
+function handleRandomCopyAll() {
+    if (!state.randomResults || state.randomResults.length === 0) {
+        setStatus('No results to copy', true);
+        return;
+    }
+    const allText = state.randomResults.join('\n');
+    copyText(allText, 'All random strings');
 }
 
 function setQrMode(mode, shouldRender = true) {

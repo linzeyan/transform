@@ -1031,120 +1031,206 @@
                     <section class="panel">
                         <div class="panel-header">
                             <div>
-                                <h2>Random</h2>
-                                <p>Generate random strings with custom rules</p>
+                                <h2>Random String Generator</h2>
+                                <p>
+                                    Generate random strings with customizable character sets and
+                                    rules
+                                </p>
                             </div>
                             <div class="generator-actions">
                                 <button id="randomGenerate">Generate</button>
                             </div>
                         </div>
-                        <div class="random-controls">
-                            <label>
-                                <span>Length</span>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="2048"
-                                    value="24"
-                                    id="randomLength"
-                                />
-                            </label>
-                            <label>
-                                <span>Count</span>
-                                <input type="number" min="1" max="256" value="5" id="randomCount" />
-                            </label>
-                            <div class="checkbox-row" data-min-row="digits">
-                                <label class="checkbox">
-                                    <input type="checkbox" id="randomIncludeDigits" checked />
-                                    <span>Include digits</span>
-                                </label>
-                                <div class="checkbox-subrow" id="randomMinDigitsRow">
-                                    <label for="randomMinDigits">Min digits</label>
+
+                        <!-- Basic Settings Section -->
+                        <div class="random-basic-settings">
+                            <h3 class="random-section-title">Basic Settings</h3>
+                            <div class="random-basic-grid">
+                                <label class="random-basic-field">
+                                    <span>String Length</span>
                                     <input
                                         type="number"
-                                        min="0"
-                                        value="0"
-                                        id="randomMinDigits"
-                                        class="min-count"
+                                        min="1"
+                                        max="2048"
+                                        value="24"
+                                        id="randomLength"
                                     />
-                                </div>
-                                <div class="checkbox-subrow" id="randomAllowZeroRow">
-                                    <label class="checkbox">
-                                        <input type="checkbox" id="randomAllowZero" checked />
-                                        <span>Allow leading zero</span>
-                                    </label>
-                                </div>
-                                <div
-                                    class="checkbox-subrow range-row hidden"
-                                    id="randomDigitRangeRow"
-                                >
-                                    <div class="range-field">
-                                        <label for="randomDigitMin">Min value</label>
-                                        <input type="number" id="randomDigitMin" />
+                                    <small class="random-field-hint">1-2048 characters</small>
+                                </label>
+                                <label class="random-basic-field">
+                                    <span>Count</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="256"
+                                        value="5"
+                                        id="randomCount"
+                                    />
+                                    <small class="random-field-hint"
+                                        >Number of strings to generate</small
+                                    >
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Character Sets Section -->
+                        <div class="random-charsets">
+                            <h3 class="random-section-title">Character Sets</h3>
+                            <div class="random-charset-grid">
+                                <!-- Digits Card -->
+                                <div class="random-charset-card" data-charset="digits">
+                                    <div class="random-charset-header">
+                                        <label class="checkbox random-charset-toggle">
+                                            <input
+                                                type="checkbox"
+                                                id="randomIncludeDigits"
+                                                checked
+                                            />
+                                            <span class="random-charset-label">Digits (0-9)</span>
+                                        </label>
                                     </div>
-                                    <div class="range-field">
-                                        <label for="randomDigitMax">Max value</label>
-                                        <input type="number" id="randomDigitMax" />
+                                    <div class="random-charset-options" id="randomDigitsOptions">
+                                        <div class="random-option-row" id="randomMinDigitsRow">
+                                            <label for="randomMinDigits">Minimum count</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value="0"
+                                                id="randomMinDigits"
+                                                class="min-count"
+                                            />
+                                        </div>
+                                        <div class="random-option-row" id="randomAllowZeroRow">
+                                            <label class="checkbox">
+                                                <input
+                                                    type="checkbox"
+                                                    id="randomAllowZero"
+                                                    checked
+                                                />
+                                                <span>Allow leading zero</span>
+                                            </label>
+                                        </div>
+                                        <div
+                                            class="random-option-row range-row hidden"
+                                            id="randomDigitRangeRow"
+                                        >
+                                            <div class="range-field">
+                                                <label for="randomDigitMin">Min value</label>
+                                                <input type="number" id="randomDigitMin" />
+                                            </div>
+                                            <div class="range-field">
+                                                <label for="randomDigitMax">Max value</label>
+                                                <input type="number" id="randomDigitMax" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Lowercase Letters Card -->
+                                <div class="random-charset-card" data-charset="lower">
+                                    <div class="random-charset-header">
+                                        <label class="checkbox random-charset-toggle">
+                                            <input type="checkbox" id="randomIncludeLower" />
+                                            <span class="random-charset-label"
+                                                >Lowercase (a-z)</span
+                                            >
+                                        </label>
+                                    </div>
+                                    <div class="random-charset-options" id="randomLowerOptions">
+                                        <div class="random-option-row" id="randomMinLowerRow">
+                                            <label for="randomMinLower">Minimum count</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value="0"
+                                                id="randomMinLower"
+                                                class="min-count"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Uppercase Letters Card -->
+                                <div class="random-charset-card" data-charset="upper">
+                                    <div class="random-charset-header">
+                                        <label class="checkbox random-charset-toggle">
+                                            <input type="checkbox" id="randomIncludeUpper" />
+                                            <span class="random-charset-label"
+                                                >Uppercase (A-Z)</span
+                                            >
+                                        </label>
+                                    </div>
+                                    <div class="random-charset-options" id="randomUpperOptions">
+                                        <div class="random-option-row" id="randomMinUpperRow">
+                                            <label for="randomMinUpper">Minimum count</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value="0"
+                                                id="randomMinUpper"
+                                                class="min-count"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Symbols Card -->
+                                <div class="random-charset-card" data-charset="symbols">
+                                    <div class="random-charset-header">
+                                        <span class="random-charset-label">Symbols</span>
+                                    </div>
+                                    <div class="random-charset-options">
+                                        <div
+                                            class="symbol-toggle-grid"
+                                            id="randomSymbolToggles"
+                                        ></div>
+                                        <div
+                                            class="random-option-row symbol-min hidden"
+                                            id="randomSymbolMinRow"
+                                        >
+                                            <label for="randomMinSymbols">Minimum count</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value="0"
+                                                id="randomMinSymbols"
+                                                class="min-count"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                            <div class="checkbox-row" data-min-row="lower">
-                                <label class="checkbox">
-                                    <input type="checkbox" id="randomIncludeLower" />
-                                    <span>Include a-z</span>
-                                </label>
-                                <div class="checkbox-subrow" id="randomMinLowerRow">
-                                    <label for="randomMinLower">Min a-z</label>
+                        </div>
+
+                        <!-- Advanced Options Section -->
+                        <div class="random-advanced">
+                            <h3 class="random-section-title">Advanced Options</h3>
+                            <div class="random-exclude">
+                                <label>
+                                    <span>Exclude characters</span>
                                     <input
-                                        type="number"
-                                        min="0"
-                                        value="0"
-                                        id="randomMinLower"
-                                        class="min-count"
+                                        type="text"
+                                        id="randomExclude"
+                                        spellcheck="false"
+                                        placeholder="e.g. O0Il (characters to exclude from generation)"
                                     />
-                                </div>
-                            </div>
-                            <div class="checkbox-row" data-min-row="upper">
-                                <label class="checkbox">
-                                    <input type="checkbox" id="randomIncludeUpper" />
-                                    <span>Include A-Z</span>
                                 </label>
-                                <div class="checkbox-subrow" id="randomMinUpperRow">
-                                    <label for="randomMinUpper">Min A-Z</label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        value="0"
-                                        id="randomMinUpper"
-                                        class="min-count"
-                                    />
-                                </div>
                             </div>
                         </div>
-                        <div class="random-exclude">
-                            <label>
-                                <span>Exclude characters</span>
-                                <input
-                                    type="text"
-                                    id="randomExclude"
-                                    spellcheck="false"
-                                    placeholder="e.g. O0Il"
-                                />
-                            </label>
-                        </div>
-                        <div class="symbol-toggle-grid" id="randomSymbolToggles"></div>
-                        <div class="symbol-min hidden" id="randomSymbolMinRow">
-                            <label for="randomMinSymbols">Min symbols</label>
-                            <input
-                                type="number"
-                                min="0"
-                                value="0"
-                                id="randomMinSymbols"
-                                class="min-count"
-                            />
-                        </div>
-                        <div id="randomResults" class="random-results">
-                            <div class="random-placeholder">Click Generate to produce strings</div>
+
+                        <!-- Results Section -->
+                        <div class="random-results-section">
+                            <div class="random-results-header">
+                                <h3 class="random-section-title">Generated Strings</h3>
+                                <button class="ghost-btn" id="randomCopyAll" style="display: none">
+                                    Copy All
+                                </button>
+                            </div>
+                            <div id="randomResults" class="random-results">
+                                <div class="random-placeholder">
+                                    Click Generate to produce strings
+                                </div>
+                            </div>
                         </div>
                     </section>
                 </div>
