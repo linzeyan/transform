@@ -1407,6 +1407,74 @@
                     </section>
                 </div>
 
+                <!-- Text Diff workspace: compares two texts using patience diff algorithm. -->
+                <div id="diffWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Text Diff</h2>
+                                <p>Compare two texts using patience diff algorithm (git-style)</p>
+                            </div>
+                            <div class="panel-actions">
+                                <button id="diffClear">Clear</button>
+                                <button id="diffSwap">Swap Texts</button>
+                            </div>
+                        </div>
+                        <div class="diff-input-grid">
+                            <div class="diff-panel">
+                                <div class="panel-header">
+                                    <div>
+                                        <h3 id="diffLeftLabel">Original Text</h3>
+                                    </div>
+                                    <div class="panel-actions">
+                                        <button class="ghost-btn" id="diffCopyLeft">Copy</button>
+                                    </div>
+                                </div>
+                                <div class="textarea-with-numbers">
+                                    <div class="line-numbers" id="diffLeftLineNumbers"></div>
+                                    <textarea
+                                        id="diffLeftInput"
+                                        spellcheck="false"
+                                        placeholder="Paste original text here..."
+                                        class="diff-textarea"
+                                    ></textarea>
+                                </div>
+                            </div>
+                            <div class="diff-panel">
+                                <div class="panel-header">
+                                    <div>
+                                        <h3 id="diffRightLabel">Modified Text</h3>
+                                    </div>
+                                    <div class="panel-actions">
+                                        <button class="ghost-btn" id="diffCopyRight">Copy</button>
+                                    </div>
+                                </div>
+                                <div class="textarea-with-numbers">
+                                    <div class="line-numbers" id="diffRightLineNumbers"></div>
+                                    <textarea
+                                        id="diffRightInput"
+                                        spellcheck="false"
+                                        placeholder="Paste modified text here..."
+                                        class="diff-textarea"
+                                    ></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Diff Output</h2>
+                                <p id="diffSummary">No differences found</p>
+                            </div>
+                            <div class="panel-actions">
+                                <button id="diffCopyOutput">Copy Diff</button>
+                            </div>
+                        </div>
+                        <pre id="diffOutput" class="diff-output"></pre>
+                    </section>
+                </div>
+
                 <footer>
                     <div id="status">Loading WebAssembly...</div>
                     <div class="hotkeys">⌘/Ctrl + L Clear · ⌘/Ctrl + Enter Run</div>

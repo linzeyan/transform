@@ -38,6 +38,7 @@ import initWasm, {
     inspect_certificates,
     encrypt_bytes,
     decrypt_bytes,
+    generate_unified_text_diff,
 } from './pkg/wasm_core.js';
 
 const formats = [
@@ -495,6 +496,11 @@ const toolGroups = [
                 label: 'IP Tools',
                 description: 'IPv4/IPv6 helpers for CIDR, ranges, and formats.',
             },
+            {
+                id: 'converter-diff',
+                label: 'Text Diff',
+                description: 'Compare texts using patience diff algorithm.',
+            },
         ],
     },
     {
@@ -566,6 +572,7 @@ const workspaceByTool = {
     'converter-units': 'unitWorkspace',
     'converter-timestamp': 'timestampWorkspace',
     'converter-ipv4': 'ipv4Workspace',
+    'converter-diff': 'diffWorkspace',
     'coder-encode': 'coderWorkspace',
     'coder-decode': 'coderWorkspace',
     'coder-hash': 'coderWorkspace',
@@ -621,6 +628,7 @@ const implementedTools = new Set([
     'converter-units',
     'converter-timestamp',
     'converter-ipv4',
+    'converter-diff',
     'coder-encode',
     'coder-decode',
     'coder-hash',
@@ -656,6 +664,7 @@ const workspaceIds = [
     'unitWorkspace',
     'timestampWorkspace',
     'ipv4Workspace',
+    'diffWorkspace',
     'kdfWorkspace',
     'cryptoWorkspace',
     'uuidWorkspace',
@@ -770,6 +779,7 @@ const state = {
     totpDigits: 6,
     totpTimer: null,
     dataRows: 5,
+    diffTimer: null,
     dataOverrides: {},
     dataTables: [],
     dataSchemaTimer: null,
@@ -1061,6 +1071,19 @@ function cacheElements() {
     elements.dataOutput = document.getElementById('dataOutput');
     elements.dataCopy = document.getElementById('dataCopy');
     elements.dataColumnEditor = document.getElementById('dataColumnEditor');
+    elements.diffLeftInput = document.getElementById('diffLeftInput');
+    elements.diffRightInput = document.getElementById('diffRightInput');
+    elements.diffLeftLineNumbers = document.getElementById('diffLeftLineNumbers');
+    elements.diffRightLineNumbers = document.getElementById('diffRightLineNumbers');
+    elements.diffLeftLabel = document.getElementById('diffLeftLabel');
+    elements.diffRightLabel = document.getElementById('diffRightLabel');
+    elements.diffOutput = document.getElementById('diffOutput');
+    elements.diffSummary = document.getElementById('diffSummary');
+    elements.diffClear = document.getElementById('diffClear');
+    elements.diffSwap = document.getElementById('diffSwap');
+    elements.diffCopyOutput = document.getElementById('diffCopyOutput');
+    elements.diffCopyLeft = document.getElementById('diffCopyLeft');
+    elements.diffCopyRight = document.getElementById('diffCopyRight');
     elements.cryptoAlgorithm = document.getElementById('cryptoAlgorithm');
     elements.cryptoKey = document.getElementById('cryptoKey');
     elements.cryptoNonce = document.getElementById('cryptoNonce');
@@ -1394,6 +1417,17 @@ function bindUI() {
     elements.dataGenerate?.addEventListener('click', () => runDataGenerator());
     elements.dataCopy?.addEventListener('click', copyDataOutput);
     elements.dataColumnEditor?.addEventListener('input', handleDataOverrideInput);
+
+    // Diff tool event listeners
+    // Diff is automatically generated on input via handleDiffInput
+    elements.diffLeftInput?.addEventListener('input', handleDiffInput);
+    elements.diffRightInput?.addEventListener('input', handleDiffInput);
+    elements.diffClear?.addEventListener('click', handleDiffClear);
+    elements.diffSwap?.addEventListener('click', handleDiffSwap);
+    elements.diffCopyOutput?.addEventListener('click', handleDiffCopyOutput);
+    elements.diffCopyLeft?.addEventListener('click', () => handleDiffCopy('left'));
+    elements.diffCopyRight?.addEventListener('click', () => handleDiffCopy('right'));
+
     elements.certInput?.addEventListener('input', () => scheduleCertInspector());
     elements.certParse?.addEventListener('click', () => runCertInspector(true));
     elements.certSample?.addEventListener('click', () => {
@@ -1589,6 +1623,8 @@ function selectTool(toolId) {
         activateCryptoTool();
     } else if (isCertTool(toolId)) {
         activateCertTool();
+    } else if (isDiffTool(toolId)) {
+        activateDiffTool();
     }
 }
 
@@ -1609,6 +1645,7 @@ function updateBodyClasses(toolId) {
     document.body.classList.toggle('tool-qr', isQrTool(toolId));
     document.body.classList.toggle('tool-cert', isCertTool(toolId));
     document.body.classList.toggle('tool-crypto', isCryptoTool(toolId));
+    document.body.classList.toggle('tool-diff', isDiffTool(toolId));
 }
 
 function toggleConverterControls(show) {
@@ -2206,6 +2243,10 @@ function isCertTool(toolId) {
 
 function isCryptoTool(toolId) {
     return cryptoToolSet.has(toolId);
+}
+
+function isDiffTool(toolId) {
+    return toolId === 'converter-diff';
 }
 
 function activatePairTool(toolId) {
@@ -5072,6 +5113,187 @@ function activateDataTool() {
         elements.dataRows.value = state.dataRows;
     }
     handleDataSchemaInput();
+}
+
+function activateDiffTool() {
+    updateDiffLineNumbers();
+    scheduleDiff(true);
+}
+
+function updateDiffLineNumbers() {
+    updateTextareaLineNumbers('diffLeftInput', 'diffLeftLineNumbers');
+    updateTextareaLineNumbers('diffRightInput', 'diffRightLineNumbers');
+}
+
+function updateTextareaLineNumbers(textareaId, lineNumbersId) {
+    const textarea = elements[textareaId];
+    const lineNumbers = elements[lineNumbersId];
+    if (!textarea || !lineNumbers) return;
+
+    const lines = textarea.value.split('\n');
+    const lineCount = lines.length;
+
+    // Generate line number elements
+    const lineNumberElements = [];
+    for (let i = 1; i <= lineCount; i++) {
+        lineNumberElements.push(`<div>${i}</div>`);
+    }
+
+    lineNumbers.innerHTML = lineNumberElements.join('');
+}
+
+function handleDiffInput() {
+    if (!isDiffTool(state.currentTool)) return;
+    updateDiffLineNumbers();
+    scheduleDiff(false);
+}
+
+function scheduleDiff(immediate = false) {
+    if (!isDiffTool(state.currentTool)) return;
+    clearTimeout(state.diffTimer);
+    const delay = immediate ? 0 : 300;
+    state.diffTimer = setTimeout(generateDiff, delay);
+}
+
+function generateDiff() {
+    if (!state.wasmReady || !isDiffTool(state.currentTool)) return;
+
+    const leftText = elements.diffLeftInput?.value || '';
+    const rightText = elements.diffRightInput?.value || '';
+
+    if (!leftText && !rightText) {
+        if (elements.diffOutput) elements.diffOutput.textContent = '';
+        if (elements.diffSummary) elements.diffSummary.textContent = 'No differences found';
+        return;
+    }
+
+    try {
+        const unifiedDiff = generate_unified_text_diff(
+            leftText,
+            rightText,
+            'original.txt',
+            'modified.txt'
+        );
+
+        if (elements.diffOutput) {
+            if (unifiedDiff) {
+                // Apply syntax highlighting to diff output
+                elements.diffOutput.innerHTML = highlightDiffOutput(unifiedDiff);
+            } else {
+                elements.diffOutput.textContent = 'No differences found';
+            }
+        }
+
+        // Update summary
+        if (elements.diffSummary) {
+            if (unifiedDiff) {
+                const stats = analyzeDiffStats(unifiedDiff);
+                elements.diffSummary.textContent = `${stats.additions} additions, ${stats.deletions} deletions`;
+            } else {
+                elements.diffSummary.textContent = 'No differences found';
+            }
+        }
+    } catch (error) {
+        console.error('Diff generation failed:', error);
+        setStatus('Diff generation failed', true);
+    }
+}
+
+function highlightDiffOutput(diffText) {
+    if (!diffText) return '';
+
+    // Split into lines and process each line
+    const lines = diffText.split('\n');
+    const highlighted = lines.map((line) => {
+        if (line.startsWith('+')) {
+            return `<div class="addition">${escapeHtml(line)}</div>`;
+        } else if (line.startsWith('-')) {
+            return `<div class="deletion">${escapeHtml(line)}</div>`;
+        } else if (line.startsWith('@@')) {
+            return `<div class="context"><strong>${escapeHtml(line)}</strong></div>`;
+        } else {
+            return `<div class="context">${escapeHtml(line)}</div>`;
+        }
+    });
+
+    return highlighted.join('');
+}
+
+function analyzeDiffStats(diffText) {
+    const lines = diffText.split('\n');
+    let additions = 0;
+    let deletions = 0;
+
+    for (const line of lines) {
+        if (line.startsWith('+')) {
+            additions++;
+        } else if (line.startsWith('-')) {
+            deletions++;
+        }
+    }
+
+    return { additions, deletions };
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function handleDiffSwap() {
+    if (!isDiffTool(state.currentTool)) return;
+
+    const leftValue = elements.diffLeftInput?.value || '';
+    const rightValue = elements.diffRightInput?.value || '';
+
+    if (elements.diffLeftInput) elements.diffLeftInput.value = rightValue;
+    if (elements.diffRightInput) elements.diffRightInput.value = leftValue;
+
+    // Swap labels
+    const leftLabel = elements.diffLeftLabel?.textContent || 'Original Text';
+    const rightLabel = elements.diffRightLabel?.textContent || 'Modified Text';
+
+    if (elements.diffLeftLabel) elements.diffLeftLabel.textContent = rightLabel;
+    if (elements.diffRightLabel) elements.diffRightLabel.textContent = leftLabel;
+
+    updateDiffLineNumbers();
+    scheduleDiff(true);
+}
+
+function handleDiffClear() {
+    if (!isDiffTool(state.currentTool)) return;
+
+    if (elements.diffLeftInput) elements.diffLeftInput.value = '';
+    if (elements.diffRightInput) elements.diffRightInput.value = '';
+    if (elements.diffOutput) elements.diffOutput.textContent = '';
+
+    updateDiffLineNumbers();
+    if (elements.diffSummary) elements.diffSummary.textContent = 'No differences found';
+}
+
+function handleDiffCopy(side) {
+    if (!isDiffTool(state.currentTool)) return;
+
+    let text = '';
+    if (side === 'left' && elements.diffLeftInput) {
+        text = elements.diffLeftInput.value;
+    } else if (side === 'right' && elements.diffRightInput) {
+        text = elements.diffRightInput.value;
+    }
+
+    if (text) {
+        copyText(text, 'Diff input');
+    }
+}
+
+function handleDiffCopyOutput() {
+    if (!isDiffTool(state.currentTool) || !elements.diffOutput) return;
+
+    const text = elements.diffOutput.textContent || '';
+    if (text) {
+        copyText(text, 'Diff output');
+    }
 }
 
 function handleDataRowsChange() {

@@ -1934,3 +1934,118 @@ body.tool-generator .converter-only {
         min-height: 200px;
     }
 }
+
+/* Diff Tool Styles */
+.diff-input-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.diff-panel {
+    display: flex;
+    flex-direction: column;
+}
+
+.diff-panel h3 {
+    margin: 0;
+    font-size: 14px;
+    color: var(--fg);
+}
+
+.textarea-with-numbers {
+    position: relative;
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--panel);
+}
+
+.line-numbers {
+    width: 60px;
+    background: rgb(255 255 255 / 2%);
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 12px 8px;
+    text-align: right;
+    user-select: none;
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+}
+
+.line-numbers div {
+    min-height: 1.5em;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 8px;
+}
+
+.diff-textarea {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 12px;
+    resize: vertical;
+    min-height: 300px;
+    outline: none;
+}
+
+.diff-textarea:focus {
+    outline: none;
+}
+
+.diff-output {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--fg);
+    white-space: pre;
+    overflow-x: auto;
+    min-height: 200px;
+    margin: 0;
+}
+
+.diff-output .addition {
+    background: rgb(40 167 69 / 15%);
+    border-left: 3px solid #28a745;
+}
+
+.diff-output .deletion {
+    background: rgb(220 53 69 / 15%);
+    border-left: 3px solid #dc3545;
+}
+
+.diff-output .context {
+    color: var(--muted);
+}
+
+@media (width <= 768px) {
+    .diff-input-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .textarea-with-numbers {
+        display: block;
+    }
+
+    .line-numbers {
+        display: none;
+    }
+
+    .diff-textarea {
+        width: 100%;
+    }
+}

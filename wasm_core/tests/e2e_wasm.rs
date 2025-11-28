@@ -12,10 +12,10 @@ use wasm_core::{
     argon2_hash, argon2_verify, bcrypt_hash, bcrypt_verify, convert_image_format,
     convert_number_base, convert_timestamp, convert_units, decode_content, decode_content_bytes,
     decrypt_bytes, encode_content, encode_content_bytes, encrypt_bytes, generate_insert_statements,
-    generate_qr_code, generate_user_agents, generate_uuids, hash_content, hash_content_bytes,
-    html_to_markdown_text, inspect_certificates, ipv4_info, jwt_decode, jwt_encode,
-    markdown_to_html_text, random_number_sequences, random_numeric_range_sequences, totp_token,
-    transform_format, url_decode, url_encode,
+    generate_qr_code, generate_text_diff, generate_unified_text_diff, generate_user_agents,
+    generate_uuids, hash_content, hash_content_bytes, html_to_markdown_text, inspect_certificates,
+    ipv4_info, jwt_decode, jwt_encode, markdown_to_html_text, random_number_sequences,
+    random_numeric_range_sequences, totp_token, transform_format, url_decode, url_encode,
 };
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -167,6 +167,28 @@ fn ssl_inspector_workspace_is_wired() {
     assert!(
         INDEX_HTML.contains("id=\"certResults\""),
         "SSL inspector results container should be present"
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_workspace_is_present_in_html() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    assert!(
+        INDEX_HTML.contains("id=\"diffWorkspace\""),
+        "diff workspace container should exist"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"diffLeftInput\""),
+        "diff left input textarea should be present"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"diffRightInput\""),
+        "diff right input textarea should be present"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"diffOutput\""),
+        "diff output container should be present"
     );
 }
 
@@ -620,4 +642,61 @@ fn ssl_inspector_parses_chain_via_wasm() {
         field(&JsonValue::Object(leaf.clone()), "subjectCommonName"),
         "transform.test"
     );
+}
+
+#[wasm_bindgen_test]
+fn diff_tool_generates_structured_diff_output() {
+    let diff_result = js_to_json(
+        generate_text_diff("line 1\nline 2\nline 3", "line 1\nline 2\nline 4")
+            .expect("generate text diff"),
+    );
+    let binding = Vec::new();
+    let lines = diff_result
+        .get("lines")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&binding);
+    assert_eq!(lines.len(), 4); // 3 context + 1 deletion + 1 addition = 5 lines, but let's check the actual count
+
+    // Check that we have the expected diff structure
+    let stats = diff_result
+        .get("stats")
+        .and_then(|v| v.as_object())
+        .expect("stats object");
+    let additions = stats.get("additions").and_then(|v| v.as_u64()).unwrap_or(0);
+    let deletions = stats.get("deletions").and_then(|v| v.as_u64()).unwrap_or(0);
+    assert_eq!(additions, 1);
+    assert_eq!(deletions, 1);
+}
+
+#[wasm_bindgen_test]
+fn diff_tool_generates_unified_diff_format() {
+    let unified_diff = generate_unified_text_diff(
+        "line 1\nline 2\nline 3",
+        "line 1\nline 2\nline 4",
+        "a/file.txt",
+        "b/file.txt",
+    );
+
+    assert!(unified_diff.contains("--- a/file.txt"));
+    assert!(unified_diff.contains("+++ b/file.txt"));
+    assert!(unified_diff.contains("@@"));
+    assert!(unified_diff.contains("-line 3"));
+    assert!(unified_diff.contains("+line 4"));
+}
+
+#[wasm_bindgen_test]
+fn diff_tool_handles_identical_texts() {
+    let diff_result = js_to_json(
+        generate_text_diff("same\ncontent", "same\ncontent").expect("generate identical text diff"),
+    );
+    let stats = diff_result
+        .get("stats")
+        .and_then(|v| v.as_object())
+        .expect("stats object");
+    let additions = stats.get("additions").and_then(|v| v.as_u64()).unwrap_or(0);
+    let deletions = stats.get("deletions").and_then(|v| v.as_u64()).unwrap_or(0);
+    let context = stats.get("context").and_then(|v| v.as_u64()).unwrap_or(0);
+    assert_eq!(additions, 0);
+    assert_eq!(deletions, 0);
+    assert_eq!(context, 2);
 }

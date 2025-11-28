@@ -45,6 +45,7 @@ use wasm_bindgen::prelude::*;
 
 mod cert;
 mod convert;
+mod diff;
 mod images;
 
 /// Wasm entry point that installs a panic hook so Rust panics appear in the browser console.
@@ -3569,6 +3570,26 @@ fn find_matching_paren(src: &str, open_idx: usize) -> Option<usize> {
         }
     }
     None
+}
+
+/// Generate a text diff between two inputs using patience diff algorithm
+#[wasm_bindgen]
+pub fn generate_text_diff(old_text: &str, new_text: &str) -> Result<JsValue, JsValue> {
+    let config = diff::DiffConfig::default();
+    let result = diff::generate_diff(old_text, new_text, &config);
+    serde_wasm_bindgen::to_value(&result).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+/// Generate unified diff format string (git-style diff)
+#[wasm_bindgen]
+pub fn generate_unified_text_diff(
+    old_text: &str,
+    new_text: &str,
+    old_name: &str,
+    new_name: &str,
+) -> String {
+    let config = diff::DiffConfig::default();
+    diff::generate_unified_diff(old_text, new_text, old_name, new_name, &config)
 }
 
 #[cfg(test)]
