@@ -25,7 +25,7 @@ frontend-fmt:
 frontend-lint: frontend-fmt
 	npx htmlhint --config www/htmlhint.json "www/*.html"
 	npx stylelint --config www/stylelint.config.cjs "www/**/*.{css,scss,sass,less}" --fix
-	npx eslint --config www/eslint.config.cjs www/main.js --fix
+	npx eslint --config www/eslint.config.cjs --fix
 
 build: lint test
 	wasm-pack build wasm_core --target web --out-dir ../www/pkg

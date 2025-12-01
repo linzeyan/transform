@@ -47,10 +47,10 @@ const browserGlobals = {
 };
 const js = require('@eslint/js');
 module.exports = [
+    { ignores: ['node_modules/**', 'dist/**', 'build/**', 'www/pkg/**'] },
     js.configs.recommended,
     {
-        files: ['www/main.js'],
-        ignores: ['node_modules/**', 'dist/**', 'build/**'],
+        files: ['www/**/*.js'],
         languageOptions: {
             ecmaVersion: 'latest',
             sourceType: 'module',

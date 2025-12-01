@@ -74,6 +74,11 @@ import initWasm, {
     generate_unified_text_diff,
 } from './pkg/wasm_core.js';
 
+// Import modular components
+import { initConverters } from './js/converters.js';
+import { initGenerators } from './js/generators.js';
+import { initCoders } from './js/coders.js';
+
 const formats = [
     'JSON',
     'Go Struct',
@@ -867,6 +872,11 @@ const uuidDisplayLabels = {
 boot();
 
 async function boot() {
+    // Initialize modular components
+    initConverters();
+    initGenerators();
+    initCoders();
+
     cacheElements();
     renderSymbolButtons();
     initCoderControls();
