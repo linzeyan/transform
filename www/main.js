@@ -1,6 +1,39 @@
 // Front-end controller for the Rust/Wasm toolkit. Each workspace (converter,
 // coder, IPv4, SQL inserts, etc.) communicates with wasm exports so the UI can
 // stay deterministic and reflect the behaviors described in the spec session.
+
+// Global error handler to suppress Cursor IDE extension errors that don't affect functionality
+// This addresses the "Cannot read properties of undefined (reading 'control')" error that occurs
+// when the Cursor IDE extension tries to detect form controls for autocomplete functionality.
+// The error is caused by the extension expecting certain DOM properties that may be undefined
+// during certain timing conditions, but doesn't affect the actual application functionality.
+window.addEventListener('error', (event) => {
+    // Suppress specific Cursor IDE extension errors related to form control detection
+    if (
+        event.error &&
+        event.error.message &&
+        event.error.message.includes("Cannot read properties of undefined (reading 'control')") &&
+        event.filename &&
+        event.filename.includes('content_script.js')
+    ) {
+        event.preventDefault();
+        console.warn('Suppressed Cursor IDE extension error:', event.error.message);
+        return false;
+    }
+});
+
+// Suppress unhandled promise rejections from Cursor IDE extension
+window.addEventListener('unhandledrejection', (event) => {
+    if (
+        event.reason &&
+        event.reason.message &&
+        event.reason.message.includes("Cannot read properties of undefined (reading 'control')")
+    ) {
+        event.preventDefault();
+        console.warn('Suppressed Cursor IDE extension promise rejection:', event.reason.message);
+    }
+});
+
 import initWasm, {
     generate_uuids,
     generate_user_agents,
@@ -471,6 +504,7 @@ const pairToolConfigs = {
 const toolGroups = [
     {
         name: 'Converter',
+        icon: '🔄',
         tools: [
             {
                 id: 'format',
@@ -516,6 +550,7 @@ const toolGroups = [
     },
     {
         name: 'Coder',
+        icon: '🔐',
         tools: coderTools.map((tool) => ({
             id: tool.id,
             label: tool.label,
@@ -524,6 +559,7 @@ const toolGroups = [
     },
     {
         name: 'Generator',
+        icon: '🎲',
         tools: [
             {
                 id: 'generator-uuid',
@@ -565,6 +601,7 @@ const toolGroups = [
     },
     {
         name: 'Fingerprint',
+        icon: '👆',
         tools: [
             {
                 id: 'fingerprint-browser',
@@ -914,6 +951,21 @@ function cacheElements() {
     elements.formatOutput = document.getElementById('formatOutput');
     elements.minifyOutput = document.getElementById('minifyOutput');
     elements.status = document.getElementById('status');
+
+    // Defensive fix for Cursor IDE extension compatibility
+    // Ensure form elements have expected properties to prevent extension errors
+    setTimeout(() => {
+        const formElements = document.querySelectorAll('input, select, textarea');
+        formElements.forEach((element) => {
+            if (!element.control) {
+                element.control = element; // Self-reference for compatibility
+            }
+            // Ensure proper form association
+            if (!element.form && element.closest('form')) {
+                element.form = element.closest('form');
+            }
+        });
+    }, 100);
     elements.imageWorkspace = document.getElementById('imageWorkspace');
     elements.imageFile = document.getElementById('imageFile');
     elements.imageTargetFormat = document.getElementById('imageTargetFormat');
@@ -1136,7 +1188,14 @@ function renderSidebar() {
         const details = document.createElement('details');
         details.open = true;
         const summary = document.createElement('summary');
-        summary.textContent = group.name;
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'group-icon';
+        iconSpan.textContent = group.icon;
+        const textSpan = document.createElement('span');
+        textSpan.className = 'group-text';
+        textSpan.textContent = group.name;
+        summary.appendChild(iconSpan);
+        summary.appendChild(textSpan);
         details.appendChild(summary);
         const wrapper = document.createElement('div');
         wrapper.className = 'tool-buttons';
@@ -2198,9 +2257,9 @@ function renderEntryRow(entry) {
             upperActive ? 'true' : 'false'
         }">Toggle Case</button>`;
     } else if (clickable) {
-        actionMarkup = '<span class="copy-hint">Click to copy</span>';
+        actionMarkup = '<span class="copy-icon" title="Click to copy">📋</span>';
     } else {
-        actionMarkup = `<button type="button" data-label="${buttonLabel}" data-value="${attrValue}">Copy</button>`;
+        actionMarkup = `<button type="button" class="copy-btn" data-label="${buttonLabel}" data-value="${attrValue}">📋 Copy</button>`;
     }
     return `
     <div ${entryAttrs}>
@@ -3094,6 +3153,16 @@ function renderImageOptions(format) {
                     <input type="checkbox" data-image-opt="${spec.key}" ${checked} />
                 </label>`;
             }
+            // For range inputs, add a wrapper with value display
+            if (spec.type === 'range') {
+                return `<label>
+                    <span>${escapeHTML(spec.label || spec.key)}${spec.hint ? ` — ${escapeHTML(spec.hint)}` : ''}</span>
+                    <div class="range-input-wrapper">
+                        <input type="range" data-image-opt="${spec.key}" min="${spec.min ?? ''}" max="${spec.max ?? ''}" value="${escapeAttr(value)}" />
+                        <span class="range-value">${escapeAttr(value)}</span>
+                    </div>
+                </label>`;
+            }
             return `<label>
                 <span>${escapeHTML(spec.label || spec.key)}${spec.hint ? ` — ${escapeHTML(spec.hint)}` : ''}</span>
                 <input type="${spec.type}" data-image-opt="${spec.key}" min="${spec.min ?? ''}" max="${spec.max ?? ''}" value="${escapeAttr(value)}" />
@@ -3119,6 +3188,13 @@ function handleImageOptionChange(event) {
     } else {
         const num = Number(event.target.value);
         current[key] = Number.isFinite(num) ? num : event.target.value;
+        // Update the range value display if this is a range input
+        if (event.target.type === 'range') {
+            const valueDisplay = event.target.parentElement?.querySelector('.range-value');
+            if (valueDisplay) {
+                valueDisplay.textContent = event.target.value;
+            }
+        }
     }
     state.image.optionsByFormat[format] = current;
 }
@@ -3309,6 +3385,10 @@ function refreshUUIDs(force = false) {
     }
 }
 
+/**
+ * Renders the UUID list with click-to-copy functionality for entire rows.
+ * Each UUID row is clickable to copy the UUID value to clipboard.
+ */
 function renderUUIDs() {
     if (!elements.uuidList) return;
     const entries = [];
@@ -3328,6 +3408,7 @@ function renderUUIDs() {
         elements.uuidList.innerHTML = '<div class="muted">No UUIDs generated yet</div>';
         return;
     }
+    // Generate HTML rows without copy buttons - entire row is clickable
     const rows = entries
         .map(([version, value]) => {
             const display = state.uuidUppercase ? value.toUpperCase() : value.toLowerCase();
@@ -3336,21 +3417,21 @@ function renderUUIDs() {
         <div class="uuid-row" data-value="${escapeAttr(display)}" data-label="${escapeAttr(label)}">
           <span>${label}</span>
           <code>${escapeHTML(display)}</code>
-          <button type="button" class="uuid-copy">Copy</button>
         </div>
       `;
         })
         .join('');
     elements.uuidList.innerHTML = rows;
-    elements.uuidList.querySelectorAll('.uuid-copy').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const row = btn.closest('.uuid-row');
-            if (!row) return;
+    // Attach click event to entire row for copy functionality
+    elements.uuidList.querySelectorAll('.uuid-row').forEach((row) => {
+        row.addEventListener('click', () => {
             const value = row.dataset.value || '';
             const label = row.dataset.label || 'UUID';
             if (!value) return;
             copyText(value, label);
         });
+        // Add cursor pointer to indicate clickable
+        row.style.cursor = 'pointer';
     });
 }
 
@@ -6442,10 +6523,33 @@ async function copyText(value, label) {
     try {
         await navigator.clipboard.writeText(value);
         setStatus(`Copied ${label}`, false);
+        showCopyFeedback(`Copied ${label}`);
     } catch (err) {
         console.error(err);
         setStatus('Unable to access clipboard', true);
+        showCopyFeedback('Failed to copy');
     }
+}
+
+function showCopyFeedback(message) {
+    // Remove existing feedback
+    const existing = document.querySelector('.copy-feedback');
+    if (existing) {
+        existing.remove();
+    }
+
+    // Create new feedback element
+    const feedback = document.createElement('div');
+    feedback.className = 'copy-feedback';
+    feedback.textContent = message;
+    document.body.appendChild(feedback);
+
+    // Remove after animation
+    setTimeout(() => {
+        if (feedback.parentNode) {
+            feedback.remove();
+        }
+    }, 2000);
 }
 
 function escapeHTML(value = '') {

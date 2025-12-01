@@ -20,11 +20,11 @@ test-all: lint frontend-lint test
 
 frontend-fmt:
 	@npm ls $(DEPS) --depth=0 --silent >/dev/null 2>&1 || npm i -D $(DEPS)
-	npx prettier --config www/prettier.json "www/*.{json,cjs,js,jsx,ts,tsx,css,scss,html}" --write
+	npx prettier --config www/prettier.json "www/**/*.{json,cjs,js,jsx,ts,tsx,css,scss,html}" --write
 
 frontend-lint: frontend-fmt
 	npx htmlhint --config www/htmlhint.json "www/*.html"
-	npx stylelint --config www/stylelint.config.cjs "www/*.{css,scss,sass,less}" --fix
+	npx stylelint --config www/stylelint.config.cjs "www/**/*.{css,scss,sass,less}" --fix
 	npx eslint --config www/eslint.config.cjs www/main.js --fix
 
 build: lint test

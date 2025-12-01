@@ -5,8 +5,7 @@
         <meta name="viewport" content="width=device-width,initial-scale=1" />
         <title>transform</title>
         <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-        <link rel="stylesheet" href="style.css" />
-        <link rel="stylesheet" href="ui_improvements.css" />
+        <link rel="stylesheet" href="css/main.css" />
     </head>
 
     <body>
@@ -72,7 +71,9 @@
                             </select>
                         </div>
                         <div class="actions converter-only">
-                            <button id="copy">Copy output</button>
+                            <button id="copy" class="copy-btn" title="Copy output to clipboard">
+                                📋 Copy output
+                            </button>
                             <button id="clear">Clear</button>
                         </div>
                     </div>
@@ -552,9 +553,10 @@
                                         <button
                                             id="cryptoCopyCiphertext"
                                             type="button"
-                                            class="ghost-btn sm-btn copy-overlay"
+                                            class="ghost-btn sm-btn copy-overlay copy-btn"
+                                            title="Copy ciphertext"
                                         >
-                                            Copy
+                                            📋 Copy
                                         </button>
                                     </div>
                                 </div>
@@ -1214,7 +1216,13 @@
                                     <p>Add this to authorized_keys on remote servers</p>
                                 </div>
                                 <div class="panel-actions">
-                                    <button class="ghost-btn" id="sshCopyPublic">Copy</button>
+                                    <button
+                                        class="ghost-btn copy-btn"
+                                        id="sshCopyPublic"
+                                        title="Copy public key"
+                                    >
+                                        📋 Copy
+                                    </button>
                                 </div>
                             </div>
                             <div class="ssh-key-display">
@@ -1241,7 +1249,13 @@
                                     <p>Keep this secure and never share it</p>
                                 </div>
                                 <div class="panel-actions">
-                                    <button class="ghost-btn" id="sshCopyPrivate">Copy</button>
+                                    <button
+                                        class="ghost-btn copy-btn"
+                                        id="sshCopyPrivate"
+                                        title="Copy private key"
+                                    >
+                                        📋 Copy
+                                    </button>
                                 </div>
                             </div>
                             <div class="ssh-key-display">
@@ -1277,11 +1291,12 @@
                             <div class="panel-actions">
                                 <button class="ghost-btn" id="fingerprintRefresh">Refresh</button>
                                 <button
-                                    class="ghost-btn"
+                                    class="ghost-btn copy-btn"
                                     id="fingerprintCopyAll"
                                     style="display: none"
+                                    title="Copy all fingerprint data"
                                 >
-                                    Copy All
+                                    📋 Copy All
                                 </button>
                             </div>
                         </div>
@@ -1534,8 +1549,13 @@
                         <div class="random-results-section">
                             <div class="random-results-header">
                                 <h3 class="random-section-title">Generated Strings</h3>
-                                <button class="ghost-btn" id="randomCopyAll" style="display: none">
-                                    Copy All
+                                <button
+                                    class="ghost-btn copy-btn"
+                                    id="randomCopyAll"
+                                    style="display: none"
+                                    title="Copy all generated strings"
+                                >
+                                    📋 Copy All
                                 </button>
                             </div>
                             <div id="randomResults" class="random-results">
@@ -1798,7 +1818,9 @@
                                 <p>Results update when you generate</p>
                             </div>
                             <div class="panel-actions">
-                                <button id="dataCopy">Copy</button>
+                                <button id="dataCopy" class="copy-btn" title="Copy data">
+                                    📋 Copy
+                                </button>
                             </div>
                         </div>
                         <textarea id="dataOutput" spellcheck="false" readonly></textarea>
@@ -1825,7 +1847,13 @@
                                         <h3 id="diffLeftLabel">Original Text</h3>
                                     </div>
                                     <div class="panel-actions">
-                                        <button class="ghost-btn" id="diffCopyLeft">Copy</button>
+                                        <button
+                                            class="ghost-btn copy-btn"
+                                            id="diffCopyLeft"
+                                            title="Copy left input"
+                                        >
+                                            📋 Copy
+                                        </button>
                                     </div>
                                 </div>
                                 <div class="textarea-with-numbers">
@@ -1844,7 +1872,13 @@
                                         <h3 id="diffRightLabel">Modified Text</h3>
                                     </div>
                                     <div class="panel-actions">
-                                        <button class="ghost-btn" id="diffCopyRight">Copy</button>
+                                        <button
+                                            class="ghost-btn copy-btn"
+                                            id="diffCopyRight"
+                                            title="Copy right input"
+                                        >
+                                            📋 Copy
+                                        </button>
                                     </div>
                                 </div>
                                 <div class="textarea-with-numbers">
@@ -1866,7 +1900,13 @@
                                 <p id="diffSummary">No differences found</p>
                             </div>
                             <div class="panel-actions">
-                                <button id="diffCopyOutput">Copy Diff</button>
+                                <button
+                                    id="diffCopyOutput"
+                                    class="copy-btn"
+                                    title="Copy diff output"
+                                >
+                                    📋 Copy Diff
+                                </button>
                             </div>
                         </div>
                         <pre id="diffOutput" class="diff-output"></pre>

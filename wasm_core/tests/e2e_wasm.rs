@@ -870,3 +870,86 @@ fn diff_tool_handles_identical_texts() {
     assert_eq!(deletions, 0);
     assert_eq!(context, 2);
 }
+
+/// Test that the image converter workspace includes range input controls for quality/compression.
+/// This verifies that the UI properly renders sliders with value displays for image options.
+#[wasm_bindgen_test]
+fn image_converter_has_range_slider_support() {
+    const MAIN_JS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/main.js"));
+
+    // Verify that the JavaScript includes range input wrapper for value display
+    assert!(
+        MAIN_JS.contains("range-input-wrapper"),
+        "main.js should include range-input-wrapper class for slider UI"
+    );
+
+    // Verify that range value display element is created
+    assert!(
+        MAIN_JS.contains("range-value"),
+        "main.js should include range-value class for displaying slider values"
+    );
+
+    // Verify that the code handles range input type specifically
+    assert!(
+        MAIN_JS.contains("spec.type === 'range'"),
+        "main.js should have special handling for range input type"
+    );
+
+    // Verify that value display is updated on input change
+    assert!(
+        MAIN_JS.contains("event.target.type === 'range'"),
+        "main.js should update range value display on input change"
+    );
+}
+
+/// Test that the CSS includes proper styling for range input sliders.
+/// This ensures sliders are visible with proper track, thumb, and value display styling.
+#[wasm_bindgen_test]
+fn range_slider_css_styles_exist() {
+    const FORMS_CSS: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../www/css/components/forms.css"
+    ));
+
+    // Verify range input wrapper styles exist
+    assert!(
+        FORMS_CSS.contains(".range-input-wrapper"),
+        "forms.css should include range-input-wrapper styles"
+    );
+
+    // Verify range value display styles exist
+    assert!(
+        FORMS_CSS.contains(".range-value"),
+        "forms.css should include range-value display styles"
+    );
+
+    // Verify WebKit slider track styles exist
+    assert!(
+        FORMS_CSS.contains("input[type='range']::-webkit-slider-runnable-track"),
+        "forms.css should include WebKit slider track styles"
+    );
+
+    // Verify WebKit slider thumb styles exist
+    assert!(
+        FORMS_CSS.contains("input[type='range']::-webkit-slider-thumb"),
+        "forms.css should include WebKit slider thumb styles"
+    );
+
+    // Verify Firefox slider track styles exist
+    assert!(
+        FORMS_CSS.contains("input[type='range']::-moz-range-track"),
+        "forms.css should include Firefox slider track styles"
+    );
+
+    // Verify Firefox slider thumb styles exist
+    assert!(
+        FORMS_CSS.contains("input[type='range']::-moz-range-thumb"),
+        "forms.css should include Firefox slider thumb styles"
+    );
+
+    // Verify that range input has appearance reset
+    assert!(
+        FORMS_CSS.contains("appearance: none"),
+        "forms.css should reset default range input appearance"
+    );
+}

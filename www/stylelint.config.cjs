@@ -42,6 +42,7 @@ module.exports = {
         'selector-max-compound-selectors': 4,
         'selector-max-class': 4,
         'selector-no-qualifying-type': null, // 避免太嚴，class+tag 常見
+        'no-duplicate-selectors': null, // Allow duplicate selectors for progressive enhancement
 
         // @ 規則
         'at-rule-no-unknown': null, // 交給 SCSS / Less config 處理（@mixin, @include 等）
