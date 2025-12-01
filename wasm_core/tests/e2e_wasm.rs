@@ -262,6 +262,18 @@ fn image_converter_png_to_webp_via_wasm() {
 }
 
 #[wasm_bindgen_test]
+// Guard the UI contract: the WebP quality slider must be declared in the shipped JS bundle.
+fn webp_quality_slider_is_declared_in_frontend() {
+    const MAIN_JS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/main.js"));
+    assert!(
+        MAIN_JS.contains("webp: [")
+            && MAIN_JS.contains("key: 'quality'")
+            && MAIN_JS.contains("hint: '100 = lossless (default)'"),
+        "frontend config should ship a WebP quality control while keeping libwebp out"
+    );
+}
+
+#[wasm_bindgen_test]
 fn format_converter_json_to_go_struct_handles_nested_objects() {
     let input = r#"{"plugins":{"proxy-rewrite":{"uri":"/x"}},"update_time":1}"#;
     let go = transform_format("JSON", "Go Struct", input).expect("json -> go struct");

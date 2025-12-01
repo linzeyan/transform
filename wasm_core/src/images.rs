@@ -84,6 +84,8 @@ pub struct ImageConversionResult {
 #[derive(Debug, Default, Deserialize, Clone, Copy)]
 pub struct ImageOptions {
     /// 1-100 quality where supported (JPEG/AVIF); defaults per format.
+    /// For WebP we stay pure-Rust by applying a perceptual RGB quantizer when
+    /// quality < 100, letting callers trade detail for size without libwebp.
     pub quality: Option<u8>,
     /// For formats that expose an encoder speed knob (AVIF 1-10).
     pub speed: Option<u8>,
@@ -180,13 +182,14 @@ fn encode_image(
                 .map_err(|err| format!("failed to encode PNG: {err}"))?;
         }
         PictureFormat::Webp => {
-            // The pure-Rust WebP encoder is lossless-only today.
-            if options.lossless == Some(false) || options.quality.is_some() {
-                return Err(
-                    "This build encodes WebP losslessly; lossy WebP requires libwebp.".into(),
-                );
+            // Keep the pure-Rust encoder by quantizing RGB channels ourselves when
+            // callers request quality < 100, so we avoid pulling libwebp C bindings.
+            let requested_quality = options.quality.unwrap_or(100).clamp(1, 100);
+            let lossless = options.lossless.unwrap_or(requested_quality == 100);
+            let mut rgba = image.to_rgba8();
+            if !lossless {
+                quantize_rgb_for_webp(rgba.as_mut(), requested_quality);
             }
-            let rgba = image.to_rgba8();
             let (width, height) = rgba.dimensions();
             let enc = image::codecs::webp::WebPEncoder::new_lossless(Cursor::new(&mut buffer));
             enc.encode(rgba.as_raw(), width, height, ExtendedColorType::Rgba8)
@@ -210,6 +213,36 @@ fn encode_image(
         }
     }
     Ok(buffer)
+}
+
+/// Maps a WebP quality slider (1-100) to a reduced RGB palette and updates the
+/// provided RGBA buffer in place. Alpha is left untouched so transparency stays
+/// crisp while color detail becomes more compressible for the pure-Rust encoder.
+fn quantize_rgb_for_webp(data: &mut [u8], quality: u8) {
+    if quality >= 100 {
+        return;
+    }
+    let levels = webp_levels_from_quality(quality);
+    let step = 255.0 / (levels as f32 - 1.0);
+    for pixel in data.chunks_exact_mut(4) {
+        for channel in pixel.iter_mut().take(3) {
+            let value = f32::from(*channel);
+            let bucket = (value / step).round();
+            let quantized = (bucket * step).round().clamp(0.0, 255.0) as u8;
+            *channel = quantized;
+        }
+    }
+}
+
+/// Bias the bucket count toward finer palettes at high quality while keeping
+/// very low qualities aggressively coarse for size wins.
+fn webp_levels_from_quality(quality: u8) -> u16 {
+    if quality >= 100 {
+        return 256;
+    }
+    let normalized = (quality as f32).clamp(1.0, 100.0) / 100.0;
+    let levels = 2.0 + normalized * normalized * 254.0;
+    levels.round().clamp(2.0, 256.0) as u16
 }
 
 #[cfg(test)]
@@ -241,6 +274,41 @@ mod tests {
         image::load_from_memory_with_format(bytes, format.image_format()).expect("decode")
     }
 
+    fn gradient_rgba(width: u32, height: u32) -> DynamicImage {
+        // Deliberately varied pattern so quantization has visible impact.
+        let buf: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_fn(width, height, |x, y| {
+            let r = ((x * 5 + y * 3) % 256) as u8;
+            let g = ((x * 7 + y * 11) % 256) as u8;
+            let b = ((x * 13 + y * 17) % 256) as u8;
+            Rgba([r, g, b, 255])
+        });
+        DynamicImage::ImageRgba8(buf)
+    }
+
+    fn noisy_rgba(width: u32, height: u32) -> DynamicImage {
+        // Deterministic pseudo-random colors to keep the size comparison stable.
+        let mut seed: u32 = 0x4d59_5df4;
+        let buf: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_fn(width, height, |_x, _y| {
+            seed = seed
+                .wrapping_mul(1_664_525)
+                .wrapping_add(1_013_904_223)
+                .rotate_left(5);
+            let r = (seed & 0xff) as u8;
+            let g = ((seed >> 8) & 0xff) as u8;
+            let b = ((seed >> 16) & 0xff) as u8;
+            Rgba([r, g, b, 255])
+        });
+        DynamicImage::ImageRgba8(buf)
+    }
+
+    fn encode_dynamic_as(image: &DynamicImage, format: PictureFormat) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        image
+            .write_to(&mut Cursor::new(&mut bytes), format.image_format())
+            .expect("encode dynamic fixture");
+        bytes
+    }
+
     #[test]
     fn png_to_webp_preserves_alpha_channel() {
         let png_bytes = encode_sample_as(PictureFormat::Png);
@@ -267,6 +335,80 @@ mod tests {
         assert!(avif_res.data_base64.len() > 24);
         assert_eq!(avif_res.width, 2);
         assert_eq!(avif_res.height, 2);
+    }
+
+    #[test]
+    fn webp_quality_100_stays_lossless() {
+        let fixture = gradient_rgba(8, 8);
+        let png_bytes = encode_dynamic_as(&fixture, PictureFormat::Png);
+        let result = convert_image_bytes(
+            "png",
+            "webp",
+            &png_bytes,
+            ImageOptions {
+                quality: Some(100),
+                ..ImageOptions::default()
+            },
+        )
+        .expect("png -> webp q100");
+        let decoded_bytes = STANDARD
+            .decode(result.data_base64.as_bytes())
+            .expect("decode webp b64");
+        let decoded = decode_rgba(&decoded_bytes, PictureFormat::Webp).to_rgba8();
+        assert_eq!(
+            decoded,
+            fixture.to_rgba8(),
+            "quality 100 should round-trip through the lossless encoder"
+        );
+    }
+
+    #[test]
+    fn webp_quality_controls_size_and_pixels() {
+        let fixture = noisy_rgba(64, 64);
+        let png_bytes = encode_dynamic_as(&fixture, PictureFormat::Png);
+
+        let lossless = convert_image_bytes("png", "webp", &png_bytes, ImageOptions::default())
+            .expect("webp default");
+        let lossy = convert_image_bytes(
+            "png",
+            "webp",
+            &png_bytes,
+            ImageOptions {
+                quality: Some(35),
+                lossless: Some(false),
+                ..ImageOptions::default()
+            },
+        )
+        .expect("webp q35");
+
+        let lossless_bytes = STANDARD
+            .decode(lossless.data_base64.as_bytes())
+            .expect("decode lossless webp");
+        let lossy_bytes = STANDARD
+            .decode(lossy.data_base64.as_bytes())
+            .expect("decode lossy webp");
+
+        assert!(
+            lossy_bytes.len() < lossless_bytes.len(),
+            "reduced quality should shrink WebP payload ({} -> {})",
+            lossless_bytes.len(),
+            lossy_bytes.len()
+        );
+
+        let lossless_img = decode_rgba(&lossless_bytes, PictureFormat::Webp).to_rgba8();
+        let lossy_img = decode_rgba(&lossy_bytes, PictureFormat::Webp).to_rgba8();
+        let changed_pixels = lossless_img
+            .pixels()
+            .zip(lossy_img.pixels())
+            .filter(|(a, b)| a.0[..3] != b.0[..3])
+            .count();
+        assert!(
+            changed_pixels > 0,
+            "lowering WebP quality should alter at least one RGB pixel"
+        );
+        for pixel in lossy_img.pixels() {
+            assert_eq!(pixel.0[3], 255, "alpha channel must remain intact");
+        }
     }
 
     #[test]

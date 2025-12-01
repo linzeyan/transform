@@ -114,7 +114,22 @@ const imageFormatOptions = {
             defaultValue: 6,
         },
     ],
-    webp: [],
+    // WebP stays pure-Rust; quality uses pre-quantization before the lossless encoder.
+    webp: [
+        {
+            key: 'quality',
+            type: 'range',
+            min: 1,
+            max: 100,
+            label: 'Quality',
+            hint: '100 = lossless (default)',
+            defaultValue: 100,
+        },
+        {
+            type: 'note',
+            text: 'Lower quality applies RGB quantization before encoding to avoid libwebp bindings.',
+        },
+    ],
     avif: [
         { key: 'quality', type: 'range', min: 1, max: 100, label: 'Quality', defaultValue: 80 },
         { key: 'speed', type: 'range', min: 1, max: 10, label: 'Speed (1=best)', defaultValue: 4 },
@@ -779,7 +794,8 @@ const state = {
         optionsByFormat: {
             jpg: { quality: 85 },
             png: { compression: 6 },
-            webp: {},
+            // Default WebP quality stays lossless unless the slider is moved.
+            webp: { quality: 100 },
             avif: { quality: 80, speed: 4, lossless: false },
         },
     },

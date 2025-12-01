@@ -47,7 +47,8 @@ export const state = {
         optionsByFormat: {
             jpg: { quality: 85 },
             png: { compression: 6 },
-            webp: {},
+            // Default WebP output stays lossless until the slider is lowered.
+            webp: { quality: 100 },
             avif: { quality: 80, speed: 4, lossless: false },
         },
     },

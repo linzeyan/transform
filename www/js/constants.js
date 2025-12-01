@@ -49,7 +49,22 @@ export const imageFormatOptions = {
             defaultValue: 6,
         },
     ],
-    webp: [],
+    // WebP keeps a pure-Rust path; quality uses RGB quantization before lossless encode.
+    webp: [
+        {
+            key: 'quality',
+            type: 'range',
+            min: 1,
+            max: 100,
+            label: 'Quality',
+            hint: '100 = lossless (default)',
+            defaultValue: 100,
+        },
+        {
+            type: 'note',
+            text: 'Lower values quantize colors before encoding so no libwebp bindings are needed.',
+        },
+    ],
     avif: [
         { key: 'quality', type: 'range', min: 1, max: 100, label: 'Quality', defaultValue: 80 },
         { key: 'speed', type: 'range', min: 1, max: 10, label: 'Speed (1=best)', defaultValue: 4 },
