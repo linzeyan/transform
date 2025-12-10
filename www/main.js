@@ -40,6 +40,7 @@ import initWasm, {
     convert_number_base,
     convert_units,
     convert_image_format,
+    convert_tabular_format,
     ipv4_info,
     url_encode,
     url_decode,
@@ -91,6 +92,8 @@ const formats = [
     'TOON',
     'MsgPack',
 ];
+
+const tabularFormats = ['Parquet', 'Avro', 'Arrow IPC', 'Feather', 'CSV', 'TSV', 'JSON'];
 
 // Image converter supports these formats.
 const imageFormats = ['jpg', 'png', 'webp', 'avif'];
@@ -854,6 +857,13 @@ const state = {
     dataSchemaTimer: null,
     dataDirty: false,
     formatKey: null,
+    tabular: {
+        files: [],
+        from: 'JSON',
+        to: 'Parquet',
+        results: [],
+        totalRows: 0,
+    },
     fingerprintFacts: [],
     kdf: {
         active: 'bcrypt',
@@ -894,6 +904,7 @@ async function boot() {
     initCoders();
 
     cacheElements();
+    initTabularControls();
     renderSymbolButtons();
     initCoderControls();
     renderSidebar();
@@ -977,6 +988,17 @@ function cacheElements() {
     elements.formatOutput = document.getElementById('formatOutput');
     elements.minifyOutput = document.getElementById('minifyOutput');
     elements.status = document.getElementById('status');
+    elements.tabularSection = document.getElementById('tabularSection');
+    elements.tabularFile = document.getElementById('tabularFile');
+    elements.tabularFrom = document.getElementById('tabularFrom');
+    elements.tabularTo = document.getElementById('tabularTo');
+    elements.tabularConvert = document.getElementById('tabularConvert');
+    elements.tabularDownload = document.getElementById('tabularDownload');
+    elements.tabularProgress = document.getElementById('tabularProgress');
+    elements.tabularStatus = document.getElementById('tabularStatus');
+    elements.tabularFileName = document.getElementById('tabularFileName');
+    elements.tabularRowCount = document.getElementById('tabularRowCount');
+    elements.tabularOutputName = document.getElementById('tabularOutputName');
 
     // Defensive fix for Cursor IDE extension compatibility
     // Ensure form elements have expected properties to prevent extension errors
@@ -1313,6 +1335,18 @@ function bindUI() {
     elements.minifyOutput?.addEventListener('click', () =>
         handleFormatField(elements.output, elements.to?.value, true)
     );
+    elements.tabularFile?.addEventListener('change', handleTabularFileChange);
+    elements.tabularFrom?.addEventListener('change', (event) => {
+        state.tabular.from = event.target.value;
+    });
+    elements.tabularTo?.addEventListener('change', (event) => {
+        state.tabular.to = event.target.value;
+        if (state.tabular.files && state.tabular.files.length) {
+            setTabularOutputPreview(state.tabular.files, state.tabular.to);
+        }
+    });
+    elements.tabularConvert?.addEventListener('click', handleTabularConvert);
+    elements.tabularDownload?.addEventListener('click', handleTabularDownload);
     elements.imageFile?.addEventListener('change', handleImageFileChange);
     elements.imageTargetFormat?.addEventListener('change', (event) => {
         state.image.targetFormat = (event.target.value || 'webp').trim().toLowerCase();
@@ -1597,6 +1631,17 @@ function updateConverterLabels(from, to) {
     }
 }
 
+function initTabularControls() {
+    if (!elements.tabularFrom || !elements.tabularTo) return;
+    const options = tabularFormats.map((fmt) => `<option value="${fmt}">${fmt}</option>`).join('');
+    elements.tabularFrom.innerHTML = options;
+    elements.tabularTo.innerHTML = options;
+    elements.tabularFrom.value = state.tabular.from;
+    elements.tabularTo.value = state.tabular.to;
+    setTabularProgress(0, false);
+    setTabularStatus('No files selected');
+}
+
 function scheduleConvert(immediate = false) {
     if (state.currentTool !== 'format') return;
     if (!ensureConverterMode()) return;
@@ -1632,6 +1677,207 @@ function convert() {
         if (elements.output) elements.output.value = '';
         setStatus(`⚠️ ${err?.message || err}`, true);
     }
+}
+
+function guessTabularFormat(fileName) {
+    if (!fileName) return null;
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith('.parquet')) return 'Parquet';
+    if (lower.endsWith('.avro')) return 'Avro';
+    if (lower.endsWith('.arrow') || lower.endsWith('.ipc') || lower.endsWith('.feather')) {
+        return 'Arrow IPC';
+    }
+    if (lower.endsWith('.tsv')) return 'TSV';
+    if (lower.endsWith('.csv')) return 'CSV';
+    if (lower.endsWith('.json') || lower.endsWith('.ndjson')) return 'JSON';
+    return null;
+}
+
+function readFileAsBytes(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(new Uint8Array(reader.result || new ArrayBuffer(0)));
+        reader.onerror = () => reject(reader.error || new Error('Failed to read file'));
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+async function handleTabularFileChange(event) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) {
+        state.tabular.files = [];
+        state.tabular.results = [];
+        state.tabular.totalRows = 0;
+        setTabularProgress(0, false);
+        setTabularStatus('No files selected');
+        if (elements.tabularDownload) elements.tabularDownload.disabled = true;
+        if (elements.tabularFileName) elements.tabularFileName.textContent = '(none)';
+        if (elements.tabularRowCount) elements.tabularRowCount.textContent = '0';
+        setTabularOutputLabel([]);
+        return;
+    }
+    try {
+        setTabularStatus(`Loading ${files.length} file(s)...`);
+        const buffers = await Promise.all(files.map((file) => readFileAsBytes(file)));
+        state.tabular.files = files.map((file, idx) => ({
+            name: file.name,
+            bytes: buffers[idx],
+        }));
+        state.tabular.results = [];
+        state.tabular.totalRows = 0;
+        const label =
+            files.length === 1 ? files[0].name : `${files.length} files selected for batch`;
+        if (elements.tabularFileName) elements.tabularFileName.textContent = label;
+        const guess = guessTabularFormat(files[0]?.name || '');
+        if (guess && elements.tabularFrom) {
+            elements.tabularFrom.value = guess;
+            state.tabular.from = guess;
+        }
+        setTabularStatus('Files loaded, choose a target format and convert');
+        const targetFormat = elements.tabularTo?.value || state.tabular.to;
+        setTabularOutputPreview(state.tabular.files, targetFormat);
+        if (elements.tabularDownload) elements.tabularDownload.disabled = true;
+    } catch (err) {
+        console.error(err);
+        state.tabular.files = [];
+        state.tabular.results = [];
+        state.tabular.totalRows = 0;
+        setTabularProgress(0, false, true);
+        setTabularStatus(`Failed to read files: ${err?.message || err}`, true);
+        if (elements.tabularDownload) elements.tabularDownload.disabled = true;
+    }
+}
+
+function setTabularProgress(percent, animated = false, isError = false) {
+    const bar =
+        elements.tabularProgress?.querySelector('.progress-bar') || elements.tabularProgress;
+    if (!bar) return;
+    bar.style.setProperty('--progress', `${Math.min(Math.max(percent, 0), 100)}%`);
+    bar.dataset.animated = animated ? 'true' : 'false';
+    bar.classList.toggle('error', Boolean(isError));
+}
+
+function setTabularStatus(message, isError = false) {
+    if (elements.tabularStatus) {
+        elements.tabularStatus.textContent = message;
+        elements.tabularStatus.classList.toggle('error', Boolean(isError));
+    }
+}
+
+function normalizeRowCount(value) {
+    if (typeof value === 'bigint') {
+        return Number(value);
+    }
+    const num = Number(value || 0);
+    return Number.isFinite(num) ? num : 0;
+}
+
+function deriveOutputName(inputName, targetFormat) {
+    const ext = (targetFormat || 'bin').toLowerCase();
+    const base = inputName ? inputName.replace(/\.[^.]+$/, '') : 'converted';
+    return `${base}.${ext}`;
+}
+
+function setTabularOutputPreview(files, targetFormat) {
+    if (!files || !files.length) {
+        setTabularOutputLabel([]);
+        return;
+    }
+    const preview = files.map((file) => ({ name: deriveOutputName(file.name, targetFormat) }));
+    setTabularOutputLabel(preview);
+}
+
+function setTabularOutputLabel(results) {
+    if (!elements.tabularOutputName) return;
+    if (!results || !results.length) {
+        elements.tabularOutputName.textContent = 'converted';
+        return;
+    }
+    if (results.length === 1) {
+        elements.tabularOutputName.textContent = results[0].name || 'converted';
+        return;
+    }
+    const first = results[0].name || 'converted';
+    elements.tabularOutputName.textContent = `${first} (+${results.length - 1} more)`;
+}
+
+function handleTabularConvert() {
+    if (!state.wasmReady) {
+        setTabularStatus('WebAssembly is not ready yet', true);
+        return;
+    }
+    const files = state.tabular.files || [];
+    if (!files.length) {
+        setTabularStatus('Select file(s) first', true);
+        return;
+    }
+    const from = elements.tabularFrom?.value || state.tabular.from;
+    const to = elements.tabularTo?.value || state.tabular.to;
+    // Stage the pseudo-progress bar so users see responsive feedback even on large files.
+    setTabularProgress(15, true, false);
+    setTabularStatus(`Converting ${files.length} file(s)...`);
+    state.tabular.results = [];
+    state.tabular.totalRows = 0;
+    try {
+        const results = [];
+        files.forEach((file, idx) => {
+            const progress = Math.min(90, 15 + Math.round(((idx + 1) / files.length) * 70));
+            setTabularStatus(`Converting ${file.name} (${idx + 1}/${files.length})...`);
+            const result = convert_tabular_format(from, to, file.bytes);
+            const bytes = result?.bytes ? new Uint8Array(result.bytes) : new Uint8Array();
+            const mime = result?.mime_type || result?.mimeType || 'application/octet-stream';
+            const outName = deriveOutputName(file.name, to);
+            const rowCount = normalizeRowCount(result?.row_count ?? result?.rowCount ?? 0);
+            results.push({
+                blob: new Blob([bytes], { type: mime }),
+                name: outName,
+                rowCount,
+            });
+            state.tabular.totalRows += rowCount;
+            setTabularProgress(progress, true, false);
+        });
+        state.tabular.results = results;
+        setTabularOutputLabel(results);
+        if (elements.tabularRowCount)
+            elements.tabularRowCount.textContent = String(state.tabular.totalRows);
+        if (elements.tabularDownload) elements.tabularDownload.disabled = false;
+        setTabularProgress(100, false, false);
+        setTabularStatus('Conversion complete');
+    } catch (err) {
+        setTabularProgress(0, false, true);
+        setTabularStatus(`Error: ${err?.message || err}`, true);
+        if (elements.tabularDownload) elements.tabularDownload.disabled = true;
+        state.tabular.results = [];
+        state.tabular.totalRows = 0;
+    }
+}
+
+function handleTabularDownload() {
+    if (!state.tabular.results || !state.tabular.results.length) return;
+    const results = state.tabular.results;
+    if (results.length === 1) {
+        const single = results[0];
+        const url = URL.createObjectURL(single.blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = single.name || 'converted';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+        return;
+    }
+    results.forEach((result, idx) => {
+        const url = URL.createObjectURL(result.blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = result.name || `converted-${idx + 1}`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+    });
+    setTabularStatus(`Started downloads for ${results.length} files`);
 }
 
 function handleFormatField(target, formatName, minify) {

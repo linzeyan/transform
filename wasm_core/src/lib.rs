@@ -2283,6 +2283,55 @@ pub fn transform_format(from: &str, to: &str, input: &str) -> Result<String, JsV
 }
 
 #[wasm_bindgen]
+/// Tabular conversion entrypoint for binary/text table files (Parquet, Avro, Arrow IPC/Feather,
+/// CSV/TSV, JSON). Returns bytes plus metadata so the frontend can stream a download.
+pub struct TabularConversionResult {
+    bytes: Vec<u8>,
+    mime_type: String,
+    file_name: String,
+    row_count: u64,
+}
+
+#[wasm_bindgen]
+impl TabularConversionResult {
+    #[wasm_bindgen(getter)]
+    pub fn bytes(&self) -> Vec<u8> {
+        self.bytes.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = "mime_type")]
+    pub fn mime_type(&self) -> String {
+        self.mime_type.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = "file_name")]
+    pub fn file_name(&self) -> String {
+        self.file_name.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = "row_count")]
+    pub fn row_count(&self) -> u64 {
+        self.row_count
+    }
+}
+
+#[wasm_bindgen]
+pub fn convert_tabular_format(
+    from: &str,
+    to: &str,
+    data: &[u8],
+) -> Result<TabularConversionResult, JsValue> {
+    convert::tabular::convert_tabular(from, to, data)
+        .map(|res| TabularConversionResult {
+            bytes: res.bytes,
+            mime_type: res.mime_type,
+            file_name: res.file_name,
+            row_count: res.row_count,
+        })
+        .map_err(|err| JsValue::from_str(&err))
+}
+
+#[wasm_bindgen]
 /// Formats or minifies structured content (JSON, XML, YAML, TOML) while preserving semantics,
 /// mirroring the "Prettify / Minify" buttons in the UI.
 pub fn format_content_text(format: &str, input: &str, minify: bool) -> Result<String, JsValue> {
@@ -3613,7 +3662,7 @@ fn shuffle_chars(chars: &mut [char]) {
     }
 }
 fn fill_random(buf: &mut [u8]) {
-    getrandom::getrandom(buf).expect("randomness available");
+    getrandom::fill(buf).expect("randomness available");
 }
 
 fn random_bytes(len: usize) -> Vec<u8> {

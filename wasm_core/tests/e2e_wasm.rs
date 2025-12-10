@@ -10,12 +10,13 @@ use wasm_bindgen_test::*;
 
 use wasm_core::{
     argon2_hash, argon2_verify, bcrypt_hash, bcrypt_verify, convert_image_format,
-    convert_number_base, convert_timestamp, convert_units, decode_content, decode_content_bytes,
-    decrypt_bytes, encode_content, encode_content_bytes, encrypt_bytes, generate_insert_statements,
-    generate_qr_code, generate_text_diff, generate_unified_text_diff, generate_user_agents,
-    generate_uuids, hash_content, hash_content_bytes, html_to_markdown_text, inspect_certificates,
-    ipv4_info, jwt_decode, jwt_encode, markdown_to_html_text, random_number_sequences,
-    random_numeric_range_sequences, totp_token, transform_format, url_decode, url_encode,
+    convert_number_base, convert_tabular_format, convert_timestamp, convert_units, decode_content,
+    decode_content_bytes, decrypt_bytes, encode_content, encode_content_bytes, encrypt_bytes,
+    generate_insert_statements, generate_qr_code, generate_text_diff, generate_unified_text_diff,
+    generate_user_agents, generate_uuids, hash_content, hash_content_bytes, html_to_markdown_text,
+    inspect_certificates, ipv4_info, jwt_decode, jwt_encode, markdown_to_html_text,
+    random_number_sequences, random_numeric_range_sequences, totp_token, transform_format,
+    url_decode, url_encode,
 };
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -229,6 +230,39 @@ fn format_converter_json_to_yaml() {
         yaml.contains("name: Ada") && yaml.contains("age: 27"),
         "yaml output should contain converted fields"
     );
+}
+
+#[wasm_bindgen_test]
+fn tabular_converter_dom_controls_exist() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    for id in [
+        "tabularSection",
+        "tabularFile",
+        "tabularFrom",
+        "tabularTo",
+        "tabularConvert",
+        "tabularDownload",
+        "tabularProgress",
+        "tabularStatus",
+    ] {
+        assert!(
+            INDEX_HTML.contains(&format!("id=\"{id}\"")),
+            "Missing tabular control {id}"
+        );
+    }
+}
+
+#[wasm_bindgen_test]
+fn tabular_round_trip_csv_to_parquet_and_back() {
+    let csv = b"id,name\n1,Ada\n2,Bob\n";
+    let parquet = convert_tabular_format("CSV", "Parquet", csv).expect("csv -> parquet");
+    assert_eq!(parquet.mime_type(), "application/x-parquet");
+    assert_eq!(parquet.row_count(), 2);
+    let back = convert_tabular_format("Parquet", "CSV", &parquet.bytes()).expect("parquet -> csv");
+    let text = String::from_utf8(back.bytes()).unwrap();
+    assert!(text.contains("Ada"));
+    assert!(text.contains("Bob"));
 }
 
 #[wasm_bindgen_test]

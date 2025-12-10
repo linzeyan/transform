@@ -640,6 +640,9 @@ textarea:focus {
     border-radius: 2px;
     overflow: hidden;
     margin: 8px 0;
+    position: relative;
+
+    --progress: 0%;
 }
 
 .progress-bar::after {
@@ -648,7 +651,16 @@ textarea:focus {
     height: 100%;
     background: linear-gradient(90deg, var(--accent), #9db4ff);
     border-radius: 2px;
+    width: var(--progress);
+    transition: width 0.25s ease;
+}
+
+.progress-bar[data-animated='true']::after {
     animation: progress 2s ease-in-out infinite;
+}
+
+.progress-bar.error::after {
+    background: linear-gradient(90deg, #ff6b6b, #ff8e8e);
 }
 
 /* Mobile responsive for fingerprint grid */

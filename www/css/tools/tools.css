@@ -203,6 +203,67 @@
     color: var(--muted);
 }
 
+/* Tabular converter layout */
+.panel-wide {
+    grid-column: 1 / -1;
+}
+
+.tabular-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.tabular-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.tabular-controls label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.tabular-controls select {
+    padding: 10px 12px;
+    background: rgb(255 255 255 / 6%);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--fg);
+    font: inherit;
+}
+
+.tabular-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.tabular-progress {
+    width: 100%;
+}
+
+.tabular-status {
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.tabular-meta {
+    background: rgb(255 255 255 / 3%);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.tabular-meta strong {
+    color: var(--fg);
+}
+
 .checkbox input {
     margin: 0;
 }

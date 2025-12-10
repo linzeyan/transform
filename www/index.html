@@ -108,6 +108,59 @@
                         </div>
                         <textarea id="output" spellcheck="false" readonly></textarea>
                     </section>
+
+                    <!-- Tabular file converter: uploads binary/text tables and routes through wasm. -->
+                    <section class="panel panel-wide" id="tabularSection">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Data File Conversion</h2>
+                                <p>
+                                    Convert Parquet / Avro / Arrow IPC / CSV / TSV / JSON and
+                                    download.
+                                </p>
+                            </div>
+                            <div class="panel-actions">
+                                <label class="ghost-btn file-label" for="tabularFile"
+                                    >Choose files</label
+                                >
+                                <input type="file" id="tabularFile" class="hidden" multiple />
+                            </div>
+                        </div>
+                        <div class="tabular-grid">
+                            <div class="tabular-controls">
+                                <label>
+                                    <span>Source format</span>
+                                    <select id="tabularFrom"></select>
+                                </label>
+                                <label>
+                                    <span>Target format</span>
+                                    <select id="tabularTo"></select>
+                                </label>
+                                <div class="tabular-actions">
+                                    <button id="tabularConvert" type="button">Convert</button>
+                                    <button id="tabularDownload" type="button" disabled>
+                                        Download
+                                    </button>
+                                </div>
+                                <div class="tabular-progress" id="tabularProgress">
+                                    <div class="progress-bar"></div>
+                                </div>
+                                <div class="tabular-status" id="tabularStatus">
+                                    No file selected
+                                </div>
+                            </div>
+                            <div class="tabular-meta">
+                                <p>
+                                    <strong>File</strong>: <span id="tabularFileName">(none)</span>
+                                </p>
+                                <p><strong>Rows</strong>: <span id="tabularRowCount">0</span></p>
+                                <p>
+                                    <strong>Output name</strong>:
+                                    <span id="tabularOutputName">converted</span>
+                                </p>
+                            </div>
+                        </div>
+                    </section>
                 </div>
 
                 <!-- Image Converter workspace: converts common raster formats and keeps alpha intact. -->

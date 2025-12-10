@@ -14,6 +14,7 @@ pub mod msgpack;
 pub mod proto;
 pub mod schema;
 pub mod structs;
+pub mod tabular;
 pub mod toon;
 pub mod xml;
 
