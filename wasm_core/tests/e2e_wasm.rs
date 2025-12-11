@@ -123,6 +123,24 @@ fn image_converter_workspace_has_controls() {
 }
 
 #[wasm_bindgen_test]
+fn image_converter_exposes_batch_progress_controls() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    assert!(
+        INDEX_HTML.contains("id=\"imageBatchList\""),
+        "batch list container should exist for image converter"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"imageProgressFill\""),
+        "progress bar fill should be present for batch conversions"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"imageFile\"") && INDEX_HTML.contains("multiple"),
+        "image file input should support multiple selection"
+    );
+}
+
+#[wasm_bindgen_test]
 fn qr_workspace_includes_core_controls() {
     // Ensure the QR generator UI ships with mode radios, format select, and action buttons.
     const INDEX_HTML: &str =
@@ -168,6 +186,20 @@ fn qr_parse_workspace_exists() {
     assert!(
         INDEX_HTML.contains("id=\"qrParseResults\""),
         "QR Parse results container should exist"
+    );
+}
+
+#[wasm_bindgen_test]
+fn qr_parse_allows_multiple_files_and_batch_results() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    assert!(
+        INDEX_HTML.contains("id=\"qrParseFile\"") && INDEX_HTML.contains("multiple"),
+        "QR Parse input should allow multiple files"
+    );
+    assert!(
+        INDEX_HTML.contains("Drag & drop images here"),
+        "QR Parse dropzone copy should reflect multi-file support"
     );
 }
 

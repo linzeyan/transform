@@ -225,6 +225,40 @@ fn parse_qr_codes_decodes_png_payload() {
 }
 
 #[test]
+fn parse_qr_codes_batch_processes_multiple_images() {
+    let build_qr = |text: &str| {
+        let code =
+            QrCode::with_error_correction_level(text.as_bytes(), EcLevel::M).expect("qr build");
+        let image = code
+            .render::<Luma<u8>>()
+            .min_dimensions(250, 250)
+            .max_dimensions(250, 250)
+            .build();
+        let mut buf = Vec::new();
+        let mut cursor = std::io::Cursor::new(&mut buf);
+        DynamicImage::ImageLuma8(image)
+            .write_to(&mut cursor, ImageFormat::Png)
+            .expect("encode png");
+        buf
+    };
+
+    let first = build_qr("alpha");
+    let second = build_qr("beta");
+    let batch = vec![
+        ("first.png".to_string(), first),
+        ("second.png".to_string(), second),
+    ];
+    let results = parse_qr_codes_batch_native(batch);
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].file_name, "first.png");
+    assert_eq!(results[1].file_name, "second.png");
+    assert!(results[0].error.is_none());
+    assert!(results[1].error.is_none());
+    assert_eq!(results[0].results[0].payload, "alpha");
+    assert_eq!(results[1].results[0].payload, "beta");
+}
+
+#[test]
 fn convert_timestamp_internal_from_sql_datetime() {
     let map = convert_timestamp_internal("sql_datetime", "2025-01-02 03:04:05").unwrap();
     let expected_dt = Utc

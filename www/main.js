@@ -39,7 +39,7 @@ import initWasm, {
     generate_user_agents,
     convert_number_base,
     convert_units,
-    convert_image_format,
+    convert_image_format_batch,
     convert_tabular_format,
     ipv4_info,
     url_encode,
@@ -73,7 +73,7 @@ import initWasm, {
     encrypt_bytes,
     decrypt_bytes,
     generate_unified_text_diff,
-    parse_qr_codes,
+    parse_qr_codes_batch,
 } from './pkg/wasm_core.js';
 
 // Import modular components
@@ -797,6 +797,7 @@ const state = {
     urlHadQuestionMark: false,
     // Image converter keeps the selected file and last conversion handy for downloads.
     image: {
+        files: [],
         fileBytes: null,
         fileName: '',
         fileSize: 0,
@@ -804,6 +805,8 @@ const state = {
         targetFormat: 'webp',
         previewUrl: '',
         result: null,
+        batchResults: [],
+        progress: { completed: 0, total: 0 },
         optionsByFormat: {
             jpg: { quality: 85 },
             png: { compression: 6 },
@@ -876,8 +879,7 @@ const state = {
         totalRows: 0,
     },
     qrParse: {
-        fileName: '',
-        bytes: null,
+        files: [],
         results: [],
     },
     fingerprintFacts: [],
@@ -1043,6 +1045,10 @@ function cacheElements() {
     elements.imageOutputMeta = document.getElementById('imageOutputMeta');
     elements.imageError = document.getElementById('imageError');
     elements.imageOptions = document.getElementById('imageOptions');
+    elements.imageBatchList = document.getElementById('imageBatchList');
+    elements.imageProgress = document.getElementById('imageProgress');
+    elements.imageProgressFill = document.getElementById('imageProgressFill');
+    elements.imageProgressLabel = document.getElementById('imageProgressLabel');
     elements.qrParseWorkspace = document.getElementById('qrParseWorkspace');
     elements.qrParseFile = document.getElementById('qrParseFile');
     elements.qrParseDrop = document.getElementById('qrParseDrop');
@@ -1377,6 +1383,7 @@ function bindUI() {
     });
     elements.imageConvert?.addEventListener('click', handleImageConvert);
     elements.imageDownload?.addEventListener('click', handleImageDownload);
+    elements.imageBatchList?.addEventListener('click', handleImageBatchListClick);
     elements.qrParseFile?.addEventListener('change', handleQrParseFileChange);
     elements.qrParseDrop?.addEventListener('dragover', (event) => {
         event.preventDefault();
@@ -1388,9 +1395,9 @@ function bindUI() {
     elements.qrParseDrop?.addEventListener('drop', (event) => {
         event.preventDefault();
         elements.qrParseDrop.classList.remove('dragging');
-        const file = event.dataTransfer?.files?.[0];
-        if (file) {
-            handleQrParseSelectedFile(file);
+        const files = Array.from(event.dataTransfer?.files || []);
+        if (files.length) {
+            handleQrParseSelectedFiles(files);
         }
     });
     elements.qrParseDrop?.addEventListener('click', (event) => {
@@ -3309,31 +3316,53 @@ function activateImageTool() {
     renderImageOriginalPreview();
     renderImageOutput(state.image.result);
     renderImageError('');
+    renderImageBatchList();
+    renderImageProgress();
     setStatus('Ready', false);
 }
 
 async function handleImageFileChange(event) {
-    const file = event?.target?.files?.[0];
-    if (!file) {
+    const files = Array.from(event?.target?.files || []);
+    if (!files.length) {
         resetImageState();
         renderImageInputMeta();
         renderImageOriginalPreview();
         renderImageOutput(null);
+        renderImageBatchList();
+        renderImageProgress();
         return;
     }
     try {
-        const buffer = await file.arrayBuffer();
-        state.image.fileBytes = new Uint8Array(buffer);
-        state.image.fileName = file.name;
-        state.image.fileSize = file.size;
-        state.image.detectedFormat =
-            detectImageFormat(state.image.fileBytes, file.name) || state.image.detectedFormat;
+        const loaded = await Promise.all(
+            files.map(async (file) => {
+                const buffer = await file.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                return {
+                    name: file.name,
+                    size: file.size,
+                    bytes,
+                    detectedFormat: detectImageFormat(bytes, file.name),
+                    result: null,
+                    error: '',
+                };
+            })
+        );
+        state.image.files = loaded;
+        const first = loaded[0];
+        state.image.fileBytes = first.bytes;
+        state.image.fileName = first.name;
+        state.image.fileSize = first.size;
+        state.image.detectedFormat = first.detectedFormat || state.image.detectedFormat;
         state.image.result = null;
+        state.image.batchResults = [];
+        state.image.progress = { completed: 0, total: loaded.length };
         renderImageInputMeta();
         renderImageOriginalPreview();
         renderImageOptions(state.image.targetFormat || elements.imageTargetFormat?.value || 'webp');
         renderImageOutput(null);
-        setStatus('Image loaded', false);
+        renderImageBatchList();
+        renderImageProgress();
+        setStatus('Images loaded', false);
     } catch (err) {
         console.error(err);
         renderImageError(err?.message || String(err));
@@ -3358,16 +3387,23 @@ function renderImageFormatSelect() {
 
 function renderImageInputMeta() {
     if (!elements.imageInputMeta) return;
-    if (!(state.image.fileBytes && state.image.fileBytes.length)) {
+    if (!(state.image.files && state.image.files.length)) {
         elements.imageInputMeta.textContent = 'No image selected';
         if (elements.imageConvert) elements.imageConvert.setAttribute('disabled', 'disabled');
         if (elements.imageDownload) elements.imageDownload.setAttribute('disabled', 'disabled');
         return;
     }
-    const format = (state.image.detectedFormat || '').toUpperCase() || 'UNKNOWN';
-    const sizeLabel = formatByteSize(state.image.fileSize || state.image.fileBytes.length);
-    const name = state.image.fileName || 'Image';
-    elements.imageInputMeta.textContent = `${name} • ${sizeLabel} • ${format}`;
+    if (state.image.files.length === 1) {
+        const format = (state.image.detectedFormat || '').toUpperCase() || 'UNKNOWN';
+        const sizeLabel = formatByteSize(state.image.fileSize || state.image.fileBytes.length);
+        const name = state.image.fileName || 'Image';
+        elements.imageInputMeta.textContent = `${name} • ${sizeLabel} • ${format}`;
+    } else {
+        const totalSize = state.image.files.reduce((sum, f) => sum + (f.size || 0), 0);
+        elements.imageInputMeta.textContent = `${state.image.files.length} files • ${formatByteSize(
+            totalSize
+        )}`;
+    }
     if (elements.imageConvert) elements.imageConvert.removeAttribute('disabled');
 }
 
@@ -3393,7 +3429,10 @@ function renderImageOriginalPreview() {
 }
 
 function renderImageOutput(result) {
-    const target = result || state.image.result;
+    const target =
+        result ||
+        state.image.result ||
+        (state.image.batchResults || []).find((item) => item?.result)?.result;
     if (!elements.imageOutputPreview) return;
     if (!target || !target.dataUrl) {
         elements.imageOutputPreview.innerHTML =
@@ -3424,16 +3463,73 @@ function renderImageError(message) {
     }
 }
 
+// Renders the per-file batch queue so users can download individual outputs.
+function renderImageBatchList() {
+    if (!elements.imageBatchList) return;
+    const items = state.image.batchResults || [];
+    if (!state.image.files.length) {
+        elements.imageBatchList.innerHTML =
+            '<div class="muted">Select images to build a conversion queue.</div>';
+        return;
+    }
+    if (!items.length) {
+        elements.imageBatchList.innerHTML =
+            '<div class="muted">Ready to convert. Click Convert to start the batch.</div>';
+        return;
+    }
+    elements.imageBatchList.innerHTML = items
+        .map((item, idx) => {
+            const name = escapeHTML(item.fileName || `File #${idx + 1}`);
+            if (item.error) {
+                return `<div class="image-batch-item">
+  <div>
+    <div>${name}</div>
+    <div class="image-batch-meta">Error</div>
+  </div>
+  <div class="image-batch-actions"></div>
+  <div class="image-batch-error">⚠️ ${escapeHTML(item.error)}</div>
+</div>`;
+            }
+            const res = item.result || {};
+            const metaBits = [];
+            if (res.format) metaBits.push(res.format.toUpperCase());
+            if (res.mime) metaBits.push(res.mime);
+            return `<div class="image-batch-item">
+  <div>
+    <div>${name}</div>
+    <div class="image-batch-meta">${metaBits.join(' · ') || 'Converted'}</div>
+  </div>
+  <div class="image-batch-actions">
+    <button class="ghost-btn" data-image-download="${idx}" ${
+        res.dataUrl ? '' : 'disabled'
+    }>Download</button>
+  </div>
+</div>`;
+        })
+        .join('');
+}
+
+function renderImageProgress() {
+    if (!elements.imageProgressFill || !elements.imageProgressLabel) return;
+    const { completed = 0, total = 0 } = state.image.progress || {};
+    const percent = total ? Math.min(100, Math.round((completed / total) * 100)) : 0;
+    elements.imageProgressFill.style.width = `${percent}%`;
+    elements.imageProgressLabel.textContent = `${completed} / ${total}`;
+}
+
 function resetImageState() {
     if (state.image.previewUrl) {
         URL.revokeObjectURL(state.image.previewUrl);
     }
     state.image.previewUrl = '';
+    state.image.files = [];
     state.image.fileBytes = null;
     state.image.fileName = '';
     state.image.fileSize = 0;
     state.image.detectedFormat = '';
     state.image.result = null;
+    state.image.batchResults = [];
+    state.image.progress = { completed: 0, total: 0 };
 }
 
 function renderImageOptions(format) {
@@ -3525,23 +3621,47 @@ function handleImageConvert() {
         setStatus('Waiting for WebAssembly...', true);
         return;
     }
-    if (!(state.image.fileBytes && state.image.fileBytes.length)) {
+    const files = state.image.files && state.image.files.length ? state.image.files : [];
+    if (!files.length) {
         setStatus('Select an image before converting', true);
         return;
     }
     const target = elements.imageTargetFormat?.value || state.image.targetFormat || 'webp';
     state.image.targetFormat = (target || '').toString().trim().toLowerCase();
-    const fromFormat =
-        detectImageFormat(state.image.fileBytes, state.image.fileName) ||
-        state.image.detectedFormat ||
-        'png';
     const options = state.image.optionsByFormat[target] || {};
     try {
-        const raw = convert_image_format(fromFormat, target, state.image.fileBytes, options);
-        const normalized = normalizeImageResult(raw);
-        state.image.result = normalized;
-        renderImageOutput(normalized);
-        setStatus(`Converted to ${normalized.format.toUpperCase()}`, false);
+        state.image.progress = { completed: 0, total: files.length };
+        renderImageProgress();
+        setStatus('Converting images...', false);
+        // Build batch payload so the wasm helper can process files in one call.
+        const payload = files.map((file) => ({
+            from: detectImageFormat(file.bytes, file.name) || file.detectedFormat || 'png',
+            to: target,
+            bytes: file.bytes,
+            fileName: file.name,
+            options,
+        }));
+        const raw = convert_image_format_batch(payload);
+        const items = Array.isArray(raw) ? raw : [];
+        const normalized = items.map(normalizeBatchImageResult);
+        state.image.batchResults = normalized;
+        state.image.progress = { completed: normalized.length, total: files.length };
+        // Keep single-file preview behavior by caching the first successful result.
+        const firstResult = normalized.find((item) => item.result)?.result;
+        if (firstResult) {
+            state.image.result = firstResult;
+            renderImageOutput(firstResult);
+        }
+        renderImageBatchList();
+        renderImageProgress();
+        const failures = normalized.filter((item) => item.error).length;
+        const success = normalized.length - failures;
+        setStatus(
+            failures
+                ? `Converted ${success}/${normalized.length} (some errors)`
+                : 'Batch converted',
+            Boolean(failures)
+        );
     } catch (err) {
         console.error(err);
         renderImageError(err?.message || String(err));
@@ -3568,6 +3688,26 @@ function handleImageDownload() {
     setStatus('Download ready', false);
 }
 
+// Allows downloading individual items from the batch queue.
+function handleImageBatchListClick(event) {
+    const button = event.target.closest('[data-image-download]');
+    if (!button) return;
+    const idx = Number(button.dataset.imageDownload);
+    const item = (state.image.batchResults || [])[idx];
+    if (!item || !item.result || !item.result.dataUrl) {
+        setStatus('No converted image to download', true);
+        return;
+    }
+    const res = item.result;
+    const link = document.createElement('a');
+    link.href = res.dataUrl;
+    link.download = res.downloadName || `converted.${res.format || 'png'}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setStatus(`Downloaded ${res.downloadName || 'image'}`, false);
+}
+
 function normalizeImageResult(result) {
     const base = normalizeMapResult(result);
     const source = Object.keys(base).length ? base : result || {};
@@ -3581,6 +3721,13 @@ function normalizeImageResult(result) {
         dataUrl: source.data_url || source.dataUrl || '',
         downloadName: source.download_name || source.downloadName || `converted.${format}`,
     };
+}
+
+function normalizeBatchImageResult(entry) {
+    const fileName = entry?.file_name || entry?.fileName || '';
+    const error = entry?.error || null;
+    const result = entry?.result ? normalizeImageResult(entry.result) : null;
+    return { fileName, error, result };
 }
 
 function detectImageFormat(bytes, filename = '') {
@@ -5408,29 +5555,39 @@ function downloadQrImage() {
 }
 
 function handleQrParseFileChange(event) {
-    // Delegate to the shared file handler so both click and drop paths stay consistent.
-    const file = event.target.files?.[0];
-    if (file) {
-        handleQrParseSelectedFile(file);
+    const files = Array.from(event.target?.files || []);
+    if (files.length) {
+        handleQrParseSelectedFiles(files);
     }
 }
 
-function handleQrParseSelectedFile(file) {
-    if (!file || !isQrTool(state.currentTool)) return;
-    // Read the file as ArrayBuffer, then pass raw bytes to the wasm decoder.
-    const reader = new FileReader();
-    reader.onload = async () => {
-        const bytes = new Uint8Array(reader.result || new ArrayBuffer(0));
-        state.qrParse.bytes = bytes;
-        state.qrParse.fileName = file.name || 'uploaded';
-        await runQrParse();
-    };
-    reader.onerror = () => {
-        setStatus('Failed to read image', true);
-    };
-    reader.readAsArrayBuffer(file);
+function handleQrParseSelectedFiles(files) {
+    if (!files.length || !isQrTool(state.currentTool)) return;
+    // Read all files up-front so batch decoding stays deterministic.
+    Promise.all(
+        files.map(
+            (file) =>
+                new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        resolve({
+                            name: file.name || 'uploaded',
+                            bytes: new Uint8Array(reader.result || new ArrayBuffer(0)),
+                        });
+                    };
+                    reader.onerror = () => {
+                        resolve({ name: file.name || 'uploaded', bytes: new Uint8Array() });
+                    };
+                    reader.readAsArrayBuffer(file);
+                })
+        )
+    ).then((loaded) => {
+        state.qrParse.files = loaded;
+        runQrParse();
+    });
 }
 
+// Decodes every queued QR image via the batch wasm helper.
 async function runQrParse() {
     if (!isQrTool(state.currentTool) || state.currentTool !== 'generator-qr-parse') {
         return;
@@ -5439,17 +5596,25 @@ async function runQrParse() {
         setStatus('Waiting for WebAssembly...', true);
         return;
     }
-    if (!state.qrParse.bytes || !state.qrParse.bytes.length) {
+    if (!state.qrParse.files || !state.qrParse.files.length) {
         setStatus('Select an image to decode', true);
         return;
     }
     try {
-        setStatus('Decoding QR...', false);
-        const result = await parse_qr_codes(state.qrParse.bytes);
+        setStatus('Decoding QR batch...', false);
+        const payload = state.qrParse.files.map((file) => ({
+            fileName: file.name,
+            bytes: file.bytes,
+        }));
+        const result = await parse_qr_codes_batch(payload);
         const entries = Array.isArray(result) ? result : [];
         state.qrParse.results = entries;
         renderQrParseResults(entries);
-        setStatus(entries.length ? 'QR decoded' : 'No QR codes found', entries.length === 0);
+        const decodedCount = entries.filter((item) => item?.results?.length).length;
+        setStatus(
+            decodedCount ? `Decoded ${decodedCount} file(s)` : 'No QR codes found',
+            decodedCount === 0
+        );
     } catch (err) {
         console.error(err);
         setStatus(`⚠️ ${err?.message || err}`, true);
@@ -5457,27 +5622,49 @@ async function runQrParse() {
     }
 }
 
+// Renders batch QR payloads grouped by source file.
 function renderQrParseResults(results) {
     if (!elements.qrParseResults) return;
     if (!results || !results.length) {
         elements.qrParseResults.innerHTML =
-            '<div class="muted">Drop or choose an image to decode QR payloads.</div>';
+            '<div class="muted">Drop or choose images to decode QR payloads.</div>';
         return;
     }
     const html = results
         .map((entry, idx) => {
-            const payload = entry?.payload || '';
-            const version = entry?.version ? `v${entry.version}` : '';
-            const ecc = entry?.eccLevel || entry?.ecc_level || '';
-            const meta = [version, ecc].filter(Boolean).join(' · ');
-            return `<div class="qr-parse-card">
+            const name = escapeHTML(entry?.fileName || `File #${idx + 1}`);
+            const error = entry?.error || '';
+            const payloads = Array.isArray(entry?.results) ? entry.results : [];
+            const payloadHtml = payloads
+                .map((res, resIdx) => {
+                    const payload = res?.payload || '';
+                    const version = res?.version ? `v${res.version}` : '';
+                    const ecc = res?.eccLevel || res?.ecc_level || '';
+                    const meta = [version, ecc].filter(Boolean).join(' · ');
+                    return `<div class="qr-parse-card" data-file-index="${idx}" data-payload-index="${resIdx}">
   <header>
-    <span class="qr-parse-label">QR #${idx + 1}${meta ? ` — ${escapeHTML(meta)}` : ''}</span>
-    <button class="ghost-btn" data-copy-qrcode="${idx}" data-copy-value="${escapeAttr(
+    <span class="qr-parse-label">QR #${resIdx + 1}${meta ? ` — ${escapeHTML(meta)}` : ''}</span>
+    <button class="ghost-btn" data-copy-qrcode="${idx}-${resIdx}" data-copy-value="${escapeAttr(
         payload
     )}">📋 Copy</button>
   </header>
   <pre class="qr-parse-payload">${escapeHTML(payload || '(empty)')}</pre>
+</div>`;
+                })
+                .join('');
+            const body =
+                payloadHtml ||
+                `<div class="qr-parse-card"><pre class="qr-parse-payload">No QR codes detected</pre></div>`;
+            const errorBlock = error
+                ? `<div class="qr-parse-error">⚠️ ${escapeHTML(error)}</div>`
+                : '';
+            return `<div class="qr-parse-file">
+  <div class="qr-parse-file-head">
+    <div class="qr-parse-file-name">${name}</div>
+    <div class="qr-parse-file-meta">${payloads.length} QR code(s)</div>
+  </div>
+  ${errorBlock}
+  <div class="qr-parse-file-results">${body}</div>
 </div>`;
         })
         .join('');

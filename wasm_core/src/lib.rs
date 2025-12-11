@@ -791,13 +791,30 @@ fn encode_svg_qr(content: &str) -> Result<(String, String), String> {
     Ok((STANDARD.encode(svg_text.as_bytes()), "image/svg+xml".into()))
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct QrDecodeResult {
     payload: String,
     encoding: String,
     version: String,
     ecc_level: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+struct QrBatchRequest {
+    /// Original file name from the uploader so we can mirror it in responses.
+    file_name: Option<String>,
+    /// Raw bytes for the image that may contain one or more QR codes.
+    bytes: Vec<u8>,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct QrBatchResult {
+    file_name: String,
+    results: Vec<QrDecodeResult>,
+    error: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -808,6 +825,45 @@ pub fn parse_qr_codes(bytes: &[u8]) -> Result<JsValue, JsValue> {
     parse_qr_codes_internal(bytes)
         .and_then(|results| serde_wasm_bindgen::to_value(&results).map_err(|err| err.to_string()))
         .map_err(|err| JsValue::from_str(&err))
+}
+
+#[wasm_bindgen]
+/// Batch-friendly QR parser that keeps the existing single-image decoder but runs
+/// it per entry so one bad file does not block the rest of the queue.
+pub fn parse_qr_codes_batch(files: JsValue) -> Result<JsValue, JsValue> {
+    let inputs: Vec<QrBatchRequest> = serde_wasm_bindgen::from_value(files)
+        .map_err(|err| JsValue::from_str(&format!("invalid batch payload: {err}")))?;
+    let mut outputs: Vec<QrBatchResult> = Vec::with_capacity(inputs.len());
+    for entry in inputs {
+        let name = entry
+            .file_name
+            .as_deref()
+            .map(str::to_string)
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "image".to_string());
+        if entry.bytes.is_empty() {
+            outputs.push(QrBatchResult {
+                file_name: name,
+                results: Vec::new(),
+                error: Some("image is empty".into()),
+            });
+            continue;
+        }
+        match parse_qr_codes_internal(&entry.bytes) {
+            Ok(results) => outputs.push(QrBatchResult {
+                file_name: name,
+                results,
+                error: None,
+            }),
+            Err(err) => outputs.push(QrBatchResult {
+                file_name: name,
+                results: Vec::new(),
+                error: Some(err),
+            }),
+        }
+    }
+    serde_wasm_bindgen::to_value(&outputs)
+        .map_err(|err| JsValue::from_str(&format!("failed to serialize batch: {err}")))
 }
 
 fn parse_qr_codes_internal(bytes: &[u8]) -> Result<Vec<QrDecodeResult>, String> {
@@ -843,6 +899,25 @@ fn parse_qr_codes_internal(bytes: &[u8]) -> Result<Vec<QrDecodeResult>, String> 
 #[cfg(test)]
 pub(crate) fn parse_qr_codes_native(bytes: &[u8]) -> Result<Vec<QrDecodeResult>, String> {
     parse_qr_codes_internal(bytes)
+}
+
+#[cfg(test)]
+pub(crate) fn parse_qr_codes_batch_native(files: Vec<(String, Vec<u8>)>) -> Vec<QrBatchResult> {
+    files
+        .into_iter()
+        .map(|(file_name, bytes)| match parse_qr_codes_internal(&bytes) {
+            Ok(results) => QrBatchResult {
+                file_name,
+                results,
+                error: None,
+            },
+            Err(err) => QrBatchResult {
+                file_name,
+                results: Vec::new(),
+                error: Some(err),
+            },
+        })
+        .collect()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2755,6 +2830,16 @@ pub fn convert_image_format(
 ) -> Result<JsValue, JsValue> {
     let opts: images::ImageOptions = serde_wasm_bindgen::from_value(options).unwrap_or_default();
     images::convert_image_bytes(from, to, bytes, opts)
+        .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
+        .map_err(|err| JsValue::from_str(&err))
+}
+
+#[wasm_bindgen]
+/// Batch image conversion so the frontend can queue multiple uploads and reuse the same options.
+pub fn convert_image_format_batch(files: JsValue) -> Result<JsValue, JsValue> {
+    let inputs: Vec<images::ImageBatchInput> = serde_wasm_bindgen::from_value(files)
+        .map_err(|err| JsValue::from_str(&format!("invalid batch payload: {err}")))?;
+    images::convert_image_batch(inputs)
         .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
         .map_err(|err| JsValue::from_str(&err))
 }

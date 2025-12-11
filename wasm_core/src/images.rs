@@ -5,6 +5,7 @@
 //! target container supports it.
 
 use std::io::Cursor;
+use std::path::Path;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -81,6 +82,30 @@ pub struct ImageConversionResult {
     pub download_name: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageBatchInput {
+    /// Source format hint (file extension) used when magic bytes are ambiguous.
+    pub from: String,
+    /// Target format requested by the UI.
+    pub to: String,
+    /// Raw image bytes selected by the user.
+    pub bytes: Vec<u8>,
+    /// Original file name so we can preserve the stem in downloads.
+    pub file_name: Option<String>,
+    /// Optional per-format encoder options.
+    #[serde(default)]
+    pub options: ImageOptions,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageBatchResult {
+    pub file_name: String,
+    pub result: Option<ImageConversionResult>,
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Default, Deserialize, Clone, Copy)]
 pub struct ImageOptions {
     /// 1-100 quality where supported (JPEG/AVIF); defaults per format.
@@ -121,6 +146,63 @@ pub fn convert_image_bytes(
         data_url,
         download_name: format!("converted.{}", target.extension()),
     })
+}
+
+/// Runs the single-file converter for each entry while preserving names and isolating failures.
+pub fn convert_image_batch(entries: Vec<ImageBatchInput>) -> Result<Vec<ImageBatchResult>, String> {
+    let mut results = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let name = entry
+            .file_name
+            .as_deref()
+            .map(str::to_string)
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "converted".to_string());
+        if entry.bytes.is_empty() {
+            results.push(ImageBatchResult {
+                file_name: name,
+                result: None,
+                error: Some("input image is empty".into()),
+            });
+            continue;
+        }
+        match convert_image_bytes(&entry.from, &entry.to, &entry.bytes, entry.options) {
+            Ok(mut res) => {
+                res.download_name = derive_download_name(&name, &res.format);
+                results.push(ImageBatchResult {
+                    file_name: name,
+                    result: Some(res),
+                    error: None,
+                });
+            }
+            Err(err) => results.push(ImageBatchResult {
+                file_name: name,
+                result: None,
+                error: Some(err),
+            }),
+        }
+    }
+    Ok(results)
+}
+
+fn derive_download_name(original: &str, target_ext: &str) -> String {
+    let ext = if target_ext.is_empty() {
+        "img"
+    } else {
+        target_ext
+    };
+    let path = Path::new(original);
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("converted");
+    // Ignore directory segments to keep downloads tidy inside the browser.
+    let safe_stem: String = stem
+        .chars()
+        .map(|ch| if ch == '/' || ch == '\\' { '_' } else { ch })
+        .collect();
+    format!("{safe_stem}.{ext}")
 }
 
 fn decode_image(bytes: &[u8], fallback: PictureFormat) -> Result<DynamicImage, String> {
@@ -424,5 +506,57 @@ mod tests {
             err_lower.contains("avif"),
             "unexpected avif decode error message: {err}"
         );
+    }
+
+    #[test]
+    fn convert_image_batch_preserves_names_and_results() {
+        let png_bytes = encode_sample_as(PictureFormat::Png);
+        let jpg_bytes = encode_sample_as(PictureFormat::Jpeg);
+        let batch = vec![
+            ImageBatchInput {
+                from: "png".into(),
+                to: "webp".into(),
+                bytes: png_bytes.clone(),
+                file_name: Some("first.png".into()),
+                options: ImageOptions::default(),
+            },
+            ImageBatchInput {
+                from: "jpg".into(),
+                to: "avif".into(),
+                bytes: jpg_bytes.clone(),
+                file_name: Some("second photo.jpg".into()),
+                options: ImageOptions::default(),
+            },
+        ];
+        let results = convert_image_batch(batch).expect("batch convert");
+        assert_eq!(results.len(), 2);
+        let first = results.get(0).expect("first result");
+        let second = results.get(1).expect("second result");
+        assert_eq!(first.file_name, "first.png");
+        assert!(first.error.is_none(), "unexpected error: {:?}", first.error);
+        let first_res = first.result.as_ref().expect("first payload");
+        assert_eq!(first_res.format, "webp");
+        assert_eq!(first_res.download_name, "first.webp");
+        assert_eq!(second.file_name, "second photo.jpg");
+        let second_res = second.result.as_ref().expect("second payload");
+        assert_eq!(second_res.format, "avif");
+        assert_eq!(second_res.download_name, "second photo.avif");
+    }
+
+    #[test]
+    fn convert_image_batch_handles_empty_inputs() {
+        let batch = vec![ImageBatchInput {
+            from: "png".into(),
+            to: "jpg".into(),
+            bytes: Vec::new(),
+            file_name: Some("blank.png".into()),
+            options: ImageOptions::default(),
+        }];
+        let results = convert_image_batch(batch).expect("batch convert");
+        assert_eq!(results.len(), 1);
+        let res = &results[0];
+        assert_eq!(res.file_name, "blank.png");
+        assert!(res.result.is_none());
+        assert_eq!(res.error.as_deref(), Some("input image is empty"));
     }
 }

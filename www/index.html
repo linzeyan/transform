@@ -179,6 +179,7 @@
                                     type="file"
                                     id="imageFile"
                                     class="hidden"
+                                    multiple
                                     accept=".png,.jpg,.jpeg,.webp,.avif,image/*"
                                 />
                             </div>
@@ -210,6 +211,17 @@
                                     <div class="muted">Run a conversion to see the result</div>
                                 </div>
                                 <div class="image-meta" id="imageOutputMeta"></div>
+                            </div>
+                        </div>
+                        <div class="image-batch">
+                            <div class="image-progress" id="imageProgress">
+                                <div class="progress-bar">
+                                    <div class="progress-bar-fill" id="imageProgressFill"></div>
+                                </div>
+                                <div class="progress-label" id="imageProgressLabel">0 / 0</div>
+                            </div>
+                            <div class="image-batch-list" id="imageBatchList">
+                                <div class="muted">Select images to build a conversion queue.</div>
                             </div>
                         </div>
                         <div class="image-footer">
@@ -1806,16 +1818,17 @@
                         </div>
                         <div class="qr-parse-grid">
                             <div id="qrParseDrop" class="qr-parse-drop">
-                                <p>Drag & drop an image here, or choose a file</p>
+                                <p>Drag & drop images here, or choose files</p>
                                 <input
                                     type="file"
                                     id="qrParseFile"
+                                    multiple
                                     accept="image/png,image/jpeg,image/webp,image/avif"
                                 />
                                 <button class="ghost-btn">Browse</button>
                             </div>
                             <div id="qrParseResults" class="qr-parse-results">
-                                <div class="muted">Drop an image to see decoded payloads.</div>
+                                <div class="muted">Drop images to see decoded payloads.</div>
                             </div>
                         </div>
                     </section>
