@@ -530,7 +530,7 @@ mod tests {
         ];
         let results = convert_image_batch(batch).expect("batch convert");
         assert_eq!(results.len(), 2);
-        let first = results.get(0).expect("first result");
+        let first = results.first().expect("first result");
         let second = results.get(1).expect("second result");
         assert_eq!(first.file_name, "first.png");
         assert!(first.error.is_none(), "unexpected error: {:?}", first.error);

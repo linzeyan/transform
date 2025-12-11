@@ -538,7 +538,7 @@ fn generate_ssh_key_internal(
     })
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct QrRequest {
     otp_account: Option<String>,
@@ -551,9 +551,10 @@ struct QrRequest {
     wifi_pass: Option<String>,
     wifi_ssid: Option<String>,
     custom_string: Option<String>,
+    qr_ecc: Option<String>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct QrResponse {
     kind: String,
@@ -612,13 +613,14 @@ fn generate_qr_code_internal(
 ) -> Result<QrResponse, String> {
     let qr_kind = parse_qr_kind(kind)?;
     let content = build_qr_payload(qr_kind, &payload)?;
+    let ecc_level = parse_qr_ecc_level(payload.qr_ecc.as_deref());
     let fmt = format.trim().to_ascii_lowercase();
 
     let (data_base64, mime) = match fmt.as_str() {
-        "png" => encode_bitmap_qr(&content, ImageFormat::Png)?,
-        "jpg" | "jpeg" => encode_bitmap_qr(&content, ImageFormat::Jpeg)?,
-        "webp" => encode_bitmap_qr(&content, ImageFormat::WebP)?,
-        "svg" => encode_svg_qr(&content)?,
+        "png" => encode_bitmap_qr(&content, ImageFormat::Png, ecc_level)?,
+        "jpg" | "jpeg" => encode_bitmap_qr(&content, ImageFormat::Jpeg, ecc_level)?,
+        "webp" => encode_bitmap_qr(&content, ImageFormat::WebP, ecc_level)?,
+        "svg" => encode_svg_qr(&content, ecc_level)?,
         _ => return Err("format must be png, jpg, svg, or webp".into()),
     };
 
@@ -751,13 +753,22 @@ fn escape_wifi_field(value: &str) -> String {
     escaped
 }
 
-fn render_qr_code_matrix(content: &str) -> Result<QrCode, String> {
-    QrCode::with_error_correction_level(content.as_bytes(), EcLevel::Q)
+fn parse_qr_ecc_level(raw: Option<&str>) -> EcLevel {
+    match raw.unwrap_or("Q").trim().to_ascii_uppercase().as_str() {
+        "L" => EcLevel::L,
+        "M" => EcLevel::M,
+        "H" => EcLevel::H,
+        _ => EcLevel::Q, // Default and fallback
+    }
+}
+
+fn render_qr_code_matrix(content: &str, ecc: EcLevel) -> Result<QrCode, String> {
+    QrCode::with_error_correction_level(content.as_bytes(), ecc)
         .map_err(|err| format!("invalid QR content: {err}"))
 }
 
-fn render_qr_image(content: &str) -> Result<ImageBuffer<Luma<u8>, Vec<u8>>, String> {
-    let code = render_qr_code_matrix(content)?;
+fn render_qr_image(content: &str, ecc: EcLevel) -> Result<ImageBuffer<Luma<u8>, Vec<u8>>, String> {
+    let code = render_qr_code_matrix(content, ecc)?;
     Ok(code
         .render::<Luma<u8>>()
         .min_dimensions(QR_CODE_SIZE, QR_CODE_SIZE)
@@ -765,8 +776,12 @@ fn render_qr_image(content: &str) -> Result<ImageBuffer<Luma<u8>, Vec<u8>>, Stri
         .build())
 }
 
-fn encode_bitmap_qr(content: &str, format: ImageFormat) -> Result<(String, String), String> {
-    let image = render_qr_image(content)?;
+fn encode_bitmap_qr(
+    content: &str,
+    format: ImageFormat,
+    ecc: EcLevel,
+) -> Result<(String, String), String> {
+    let image = render_qr_image(content, ecc)?;
     let mut buffer = Vec::new();
     let mut cursor = Cursor::new(&mut buffer);
     DynamicImage::ImageLuma8(image)
@@ -781,8 +796,8 @@ fn encode_bitmap_qr(content: &str, format: ImageFormat) -> Result<(String, Strin
     Ok((STANDARD.encode(buffer), mime.into()))
 }
 
-fn encode_svg_qr(content: &str) -> Result<(String, String), String> {
-    let code = render_qr_code_matrix(content)?;
+fn encode_svg_qr(content: &str, ecc: EcLevel) -> Result<(String, String), String> {
+    let code = render_qr_code_matrix(content, ecc)?;
     let svg_text = code
         .render::<svg::Color>()
         .min_dimensions(QR_CODE_SIZE, QR_CODE_SIZE)

@@ -259,6 +259,38 @@ fn parse_qr_codes_batch_processes_multiple_images() {
 }
 
 #[test]
+fn generate_qr_code_accepts_custom_ecc_level() {
+    let req = QrRequest {
+        otp_account: None,
+        otp_secret: None,
+        otp_issuer: None,
+        otp_algorithm: None,
+        otp_period: None,
+        otp_digits: None,
+        wifi_type: None,
+        wifi_pass: None,
+        wifi_ssid: None,
+        custom_string: Some("hello-ecc".into()),
+        qr_ecc: Some("L".into()),
+    };
+
+    let res = generate_qr_code_internal("custom", "png", req).expect("generate qr");
+    assert_eq!(res.kind, "custom");
+    // Decode and ensure ECC level is Low (L).
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(res.data_base64.as_bytes())
+        .expect("decode png");
+    let entries = parse_qr_codes_native(&bytes).expect("decode");
+    assert_eq!(entries[0].payload, "hello-ecc");
+    let ecc_lower = entries[0].ecc_level.to_lowercase();
+    assert!(
+        ecc_lower.contains('l') || ecc_lower.contains("low") || ecc_lower == "1",
+        "expected ECC level Low, got {}",
+        entries[0].ecc_level
+    );
+}
+
+#[test]
 fn convert_timestamp_internal_from_sql_datetime() {
     let map = convert_timestamp_internal("sql_datetime", "2025-01-02 03:04:05").unwrap();
     let expected_dt = Utc

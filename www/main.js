@@ -838,6 +838,7 @@ const state = {
     qr: {
         mode: 'otp',
         format: 'png',
+        ecc: 'Q',
         otpAccount: '',
         otpSecret: '',
         otpIssuer: '',
@@ -1089,6 +1090,7 @@ function cacheElements() {
     elements.qrParseFile = document.getElementById('qrParseFile');
     elements.qrParseDrop = document.getElementById('qrParseDrop');
     elements.qrParseResults = document.getElementById('qrParseResults');
+    elements.qrEccLevel = document.getElementById('qrEccLevel');
     elements.coderWorkspace = document.getElementById('coderWorkspace');
     elements.coderInput = document.getElementById('coderInput');
     elements.coderResults = document.getElementById('coderResults');
@@ -1441,6 +1443,7 @@ function bindUI() {
         elements.qrParseFile?.click();
     });
     elements.qrParseResults?.addEventListener('click', handleQrParseResultsClick);
+    elements.qrEccLevel?.addEventListener('change', handleQrFieldChange);
     window.addEventListener('hashchange', () => syncToolFromHash(false));
     elements.coderInput?.addEventListener('input', () => scheduleCoder());
     elements.coderModeText?.addEventListener('change', () => setCoderInputMode('text'));
@@ -5399,6 +5402,7 @@ function activateQrTool() {
     if (elements.qrWifiPass) elements.qrWifiPass.value = state.qr.wifiPass || '';
     if (elements.qrCustomString) elements.qrCustomString.value = state.qr.customString || '';
     if (elements.qrFormat) elements.qrFormat.value = state.qr.format || 'png';
+    if (elements.qrEccLevel) elements.qrEccLevel.value = state.qr.ecc || 'Q';
     updateQrModeVisibility();
     if (state.qr.lastResult) {
         renderQrResult(state.qr.lastResult);
@@ -5454,6 +5458,9 @@ function handleQrFieldChange(event) {
         case 'qrCustomString':
             state.qr.customString = value;
             break;
+        case 'qrEccLevel':
+            state.qr.ecc = value || 'Q';
+            break;
         default:
             break;
     }
@@ -5479,6 +5486,7 @@ function buildQrPayload() {
     }
     return {
         customString: elements.qrCustomString?.value || state.qr.customString || '',
+        qrEcc: elements.qrEccLevel?.value || state.qr.ecc || 'Q',
     };
 }
 
@@ -5537,6 +5545,7 @@ function renderQrResult(result) {
     const meta = [];
     if (result.kind) meta.push(`Kind: ${result.kind.toUpperCase()}`);
     if (result.format) meta.push(`Format: ${result.format.toUpperCase()}`);
+    if (state.qr.ecc) meta.push(`ECC: ${state.qr.ecc}`);
     meta.push(`Size: ${size} × ${height}`);
     elements.qrPreview.innerHTML = `
         <div class="qr-image-frame">

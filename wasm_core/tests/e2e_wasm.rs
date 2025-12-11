@@ -213,6 +213,20 @@ fn qr_parse_allows_multiple_files_and_batch_results() {
 }
 
 #[wasm_bindgen_test]
+fn qr_generator_exposes_ecc_selector() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    assert!(
+        INDEX_HTML.contains("id=\"qrEccLevel\""),
+        "QR generator should expose ECC level selector"
+    );
+    assert!(
+        INDEX_HTML.contains("Q (25%)"),
+        "ECC selector should default to Q label"
+    );
+}
+
+#[wasm_bindgen_test]
 fn ssl_inspector_workspace_is_wired() {
     const INDEX_HTML: &str =
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
