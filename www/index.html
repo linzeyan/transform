@@ -578,7 +578,7 @@
                                 </div>
                             </div>
                             <div class="panel-body">
-                                <input type="file" id="cryptoFile" class="hidden" />
+                                <input type="file" id="cryptoFile" class="hidden" multiple />
                                 <div id="cryptoFileMeta" class="file-meta hidden">
                                     No file selected
                                 </div>
@@ -592,6 +592,14 @@
                                 <div class="action-row">
                                     <button id="cryptoEncrypt" type="button" class="primary-btn">
                                         Encrypt 🔒
+                                    </button>
+                                    <button
+                                        id="cryptoDownload"
+                                        type="button"
+                                        class="ghost-btn"
+                                        disabled
+                                    >
+                                        Download
                                     </button>
                                 </div>
 

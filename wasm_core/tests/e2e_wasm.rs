@@ -751,6 +751,19 @@ fn encrypt_bytes_roundtrip_in_browser() {
 }
 
 #[wasm_bindgen_test]
+fn encrypt_decrypt_binary_roundtrip() {
+    let data = vec![0u8, 255u8, 1u8, 2u8, 127u8];
+    let encrypted = js_to_json(
+        encrypt_bytes("aes-256-gcm", &data, None, None).expect("encrypt binary payload"),
+    );
+    let cipher = field(&encrypted, "ciphertextB64");
+    let key = field(&encrypted, "keyB64");
+    let nonce = field(&encrypted, "nonceB64");
+    let decrypted = decrypt_bytes("aes-256-gcm", cipher, key, nonce).expect("decrypt binary");
+    assert_eq!(decrypted, data);
+}
+
+#[wasm_bindgen_test]
 fn url_encode_and_decode_roundtrip() {
     let encoded = url_encode("a b+c");
     assert_eq!(encoded, "a+b%2Bc");

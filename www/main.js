@@ -883,6 +883,8 @@ const state = {
         fileBytes: null,
         fileName: '',
         fileSize: 0,
+        files: [],
+        results: [],
     },
 };
 
@@ -1215,6 +1217,7 @@ function cacheElements() {
     elements.cryptoModeFile = document.getElementById('cryptoModeFile');
     elements.cryptoFile = document.getElementById('cryptoFile');
     elements.cryptoFileMeta = document.getElementById('cryptoFileMeta');
+    elements.cryptoDownload = document.getElementById('cryptoDownload');
     elements.appShell = document.querySelector('.app-shell');
     elements.fingerprintGrid = document.getElementById('fingerprintGrid');
     elements.fingerprintSummary = document.getElementById('fingerprintSummary');
@@ -1535,6 +1538,7 @@ function bindUI() {
     elements.cryptoEncrypt?.addEventListener('click', handleCryptoEncrypt);
     elements.cryptoDecrypt?.addEventListener('click', handleCryptoDecrypt);
     elements.cryptoCopyCiphertext?.addEventListener('click', copyCryptoCiphertext);
+    elements.cryptoDownload?.addEventListener('click', handleCryptoDownload);
     elements.cryptoModeText?.addEventListener('change', () => setCryptoInputMode('text'));
     elements.cryptoModeFile?.addEventListener('change', () => setCryptoInputMode('file'));
     elements.cryptoFile?.addEventListener('change', handleCryptoFileChange);
@@ -6594,28 +6598,54 @@ function setCryptoInputMode(mode) {
         state.crypto.fileBytes = null;
         state.crypto.fileName = '';
         state.crypto.fileSize = 0;
+        state.crypto.files = [];
+        state.crypto.results = [];
+        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
     }
     renderCryptoFileMeta();
 }
 
 async function handleCryptoFileChange(event) {
-    const file = event?.target?.files?.[0];
-    if (!file) {
+    const files = Array.from(event?.target?.files || []);
+    if (!files.length) {
         state.crypto.fileBytes = null;
         state.crypto.fileName = '';
         state.crypto.fileSize = 0;
+        state.crypto.files = [];
+        state.crypto.results = [];
         renderCryptoFileMeta();
+        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
         return;
     }
     try {
-        const buffer = await file.arrayBuffer();
-        state.crypto.fileBytes = new Uint8Array(buffer);
-        state.crypto.fileName = file.name;
-        state.crypto.fileSize = file.size;
+        setStatus(`Loading ${files.length} file(s)...`, false);
+        const buffers = await Promise.all(files.map((file) => file.arrayBuffer()));
+        state.crypto.files = files.map((file, idx) => ({
+            name: file.name,
+            bytes: new Uint8Array(buffers[idx]),
+            size: file.size,
+        }));
+        // Keep backward compatibility for single file mode
+        if (files.length === 1) {
+            state.crypto.fileBytes = state.crypto.files[0].bytes;
+            state.crypto.fileName = state.crypto.files[0].name;
+            state.crypto.fileSize = state.crypto.files[0].size;
+        } else {
+            state.crypto.fileBytes = null;
+            state.crypto.fileName = '';
+            state.crypto.fileSize = 0;
+        }
+        state.crypto.results = [];
         renderCryptoFileMeta();
+        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
+        setStatus(`${files.length} file(s) loaded`, false);
     } catch (err) {
         console.error(err);
-        setStatus(`⚠️ Failed to read file: ${err?.message || err}`, true);
+        state.crypto.files = [];
+        state.crypto.results = [];
+        setStatus(`⚠️ Failed to read files: ${err?.message || err}`, true);
+        renderCryptoFileMeta();
+        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
     }
 }
 
@@ -6627,12 +6657,15 @@ function renderCryptoFileMeta() {
         return;
     }
     elements.cryptoFileMeta.classList.remove('hidden');
-    if (state.crypto.fileBytes?.length) {
-        const size = state.crypto.fileBytes.length;
-        const name = state.crypto.fileName || 'selected file';
-        elements.cryptoFileMeta.textContent = `${name} (${size} bytes)`;
-    } else {
+    const files = state.crypto.files || [];
+    if (files.length === 0) {
         elements.cryptoFileMeta.textContent = 'No file selected';
+    } else if (files.length === 1) {
+        const file = files[0];
+        elements.cryptoFileMeta.textContent = `${file.name} (${file.size} bytes)`;
+    } else {
+        const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+        elements.cryptoFileMeta.textContent = `${files.length} files selected (${totalSize} bytes total)`;
     }
 }
 
@@ -6645,17 +6678,86 @@ function handleCryptoEncrypt() {
     state.crypto.algorithm = algo;
     const key = elements.cryptoKey?.value?.trim();
     const nonce = elements.cryptoNonce?.value?.trim();
-    let payload = new Uint8Array();
+
     if (state.crypto.inputMode === 'file') {
+        const files = state.crypto.files || [];
+        if (!files.length) {
+            setStatus('Select file(s) to encrypt', true);
+            return;
+        }
+
+        // Batch encryption
+        if (files.length > 1) {
+            try {
+                setStatus(`Encrypting ${files.length} file(s)...`, false);
+                state.crypto.results = [];
+                let sharedKey = key;
+                let sharedNonce = nonce;
+
+                files.forEach((file, idx) => {
+                    setStatus(`Encrypting ${file.name} (${idx + 1}/${files.length})...`, false);
+                    const result = encrypt_bytes(
+                        algo,
+                        file.bytes,
+                        sharedKey || undefined,
+                        sharedNonce || undefined
+                    );
+
+                    // Use the same key/nonce for all files if not provided
+                    if (!sharedKey && result.keyB64) {
+                        sharedKey = result.keyB64;
+                        if (elements.cryptoKey) elements.cryptoKey.value = sharedKey;
+                    }
+                    if (!sharedNonce && result.nonceB64) {
+                        sharedNonce = result.nonceB64;
+                        if (elements.cryptoNonce) elements.cryptoNonce.value = sharedNonce;
+                    }
+
+                    // Decode ciphertext to bytes for download
+                    const cipherB64 = result.ciphertextB64 || '';
+                    const binaryString = atob(cipherB64);
+                    const cipherBytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        cipherBytes[i] = binaryString.charCodeAt(i);
+                    }
+                    state.crypto.results.push({
+                        name: file.name + '.encrypted',
+                        blob: new Blob([cipherBytes], { type: 'application/octet-stream' }),
+                        ciphertextB64: cipherB64,
+                    });
+                });
+
+                // For batch mode, show first result in textarea or summary
+                if (elements.cryptoCiphertext && state.crypto.results.length > 0) {
+                    elements.cryptoCiphertext.value = `${state.crypto.results.length} file(s) encrypted. Use Download button to save.`;
+                }
+                if (elements.cryptoDownload) elements.cryptoDownload.disabled = false;
+                setStatus(`${files.length} file(s) encrypted successfully`, false);
+            } catch (err) {
+                console.error(err);
+                state.crypto.results = [];
+                setStatus(`⚠️ ${err?.message || err}`, true);
+                if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
+            }
+            return;
+        }
+
+        // Single file mode (backward compatibility)
         if (!state.crypto.fileBytes?.length) {
             setStatus('Select a file to encrypt', true);
             return;
         }
+    }
+
+    // Text mode or single file mode
+    let payload = new Uint8Array();
+    if (state.crypto.inputMode === 'file') {
         payload = state.crypto.fileBytes;
     } else {
         const text = elements.cryptoPlaintext?.value || '';
         payload = utf8ToBytes(text);
     }
+
     try {
         const result = encrypt_bytes(algo, payload, key || undefined, nonce || undefined);
         const cipher = result.ciphertextB64 || '';
@@ -6668,10 +6770,30 @@ function handleCryptoEncrypt() {
         if (elements.cryptoNonce && result.nonceB64) {
             elements.cryptoNonce.value = result.nonceB64;
         }
+
+        // Store result for single file download
+        if (state.crypto.inputMode === 'file' && state.crypto.fileName) {
+            const binaryString = atob(cipher);
+            const cipherBytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                cipherBytes[i] = binaryString.charCodeAt(i);
+            }
+            state.crypto.results = [
+                {
+                    name: state.crypto.fileName + '.encrypted',
+                    blob: new Blob([cipherBytes], { type: 'application/octet-stream' }),
+                    ciphertextB64: cipher,
+                },
+            ];
+            if (elements.cryptoDownload) elements.cryptoDownload.disabled = false;
+        }
+
         setStatus('Encrypted', false);
     } catch (err) {
         console.error(err);
         setStatus(`⚠️ ${err?.message || err}`, true);
+        state.crypto.results = [];
+        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
     }
 }
 
@@ -6681,15 +6803,62 @@ function handleCryptoDecrypt() {
         return;
     }
     const algo = elements.cryptoAlgorithm?.value || 'aes-256-gcm';
-    const cipher = elements.cryptoDecryptInput?.value?.trim();
     const key = elements.cryptoKey?.value?.trim();
     const nonce = elements.cryptoNonce?.value?.trim();
-    if (!cipher) {
-        setStatus('Paste ciphertext to decrypt', true);
-        return;
-    }
+    const isFileMode = state.crypto.inputMode === 'file';
+
     if (!key || !nonce) {
         setStatus('Key and nonce are required to decrypt', true);
+        return;
+    }
+
+    if (isFileMode) {
+        const files = state.crypto.files || [];
+        if (!files.length) {
+            setStatus('Select encrypted file(s) to decrypt', true);
+            return;
+        }
+        try {
+            state.crypto.results = [];
+            files.forEach((file, idx) => {
+                setStatus(`Decrypting ${file.name} (${idx + 1}/${files.length})...`, false);
+                const cipherB64 = bytesToBase64(file.bytes);
+                const plainBytes = decrypt_bytes(algo, cipherB64, key, nonce);
+                const decoded = bytesToUtf8Strict(plainBytes);
+                const name = deriveDecryptedName(file.name);
+                state.crypto.results.push({
+                    name,
+                    blob: new Blob([plainBytes], { type: 'application/octet-stream' }),
+                    plaintext: decoded,
+                    bytes: plainBytes,
+                });
+            });
+            if (elements.cryptoDecryptOutput) {
+                if (state.crypto.results.length === 1) {
+                    const first = state.crypto.results[0];
+                    const text = first.plaintext;
+                    const bytes = first.bytes || new Uint8Array();
+                    elements.cryptoDecryptOutput.value =
+                        text !== null ? text : toBase64(bytes, false);
+                } else {
+                    elements.cryptoDecryptOutput.value = `${state.crypto.results.length} file(s) decrypted. Use Download.`;
+                }
+            }
+            if (elements.cryptoDownload) elements.cryptoDownload.disabled = false;
+            setStatus(`${files.length} file(s) decrypted`, false);
+        } catch (err) {
+            console.error(err);
+            state.crypto.results = [];
+            if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
+            setStatus(`⚠️ ${err?.message || err}`, true);
+        }
+        return;
+    }
+
+    // Text mode
+    const cipher = elements.cryptoDecryptInput?.value?.trim();
+    if (!cipher) {
+        setStatus('Paste ciphertext to decrypt', true);
         return;
     }
     try {
@@ -6699,12 +6868,23 @@ function handleCryptoDecrypt() {
             elements.cryptoDecryptOutput.value =
                 decoded !== null ? decoded : toBase64(bytes, false);
         }
+        state.crypto.results = [];
         const okMsg = decoded !== null ? 'Decrypted' : 'Decrypted (displayed as Base64)';
         setStatus(okMsg, false);
     } catch (err) {
         console.error(err);
         setStatus(`⚠️ ${err?.message || err}`, true);
     }
+}
+
+function deriveDecryptedName(original = '') {
+    if (original.toLowerCase().endsWith('.encrypted')) {
+        return original.slice(0, -10) || 'decrypted';
+    }
+    if (original.toLowerCase().endsWith('.enc')) {
+        return original.slice(0, -4) || 'decrypted';
+    }
+    return `${original || 'decrypted'}.decrypted`;
 }
 
 function copyCryptoCiphertext() {
@@ -6715,6 +6895,43 @@ function copyCryptoCiphertext() {
     }
     copyText(value, 'ciphertext');
     setStatus('Copied', false);
+}
+
+function handleCryptoDownload() {
+    const results = state.crypto.results || [];
+    if (!results.length) {
+        setStatus('No files to download', true);
+        return;
+    }
+
+    if (results.length === 1) {
+        const single = results[0];
+        const url = URL.createObjectURL(single.blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = single.name || 'encrypted';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+        setStatus('Downloaded', false);
+        return;
+    }
+
+    // Batch download
+    results.forEach((result, idx) => {
+        setTimeout(() => {
+            const url = URL.createObjectURL(result.blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = result.name || `encrypted-${idx + 1}`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 0);
+        }, idx * 100);
+    });
+    setStatus(`${results.length} file(s) downloaded`, false);
 }
 
 function getInputValue(el) {
