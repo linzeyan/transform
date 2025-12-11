@@ -5,6 +5,9 @@ use base64::engine::general_purpose::STANDARD as B64_STD; // Base64 encoder used
 use bcrypt::BASE_64;
 use chrono::{TimeZone, Timelike, Utc};
 use data_encoding::{BASE32, BASE32HEX};
+use image::{DynamicImage, ImageFormat, Luma};
+use qrcode::{EcLevel, QrCode};
+use std::collections::BTreeMap;
 
 fn assert_has_category(input: &str, predicate: impl Fn(char) -> bool, label: &str) {
     assert!(input.chars().any(predicate), "expected {label} in {input}");
@@ -162,15 +165,63 @@ fn parse_enum_values_handles_escaped_quotes() {
 }
 
 #[test]
-fn generate_insert_statements_internal_builds_rows() {
+fn generate_insert_statements_builds_rows_for_mysql() {
     let schema = "CREATE TABLE users (
   id INT PRIMARY KEY,
   name VARCHAR(10)
 );";
-    let output = generate_insert_statements_internal(schema, 2, BTreeMap::new()).unwrap();
+    let output = generate_insert_statements_native(schema, 2, BTreeMap::new()).unwrap();
     assert!(output.contains("INSERT INTO `users`"));
     assert!(output.contains("`id`"));
     assert!(output.contains("`name`"));
+}
+
+#[test]
+fn generate_insert_statements_supports_json_object_output_as_array() {
+    let schema = r#"{"id":1,"name":"alice"}"#;
+    let output = generate_insert_statements_native(schema, 2, BTreeMap::new()).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&output).expect("json output");
+    let arr = parsed.as_array().expect("array rows");
+    assert_eq!(arr.len(), 2);
+    assert!(arr[0].get("id").is_some());
+    assert!(arr[0].get("name").is_some());
+}
+
+#[test]
+fn generate_insert_statements_supports_json_schema_output() {
+    let schema = r#"{
+  "type": "object",
+    "properties": {
+        "age": { "type": "integer" },
+        "name": { "type": "string" }
+  }
+}"#;
+    let output = generate_insert_statements_native(schema, 1, BTreeMap::new()).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&output).expect("json output");
+    let arr = parsed.as_array().expect("array rows");
+    assert_eq!(arr.len(), 1);
+    let row = &arr[0];
+    assert!(row.get("age").is_some());
+    assert!(row.get("name").is_some());
+}
+
+#[test]
+fn parse_qr_codes_decodes_png_payload() {
+    let code =
+        QrCode::with_error_correction_level("hello".as_bytes(), EcLevel::M).expect("qr build");
+    let image = code
+        .render::<Luma<u8>>()
+        .min_dimensions(250, 250)
+        .max_dimensions(250, 250)
+        .build();
+    let mut buf = Vec::new();
+    let mut cursor = std::io::Cursor::new(&mut buf);
+    DynamicImage::ImageLuma8(image)
+        .write_to(&mut cursor, ImageFormat::Png)
+        .expect("encode png");
+    let entries = parse_qr_codes_native(&buf).expect("decode");
+    assert!(!entries.is_empty(), "expected at least one QR result");
+    assert_eq!(entries[0].payload, "hello");
 }
 
 #[test]

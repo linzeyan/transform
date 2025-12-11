@@ -1795,6 +1795,32 @@
                     </section>
                 </div>
 
+                <!-- QR Parse workspace: upload images to decode embedded QR payloads. -->
+                <div id="qrParseWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>QR Parse</h2>
+                                <p>Upload PNG/JPG/WebP/AVIF to extract all QR payloads.</p>
+                            </div>
+                        </div>
+                        <div class="qr-parse-grid">
+                            <div id="qrParseDrop" class="qr-parse-drop">
+                                <p>Drag & drop an image here, or choose a file</p>
+                                <input
+                                    type="file"
+                                    id="qrParseFile"
+                                    accept="image/png,image/jpeg,image/webp,image/avif"
+                                />
+                                <button class="ghost-btn">Browse</button>
+                            </div>
+                            <div id="qrParseResults" class="qr-parse-results">
+                                <div class="muted">Drop an image to see decoded payloads.</div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
                 <!-- TOTP workspace: computes RFC 6238 codes based on user-selected algorithm/period/digits. -->
                 <div id="totpWorkspace" class="tool-view hidden">
                     <section class="panel">
@@ -1847,7 +1873,9 @@
                         <div class="panel-header">
                             <div>
                                 <h2>SQL Inserts</h2>
-                                <p>Paste a MySQL schema to generate sample INSERT statements</p>
+                                <p>
+                                    Paste MySQL DDL or JSON / JSON Schema to generate sample data.
+                                </p>
                             </div>
                             <div class="generator-actions data-actions">
                                 <label>
@@ -1875,8 +1903,8 @@
                     <section class="panel">
                         <div class="panel-header">
                             <div>
-                                <h2>INSERT Statements</h2>
-                                <p>Results update when you generate</p>
+                                <h2>Generated Data</h2>
+                                <p>Outputs INSERT SQL for DDL, JSON array for JSON inputs.</p>
                             </div>
                             <div class="panel-actions">
                                 <button id="dataCopy" class="copy-btn" title="Copy data">

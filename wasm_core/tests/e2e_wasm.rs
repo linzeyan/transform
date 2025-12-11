@@ -154,6 +154,24 @@ fn qr_workspace_includes_core_controls() {
 }
 
 #[wasm_bindgen_test]
+fn qr_parse_workspace_exists() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    assert!(
+        INDEX_HTML.contains("id=\"qrParseWorkspace\""),
+        "QR Parse workspace should exist"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"qrParseFile\""),
+        "QR Parse file input should exist"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"qrParseResults\""),
+        "QR Parse results container should exist"
+    );
+}
+
+#[wasm_bindgen_test]
 fn ssl_inspector_workspace_is_wired() {
     const INDEX_HTML: &str =
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));

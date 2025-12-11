@@ -88,6 +88,67 @@
     background: rgb(255 255 255 / 3%);
 }
 
+/* QR Parse workspace */
+.qr-parse-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.qr-parse-drop {
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    text-align: center;
+    background: rgb(255 255 255 / 3%);
+    cursor: pointer;
+}
+
+.qr-parse-drop.dragging {
+    border-color: var(--accent);
+    background: rgb(255 255 255 / 6%);
+}
+
+.qr-parse-drop p {
+    margin: 0 0 10px;
+    color: var(--muted);
+}
+
+.qr-parse-drop input[type='file'] {
+    display: none;
+}
+
+.qr-parse-results {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.qr-parse-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    background: rgb(255 255 255 / 4%);
+}
+
+.qr-parse-card header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.qr-parse-payload {
+    margin: 0;
+    white-space: pre-wrap;
+
+    /* Prefer overflow-wrap to avoid deprecated break-word keyword. */
+    overflow-wrap: break-word;
+    font-family: var(--mono);
+    font-size: 13px;
+}
+
 .random-charset-header {
     margin-bottom: 12px;
     padding-bottom: 10px;

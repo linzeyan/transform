@@ -73,6 +73,7 @@ import initWasm, {
     encrypt_bytes,
     decrypt_bytes,
     generate_unified_text_diff,
+    parse_qr_codes,
 } from './pkg/wasm_core.js';
 
 // Import modular components
@@ -606,6 +607,11 @@ const toolGroups = [
                 description: 'Generate QR codes for OTP, WiFi, or custom text.',
             },
             {
+                id: 'generator-qr-parse',
+                label: 'QR Parse',
+                description: 'Upload an image to decode embedded QR codes.',
+            },
+            {
                 id: 'generator-totp',
                 label: 'TOTP',
                 description: 'Time-based one-time passwords.',
@@ -655,6 +661,7 @@ const workspaceByTool = {
     'generator-useragent': 'userAgentWorkspace',
     'generator-random': 'randomWorkspace',
     'generator-qr': 'qrWorkspace',
+    'generator-qr-parse': 'qrParseWorkspace',
     'generator-totp': 'totpWorkspace',
     'generator-sql': 'dataWorkspace',
     'generator-ssh': 'sshWorkspace',
@@ -675,6 +682,7 @@ const generatorTools = new Set([
     'generator-useragent',
     'generator-random',
     'generator-qr',
+    'generator-qr-parse',
     'generator-totp',
     'generator-sql',
     'generator-ssh',
@@ -686,7 +694,7 @@ const uuidToolSet = new Set(['generator-uuid']);
 const userAgentToolSet = new Set(['generator-useragent']);
 const randomToolSet = new Set(['generator-random']);
 const totpToolSet = new Set(['generator-totp']);
-const qrToolSet = new Set(['generator-qr']);
+const qrToolSet = new Set(['generator-qr', 'generator-qr-parse']);
 const dataToolSet = new Set(['generator-sql']);
 const sshToolSet = new Set(['generator-ssh']);
 const implementedTools = new Set([
@@ -709,6 +717,7 @@ const implementedTools = new Set([
     'security-crypto',
     'generator-random',
     'generator-qr',
+    'generator-qr-parse',
     'generator-totp',
     'generator-sql',
     'fingerprint-browser',
@@ -742,6 +751,7 @@ const workspaceIds = [
     'userAgentWorkspace',
     'randomWorkspace',
     'qrWorkspace',
+    'qrParseWorkspace',
     'totpWorkspace',
     'dataWorkspace',
     'sshWorkspace',
@@ -856,6 +866,7 @@ const state = {
     dataTables: [],
     dataSchemaTimer: null,
     dataDirty: false,
+    dataKind: 'sql',
     formatKey: null,
     tabular: {
         files: [],
@@ -863,6 +874,11 @@ const state = {
         to: 'Parquet',
         results: [],
         totalRows: 0,
+    },
+    qrParse: {
+        fileName: '',
+        bytes: null,
+        results: [],
     },
     fingerprintFacts: [],
     kdf: {
@@ -1027,6 +1043,10 @@ function cacheElements() {
     elements.imageOutputMeta = document.getElementById('imageOutputMeta');
     elements.imageError = document.getElementById('imageError');
     elements.imageOptions = document.getElementById('imageOptions');
+    elements.qrParseWorkspace = document.getElementById('qrParseWorkspace');
+    elements.qrParseFile = document.getElementById('qrParseFile');
+    elements.qrParseDrop = document.getElementById('qrParseDrop');
+    elements.qrParseResults = document.getElementById('qrParseResults');
     elements.coderWorkspace = document.getElementById('coderWorkspace');
     elements.coderInput = document.getElementById('coderInput');
     elements.coderResults = document.getElementById('coderResults');
@@ -1357,6 +1377,27 @@ function bindUI() {
     });
     elements.imageConvert?.addEventListener('click', handleImageConvert);
     elements.imageDownload?.addEventListener('click', handleImageDownload);
+    elements.qrParseFile?.addEventListener('change', handleQrParseFileChange);
+    elements.qrParseDrop?.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        elements.qrParseDrop.classList.add('dragging');
+    });
+    elements.qrParseDrop?.addEventListener('dragleave', () => {
+        elements.qrParseDrop.classList.remove('dragging');
+    });
+    elements.qrParseDrop?.addEventListener('drop', (event) => {
+        event.preventDefault();
+        elements.qrParseDrop.classList.remove('dragging');
+        const file = event.dataTransfer?.files?.[0];
+        if (file) {
+            handleQrParseSelectedFile(file);
+        }
+    });
+    elements.qrParseDrop?.addEventListener('click', (event) => {
+        if (event.target?.id === 'qrParseFile') return;
+        elements.qrParseFile?.click();
+    });
+    elements.qrParseResults?.addEventListener('click', handleQrParseResultsClick);
     elements.coderInput?.addEventListener('input', () => scheduleCoder());
     elements.coderModeText?.addEventListener('change', () => setCoderInputMode('text'));
     elements.coderModeFile?.addEventListener('change', () => setCoderInputMode('file'));
@@ -5366,6 +5407,93 @@ function downloadQrImage() {
     setStatus('QR downloaded', false);
 }
 
+function handleQrParseFileChange(event) {
+    // Delegate to the shared file handler so both click and drop paths stay consistent.
+    const file = event.target.files?.[0];
+    if (file) {
+        handleQrParseSelectedFile(file);
+    }
+}
+
+function handleQrParseSelectedFile(file) {
+    if (!file || !isQrTool(state.currentTool)) return;
+    // Read the file as ArrayBuffer, then pass raw bytes to the wasm decoder.
+    const reader = new FileReader();
+    reader.onload = async () => {
+        const bytes = new Uint8Array(reader.result || new ArrayBuffer(0));
+        state.qrParse.bytes = bytes;
+        state.qrParse.fileName = file.name || 'uploaded';
+        await runQrParse();
+    };
+    reader.onerror = () => {
+        setStatus('Failed to read image', true);
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+async function runQrParse() {
+    if (!isQrTool(state.currentTool) || state.currentTool !== 'generator-qr-parse') {
+        return;
+    }
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    if (!state.qrParse.bytes || !state.qrParse.bytes.length) {
+        setStatus('Select an image to decode', true);
+        return;
+    }
+    try {
+        setStatus('Decoding QR...', false);
+        const result = await parse_qr_codes(state.qrParse.bytes);
+        const entries = Array.isArray(result) ? result : [];
+        state.qrParse.results = entries;
+        renderQrParseResults(entries);
+        setStatus(entries.length ? 'QR decoded' : 'No QR codes found', entries.length === 0);
+    } catch (err) {
+        console.error(err);
+        setStatus(`⚠️ ${err?.message || err}`, true);
+        renderQrParseResults([]);
+    }
+}
+
+function renderQrParseResults(results) {
+    if (!elements.qrParseResults) return;
+    if (!results || !results.length) {
+        elements.qrParseResults.innerHTML =
+            '<div class="muted">Drop or choose an image to decode QR payloads.</div>';
+        return;
+    }
+    const html = results
+        .map((entry, idx) => {
+            const payload = entry?.payload || '';
+            const version = entry?.version ? `v${entry.version}` : '';
+            const ecc = entry?.eccLevel || entry?.ecc_level || '';
+            const meta = [version, ecc].filter(Boolean).join(' · ');
+            return `<div class="qr-parse-card">
+  <header>
+    <span class="qr-parse-label">QR #${idx + 1}${meta ? ` — ${escapeHTML(meta)}` : ''}</span>
+    <button class="ghost-btn" data-copy-qrcode="${idx}" data-copy-value="${escapeAttr(
+        payload
+    )}">📋 Copy</button>
+  </header>
+  <pre class="qr-parse-payload">${escapeHTML(payload || '(empty)')}</pre>
+</div>`;
+        })
+        .join('');
+    elements.qrParseResults.innerHTML = html;
+}
+
+function handleQrParseResultsClick(event) {
+    const button = event.target.closest('[data-copy-qrcode]');
+    if (!button) return;
+    const value = button.dataset.copyValue || '';
+    if (value) {
+        copyText(value, 'QR payload');
+        setStatus('Copied', false);
+    }
+}
+
 function handleSshTypeChange(event) {
     state.sshType = event.target.value;
     updateSshVisibility();
@@ -6013,6 +6141,7 @@ function parseDataSchema(schemaText) {
         if (elements.dataOutput) elements.dataOutput.value = '';
         return;
     }
+    state.dataKind = detectDataKind(trimmed);
     try {
         const tables = inspect_schema(trimmed);
         if (Array.isArray(tables)) {
@@ -6031,6 +6160,22 @@ function parseDataSchema(schemaText) {
         state.dataDirty = false;
         setStatus(`⚠️ ${err?.message || err}`, true);
     }
+}
+
+function detectDataKind(text) {
+    if (!text) return 'sql';
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+            const parsed = JSON.parse(trimmed);
+            if (Array.isArray(parsed) || parsed?.type) {
+                return 'json';
+            }
+        } catch (err) {
+            // Fall through to SQL when JSON parsing fails.
+        }
+    }
+    return 'sql';
 }
 
 function pruneDataOverrides() {
@@ -6275,7 +6420,8 @@ function runDataGenerator() {
             elements.dataOutput.value = result;
         }
         state.dataDirty = false;
-        setStatus('Generated INSERT statements', false);
+        const isJson = state.dataKind === 'json' || result.trim().startsWith('[');
+        setStatus(isJson ? 'Generated JSON rows' : 'Generated INSERT statements', false);
     } catch (err) {
         console.error(err);
         setStatus(`⚠️ ${err?.message || err}`, true);

@@ -32,6 +32,7 @@ use num_bigint::BigInt;
 use password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use qrcode::{EcLevel, QrCode, render::svg};
 use regex::Regex;
+use rqrr::PreparedImage;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha1::Sha1;
@@ -790,6 +791,60 @@ fn encode_svg_qr(content: &str) -> Result<(String, String), String> {
     Ok((STANDARD.encode(svg_text.as_bytes()), "image/svg+xml".into()))
 }
 
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+struct QrDecodeResult {
+    payload: String,
+    encoding: String,
+    version: String,
+    ecc_level: String,
+}
+
+#[wasm_bindgen]
+/// Parses one or more QR codes embedded in a bitmap (PNG/JPG/WebP/AVIF) and
+/// returns their textual payloads. Useful for the QR Parse UI so users can
+/// upload any screenshot/photo and copy decoded contents.
+pub fn parse_qr_codes(bytes: &[u8]) -> Result<JsValue, JsValue> {
+    parse_qr_codes_internal(bytes)
+        .and_then(|results| serde_wasm_bindgen::to_value(&results).map_err(|err| err.to_string()))
+        .map_err(|err| JsValue::from_str(&err))
+}
+
+fn parse_qr_codes_internal(bytes: &[u8]) -> Result<Vec<QrDecodeResult>, String> {
+    if bytes.is_empty() {
+        return Err("image is empty".into());
+    }
+    let decoded =
+        image::load_from_memory(bytes).map_err(|err| format!("failed to decode image: {err}"))?;
+    let luma = decoded.to_luma8();
+    let mut prepared = PreparedImage::prepare(luma);
+    let grids = prepared.detect_grids();
+    if grids.is_empty() {
+        return Err("no QR codes detected".into());
+    }
+    let mut results = Vec::new();
+    for grid in grids {
+        match grid.decode() {
+            Ok((meta, content)) => {
+                let payload = content.clone();
+                results.push(QrDecodeResult {
+                    payload,
+                    encoding: "utf-8".into(),
+                    version: format!("{:?}", meta.version),
+                    ecc_level: format!("{:?}", meta.ecc_level),
+                });
+            }
+            Err(err) => return Err(format!("decode failed: {err}")),
+        }
+    }
+    Ok(results)
+}
+
+#[cfg(test)]
+pub(crate) fn parse_qr_codes_native(bytes: &[u8]) -> Result<Vec<QrDecodeResult>, String> {
+    parse_qr_codes_internal(bytes)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn random_sequences_internal(
     length: u32,
@@ -1032,7 +1087,7 @@ pub fn generate_insert_statements(
         serde_wasm_bindgen::from_value(overrides)
             .map_err(|err| JsValue::from_str(&err.to_string()))?
     };
-    generate_insert_statements_internal(schema, rows, override_map)
+    generate_insert_statements_router(schema, rows, override_map)
         .map_err(|err| JsValue::from_str(&err))
 }
 
@@ -1040,7 +1095,11 @@ pub fn generate_insert_statements(
 /// Parses MySQL DDL and returns column-level metadata (type, default, enum values, min/max)
 /// so the UI can surface validation hints next to each field.
 pub fn inspect_schema(schema: &str) -> Result<JsValue, JsValue> {
-    let tables = parse_mysql_tables(schema);
+    let tables = match parse_input_schema(schema) {
+        Ok(SchemaInput::MySql(tables)) => tables,
+        Ok(SchemaInput::Json { tables }) => tables,
+        Err(err) => return Err(JsValue::from_str(&err)),
+    };
     let inspections: Vec<TableInspection> = tables
         .iter()
         .map(|table| TableInspection {
@@ -1080,7 +1139,7 @@ pub fn inspect_certificates(input: &str) -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err))
 }
 
-fn generate_insert_statements_internal(
+fn generate_insert_statements_router(
     schema: &str,
     rows: u32,
     overrides: TableOverrideMap,
@@ -1093,7 +1152,29 @@ fn generate_insert_statements_internal(
     if rows > 100 {
         return Err("Row count must be 100 or less".into());
     }
-    let tables = parse_mysql_tables(schema);
+    match parse_input_schema(schema) {
+        Ok(SchemaInput::MySql(tables)) => {
+            generate_sql_insert_statements_internal(tables, rows, overrides)
+        }
+        Ok(SchemaInput::Json { tables }) => generate_json_rows(tables, rows, overrides),
+        Err(err) => Err(err),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn generate_insert_statements_native(
+    schema: &str,
+    rows: u32,
+    overrides: TableOverrideMap,
+) -> Result<String, String> {
+    generate_insert_statements_router(schema, rows, overrides)
+}
+
+fn generate_sql_insert_statements_internal(
+    tables: Vec<TableSchema>,
+    rows: u32,
+    overrides: TableOverrideMap,
+) -> Result<String, String> {
     if tables.is_empty() {
         return Err("No CREATE TABLE statements detected".into());
     }
@@ -1217,6 +1298,11 @@ struct ColumnInspection {
     enum_values: Option<Vec<String>>,
 }
 
+enum SchemaInput {
+    MySql(Vec<TableSchema>),
+    Json { tables: Vec<TableSchema> },
+}
+
 fn table_regex() -> &'static Regex {
     TABLE_REGEX.get_or_init(|| {
         Regex::new(r#"(?i)create\s+table\s+(?:if\s+not\s+exists\s+)?[`"\[]?([a-zA-Z0-9_]+)[`"\]]?"#)
@@ -1260,6 +1346,150 @@ fn parse_mysql_tables(schema: &str) -> Vec<TableSchema> {
         }
     }
     tables
+}
+
+fn parse_input_schema(schema: &str) -> Result<SchemaInput, String> {
+    // Try JSON / JSON Schema first so mixed content (like pretty JSON) prefers structured output.
+    if let Ok(value) = serde_json::from_str::<Value>(schema) {
+        if let Some(tables) = json_schema_to_tables(&value) {
+            return Ok(SchemaInput::Json { tables });
+        }
+        if let Some(tables) = json_value_to_tables(&value) {
+            return Ok(SchemaInput::Json { tables });
+        }
+    }
+    Ok(SchemaInput::MySql(parse_mysql_tables(schema)))
+}
+
+fn json_schema_to_tables(schema: &Value) -> Option<Vec<TableSchema>> {
+    if !schema.is_object() {
+        return None;
+    }
+    // Handle { type: "array", items: { type: "object", properties: { ... } } }
+    if let Some(Value::String(kind)) = schema.get("type") {
+        let kind_lower = kind.to_ascii_lowercase();
+        if kind_lower == "array" {
+            if let Some(items) = schema.get("items") {
+                return json_schema_to_tables(items);
+            }
+        }
+        if kind_lower != "object" {
+            return None;
+        }
+    }
+    let props = schema.get("properties")?.as_object()?;
+    let columns = props
+        .iter()
+        .map(|(name, prop)| schema_property_to_column(name, prop))
+        .collect::<Vec<_>>();
+    if columns.is_empty() {
+        return None;
+    }
+    Some(vec![TableSchema {
+        name: "json_input".into(),
+        columns,
+    }])
+}
+
+fn schema_property_to_column(name: &str, prop: &Value) -> ColumnSchema {
+    let (base_type, data_type, length, scale) = match prop.get("type") {
+        Some(Value::String(kind)) => map_schema_type(kind),
+        Some(Value::Array(types)) => types
+            .iter()
+            .filter_map(|v| v.as_str())
+            .next()
+            .map(map_schema_type)
+            .unwrap_or(("string".into(), "string".into(), None, None)),
+        _ => ("string".into(), "string".into(), None, None),
+    };
+    ColumnSchema {
+        name: name.into(),
+        data_type,
+        base_type,
+        unsigned: false,
+        length,
+        scale,
+        enum_values: Vec::new(),
+        default_value: None,
+    }
+}
+
+fn map_schema_type(kind: &str) -> (String, String, Option<usize>, Option<u32>) {
+    match kind.to_ascii_lowercase().as_str() {
+        "integer" | "int" => ("int".into(), "integer".into(), None, None),
+        "number" | "float" | "double" => ("float".into(), "float".into(), None, Some(4)),
+        "boolean" | "bool" => ("boolean".into(), "boolean".into(), None, None),
+        "object" | "array" | "json" => ("json".into(), "json".into(), None, None),
+        "null" => ("string".into(), "string".into(), None, None),
+        _ => ("string".into(), "string".into(), None, None),
+    }
+}
+
+fn json_value_to_tables(value: &Value) -> Option<Vec<TableSchema>> {
+    match value {
+        Value::Object(map) => {
+            let columns = infer_columns_from_object(map);
+            if columns.is_empty() {
+                None
+            } else {
+                Some(vec![TableSchema {
+                    name: "json_input".into(),
+                    columns,
+                }])
+            }
+        }
+        Value::Array(items) => {
+            let first_object = items.iter().find_map(|v| v.as_object());
+            if let Some(obj) = first_object {
+                let columns = infer_columns_from_object(obj);
+                if columns.is_empty() {
+                    None
+                } else {
+                    Some(vec![TableSchema {
+                        name: "json_input".into(),
+                        columns,
+                    }])
+                }
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn infer_columns_from_object(map: &serde_json::Map<String, Value>) -> Vec<ColumnSchema> {
+    let mut columns = Vec::new();
+    for (name, value) in map.iter() {
+        let (base_type, data_type) = infer_json_type(value);
+        columns.push(ColumnSchema {
+            name: name.clone(),
+            data_type,
+            base_type,
+            unsigned: matches!(value, Value::Number(num) if num.is_u64()),
+            length: None,
+            scale: None,
+            enum_values: Vec::new(),
+            default_value: None,
+        });
+    }
+    columns
+}
+
+fn infer_json_type(value: &Value) -> (String, String) {
+    match value {
+        Value::Bool(_) => ("boolean".into(), "boolean".into()),
+        Value::Number(num) => {
+            if num.is_i64() || num.is_u64() {
+                ("int".into(), "integer".into())
+            } else {
+                ("float".into(), "float".into())
+            }
+        }
+        Value::String(_) => ("string".into(), "string".into()),
+        Value::Array(_) | Value::Object(_) => ("json".into(), "json".into()),
+        Value::Null => ("string".into(), "string".into()),
+    }
 }
 
 fn parse_column_definitions(body: &str) -> Vec<ColumnSchema> {
@@ -1557,6 +1787,183 @@ fn sample_value(
         }
         _ => sample_text_value(column),
     }
+}
+
+fn generate_json_rows(
+    tables: Vec<TableSchema>,
+    rows: u32,
+    overrides: TableOverrideMap,
+) -> Result<String, String> {
+    // Convert inferred JSON schema into randomized sample rows while preserving
+    // override rules (min/max/allowed/exclude) for numeric fields.
+    if tables.is_empty() {
+        return Err("No JSON fields detected".into());
+    }
+    let mut all_rows = Vec::new();
+    for table in tables {
+        if table.columns.is_empty() {
+            continue;
+        }
+        let table_override = overrides.get(&table.name);
+        for idx in 0..rows as usize {
+            let mut obj = serde_json::Map::new();
+            for column in table.columns.iter() {
+                if table_override
+                    .and_then(|cols| cols.get(&column.name))
+                    .map(|cfg| cfg.exclude)
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
+                let override_cfg = table_override.and_then(|cols| cols.get(&column.name));
+                let value = sample_json_value(column, idx, override_cfg);
+                obj.insert(column.name.clone(), value);
+            }
+            all_rows.push(Value::Object(obj));
+        }
+    }
+    if all_rows.is_empty() {
+        return Err("No usable fields found in JSON input".into());
+    }
+    serde_json::to_string_pretty(&Value::Array(all_rows)).map_err(|err| err.to_string())
+}
+
+fn sample_json_value(
+    column: &ColumnSchema,
+    row_idx: usize,
+    override_cfg: Option<&ColumnOverride>,
+) -> Value {
+    match column.base_type.as_str() {
+        base if base.contains("int") || base == "serial" || base == "year" || base == "bit" => {
+            Value::Number(serde_json::Number::from(sample_integer_json(
+                column,
+                override_cfg,
+            )))
+        }
+        base if base == "decimal" || base == "numeric" => Value::Number(
+            serde_json::Number::from_f64(sample_decimal_json(column, override_cfg))
+                .unwrap_or_else(|| serde_json::Number::from_f64(0.0).unwrap()),
+        ),
+        base if base == "float" || base == "double" || base == "real" => {
+            let value = sample_float_json(column, override_cfg);
+            Value::Number(
+                serde_json::Number::from_f64(value)
+                    .unwrap_or_else(|| serde_json::Number::from_f64(0.0).unwrap()),
+            )
+        }
+        "bool" | "boolean" => Value::Bool(sample_integer_json(column, override_cfg) != 0),
+        "date" => Value::String(format!("2025-01-{day:02}", day = row_idx % 28 + 1)),
+        "datetime" | "timestamp" => Value::String(format!(
+            "2025-01-{day:02} {hour:02}:{minute:02}:00",
+            day = row_idx % 28 + 1,
+            hour = (row_idx * 3) % 24,
+            minute = (row_idx * 7) % 60
+        )),
+        "time" => Value::String(format!(
+            "{hour:02}:{minute:02}:{second:02}",
+            hour = (row_idx * 3) % 24,
+            minute = (row_idx * 7) % 60,
+            second = (row_idx * 11) % 60
+        )),
+        "enum" | "set" => Value::String(lorem_text(16)),
+        "json" => Value::Object(
+            [(
+                column.name.clone(),
+                Value::Number(serde_json::Number::from((row_idx + 1) as i64)),
+            )]
+            .into_iter()
+            .collect(),
+        ),
+        base if base.contains("blob") || base.contains("binary") => {
+            let first = ((row_idx + 65) % 256) as u8;
+            let second = ((row_idx + 97) % 256) as u8;
+            Value::String(format!("{:02X}{:02X}", first, second))
+        }
+        _ => Value::String(sample_text_value_plain(column)),
+    }
+}
+
+fn sample_integer_json(column: &ColumnSchema, override_cfg: Option<&ColumnOverride>) -> i64 {
+    let (mut min, mut max) = integer_bounds(column).unwrap_or((0, 1));
+    if let Some(override_cfg) = override_cfg {
+        if let Some(value) = override_cfg.min {
+            min = value.floor() as i128;
+        }
+        if let Some(value) = override_cfg.max {
+            max = value.floor() as i128;
+        }
+        if let Some(list) = override_cfg.allowed.as_ref() {
+            if !list.is_empty() {
+                let idx = random_index(list.len());
+                let value = list[idx].round() as i128;
+                return value
+                    .clamp(i64::MIN as i128, i64::MAX as i128)
+                    .try_into()
+                    .unwrap_or(0);
+            }
+        }
+    }
+    if max < min {
+        std::mem::swap(&mut min, &mut max);
+    }
+    let sample = random_integer_in_range(min, max);
+    sample
+        .clamp(i64::MIN as i128, i64::MAX as i128)
+        .try_into()
+        .unwrap_or(0)
+}
+
+fn sample_decimal_json(column: &ColumnSchema, override_cfg: Option<&ColumnOverride>) -> f64 {
+    let (mut min, mut max) = decimal_limits(column);
+    if let Some(override_cfg) = override_cfg {
+        if let Some(value) = override_cfg.min {
+            min = value;
+        }
+        if let Some(value) = override_cfg.max {
+            max = value;
+        }
+        if let Some(list) = override_cfg.allowed.as_ref() {
+            if !list.is_empty() {
+                let idx = random_index(list.len());
+                return list[idx];
+            }
+        }
+    }
+    if max < min {
+        std::mem::swap(&mut min, &mut max);
+    }
+    random_decimal_value(min, max)
+}
+
+fn sample_float_json(_column: &ColumnSchema, override_cfg: Option<&ColumnOverride>) -> f64 {
+    let (mut min, mut max) = (-1_000_000.0, 1_000_000.0);
+    if let Some(override_cfg) = override_cfg {
+        if let Some(value) = override_cfg.min {
+            min = value;
+        }
+        if let Some(value) = override_cfg.max {
+            max = value;
+        }
+        if let Some(list) = override_cfg.allowed.as_ref() {
+            if !list.is_empty() {
+                let idx = random_index(list.len());
+                return list[idx];
+            }
+        }
+    }
+    if max < min {
+        std::mem::swap(&mut min, &mut max);
+    }
+    random_decimal_value(min, max)
+}
+
+fn sample_text_value_plain(column: &ColumnSchema) -> String {
+    let max_len = column.length.unwrap_or(32).clamp(1, 256);
+    let mut value = lorem_text(max_len);
+    if value.len() > max_len {
+        value.truncate(max_len);
+    }
+    value
 }
 
 fn column_default_value(
