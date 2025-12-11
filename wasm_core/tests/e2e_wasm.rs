@@ -123,6 +123,15 @@ fn image_converter_workspace_has_controls() {
 }
 
 #[wasm_bindgen_test]
+fn main_js_declares_hash_routing_helpers() {
+    const MAIN_JS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/main.js"));
+    assert!(
+        MAIN_JS.contains("hashPrefix") && MAIN_JS.contains("hashchange"),
+        "hash-based routing should be wired for tool selection"
+    );
+}
+
+#[wasm_bindgen_test]
 fn image_converter_exposes_batch_progress_controls() {
     const INDEX_HTML: &str =
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));

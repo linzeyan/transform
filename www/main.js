@@ -760,6 +760,8 @@ const workspaceIds = [
 ];
 
 const defaultDecoder = allEncodingVariants[0]?.key || '';
+const hashPrefix = '#/';
+let suppressHashUpdate = false;
 
 // Single source of truth for UI state/timers. Most handlers only mutate this
 // object, then re-render the relevant panel.
@@ -915,6 +917,39 @@ const uuidDisplayLabels = {
     ulid: 'ULID',
 };
 
+function toolIdFromHash(rawHash) {
+    const normalized = (rawHash || '').trim();
+    if (!normalized || normalized === '#') return null;
+    const withoutHash = normalized.startsWith(hashPrefix)
+        ? normalized.slice(hashPrefix.length)
+        : normalized.replace(/^#/, '');
+    return implementedTools.has(withoutHash) ? withoutHash : null;
+}
+
+function hashForTool(toolId) {
+    return `${hashPrefix}${toolId}`;
+}
+
+function updateHashForTool(toolId) {
+    if (suppressHashUpdate) return;
+    const next = hashForTool(toolId);
+    if (window.location.hash !== next) {
+        // Keep history tidy while reflecting the active tool in the URL.
+        history.replaceState(null, '', next);
+    }
+}
+
+function syncToolFromHash(initial = false) {
+    const toolId = toolIdFromHash(window.location.hash);
+    if (toolId && toolId !== state.currentTool) {
+        suppressHashUpdate = true;
+        selectTool(toolId);
+        suppressHashUpdate = false;
+    } else if (initial && !toolId) {
+        updateHashForTool(state.currentTool);
+    }
+}
+
 boot();
 
 async function boot() {
@@ -929,6 +964,7 @@ async function boot() {
     initCoderControls();
     renderSidebar();
     bindUI();
+    syncToolFromHash(true);
     renderCoderEmpty();
     updateCoderTexts();
     selectTool(state.currentTool);
@@ -1405,6 +1441,7 @@ function bindUI() {
         elements.qrParseFile?.click();
     });
     elements.qrParseResults?.addEventListener('click', handleQrParseResultsClick);
+    window.addEventListener('hashchange', () => syncToolFromHash(false));
     elements.coderInput?.addEventListener('input', () => scheduleCoder());
     elements.coderModeText?.addEventListener('change', () => setCoderInputMode('text'));
     elements.coderModeFile?.addEventListener('change', () => setCoderInputMode('file'));
@@ -1982,6 +2019,7 @@ function selectTool(toolId) {
     } else {
         setStatus('Ready', false);
     }
+    updateHashForTool(toolId);
     if (toolId === 'format') {
         ensureConverterMode();
         scheduleConvert(true);
