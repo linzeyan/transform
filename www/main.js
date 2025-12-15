@@ -37,6 +37,7 @@ window.addEventListener('unhandledrejection', (event) => {
 import initWasm, {
     generate_uuids,
     generate_user_agents,
+    generate_ascii_art,
     convert_number_base,
     convert_units,
     convert_image_format_batch,
@@ -74,6 +75,7 @@ import initWasm, {
     decrypt_bytes,
     generate_unified_text_diff,
     parse_qr_codes_batch,
+    list_ascii_fonts,
 } from './pkg/wasm_core.js';
 
 // Import modular components
@@ -600,6 +602,11 @@ const toolGroups = [
                 label: 'Random',
                 description: 'Random strings with customizable charset.',
             },
+            {
+                id: 'generator-ascii',
+                label: 'ASCII Art',
+                description: 'Render text into ASCII art.',
+            },
             // QR generator covers OTP/WiFi/custom text flows.
             {
                 id: 'generator-qr',
@@ -660,6 +667,7 @@ const workspaceByTool = {
     'generator-uuid': 'uuidWorkspace',
     'generator-useragent': 'userAgentWorkspace',
     'generator-random': 'randomWorkspace',
+    'generator-ascii': 'asciiWorkspace',
     'generator-qr': 'qrWorkspace',
     'generator-qr-parse': 'qrParseWorkspace',
     'generator-totp': 'totpWorkspace',
@@ -681,6 +689,7 @@ const generatorTools = new Set([
     'generator-uuid',
     'generator-useragent',
     'generator-random',
+    'generator-ascii',
     'generator-qr',
     'generator-qr-parse',
     'generator-totp',
@@ -693,6 +702,7 @@ const cryptoToolSet = new Set(['security-crypto']);
 const uuidToolSet = new Set(['generator-uuid']);
 const userAgentToolSet = new Set(['generator-useragent']);
 const randomToolSet = new Set(['generator-random']);
+const asciiToolSet = new Set(['generator-ascii']);
 const totpToolSet = new Set(['generator-totp']);
 const qrToolSet = new Set(['generator-qr', 'generator-qr-parse']);
 const dataToolSet = new Set(['generator-sql']);
@@ -715,6 +725,7 @@ const implementedTools = new Set([
     'coder-jwt',
     'coder-kdf',
     'security-crypto',
+    'generator-ascii',
     'generator-random',
     'generator-qr',
     'generator-qr-parse',
@@ -750,6 +761,7 @@ const workspaceIds = [
     'uuidWorkspace',
     'userAgentWorkspace',
     'randomWorkspace',
+    'asciiWorkspace',
     'qrWorkspace',
     'qrParseWorkspace',
     'totpWorkspace',
@@ -834,6 +846,13 @@ const state = {
     randomMinSymbols: 0,
     randomSymbols: new Set(),
     randomResults: [],
+    ascii: {
+        font: 'standard',
+        width: 80,
+        align: 'left',
+        fonts: [],
+        output: '',
+    },
     // QR generator caches the last preview so downloads work when returning to the tab.
     qr: {
         mode: 'otp',
@@ -1196,6 +1215,18 @@ function cacheElements() {
     elements.randomGenerate = document.getElementById('randomGenerate');
     elements.randomResults = document.getElementById('randomResults');
     elements.randomCopyAll = document.getElementById('randomCopyAll');
+    elements.asciiWorkspace = document.getElementById('asciiWorkspace');
+    elements.asciiInput = document.getElementById('asciiInput');
+    elements.asciiFont = document.getElementById('asciiFont');
+    elements.asciiWidth = document.getElementById('asciiWidth');
+    elements.asciiAlignLeft = document.getElementById('asciiAlignLeft');
+    elements.asciiAlignCenter = document.getElementById('asciiAlignCenter');
+    elements.asciiAlignRight = document.getElementById('asciiAlignRight');
+    elements.asciiGenerate = document.getElementById('asciiGenerate');
+    elements.asciiOutput = document.getElementById('asciiOutput');
+    elements.asciiCopy = document.getElementById('asciiCopy');
+    elements.asciiDownload = document.getElementById('asciiDownload');
+    elements.asciiStatus = document.getElementById('asciiStatus');
     // QR generator inputs are grouped by mode so we toggle rows on radio change.
     elements.qrWorkspace = document.getElementById('qrWorkspace');
     elements.qrModeOtp = document.getElementById('qrModeOtp');
@@ -1556,6 +1587,26 @@ function bindUI() {
     elements.randomMinSymbols?.addEventListener('input', () => handleRandomMinChange('symbols'));
     elements.randomSymbolToggles?.addEventListener('click', handleRandomSymbolToggle);
     elements.randomGenerate?.addEventListener('click', () => runRandomGenerator());
+    elements.asciiGenerate?.addEventListener('click', () => runAsciiGenerator());
+    elements.asciiCopy?.addEventListener('click', () => handleAsciiCopy());
+    elements.asciiDownload?.addEventListener('click', () => handleAsciiDownload());
+    elements.asciiFont?.addEventListener('change', () => {
+        state.ascii.font = elements.asciiFont.value || 'standard';
+    });
+    elements.asciiWidth?.addEventListener('input', () => {
+        const val = Number.parseInt(elements.asciiWidth.value, 10);
+        if (Number.isFinite(val)) state.ascii.width = val;
+    });
+    [elements.asciiAlignLeft, elements.asciiAlignCenter, elements.asciiAlignRight].forEach(
+        (input) => {
+            input?.addEventListener('change', () => {
+                const checked = document.querySelector('input[name="asciiAlign"]:checked');
+                if (checked) {
+                    state.ascii.align = checked.value;
+                }
+            });
+        }
+    );
     elements.qrModeOtp?.addEventListener('change', () => setQrMode('otp'));
     elements.qrModeWifi?.addEventListener('change', () => setQrMode('wifi'));
     elements.qrModeCustom?.addEventListener('change', () => setQrMode('custom'));
@@ -2073,6 +2124,8 @@ function selectTool(toolId) {
         activateUserAgentTool();
     } else if (isRandomTool(toolId)) {
         activateRandomTool();
+    } else if (isAsciiTool(toolId)) {
+        activateAsciiTool();
     } else if (isQrTool(toolId)) {
         activateQrTool();
     } else if (isTotpTool(toolId)) {
@@ -2106,6 +2159,7 @@ function updateBodyClasses(toolId) {
     document.body.classList.toggle('tool-uuid', isUUIDTool(toolId));
     document.body.classList.toggle('tool-useragent', isUserAgentTool(toolId));
     document.body.classList.toggle('tool-random', isRandomTool(toolId));
+    document.body.classList.toggle('tool-ascii', isAsciiTool(toolId));
     document.body.classList.toggle('tool-qr', isQrTool(toolId));
     document.body.classList.toggle('tool-cert', isCertTool(toolId));
     document.body.classList.toggle('tool-crypto', isCryptoTool(toolId));
@@ -2679,6 +2733,10 @@ function isIPv4Tool(toolId) {
 
 function isRandomTool(toolId) {
     return randomToolSet.has(toolId);
+}
+
+function isAsciiTool(toolId) {
+    return asciiToolSet.has(toolId);
 }
 
 function isQrTool(toolId) {
@@ -5306,6 +5364,127 @@ function runRandomGenerator() {
         updateRandomResults([]);
         setStatus(`⚠️ ${err?.message || err}`, true);
     }
+}
+
+async function ensureAsciiFontsLoaded() {
+    if (state.ascii.fonts && state.ascii.fonts.length) return;
+    if (!state.wasmReady) return;
+    try {
+        const fonts = list_ascii_fonts();
+        if (Array.isArray(fonts)) {
+            state.ascii.fonts = fonts;
+            renderAsciiFonts();
+        }
+    } catch (err) {
+        console.error(err);
+        setStatus('Unable to load ASCII fonts', true);
+    }
+}
+
+function renderAsciiFonts() {
+    if (!elements.asciiFont) return;
+    const current = state.ascii.font || 'standard';
+    elements.asciiFont.innerHTML = '';
+    const fonts = state.ascii.fonts && state.ascii.fonts.length ? state.ascii.fonts : ['standard'];
+    fonts.forEach((name) => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        if (name === current) opt.selected = true;
+        elements.asciiFont.appendChild(opt);
+    });
+}
+
+function currentAsciiAlign() {
+    const checked = document.querySelector('input[name="asciiAlign"]:checked');
+    return checked?.value || state.ascii.align || 'left';
+}
+
+function setAsciiOutput(text, status, isError = false) {
+    if (elements.asciiOutput) {
+        elements.asciiOutput.textContent = text || '';
+    }
+    if (elements.asciiStatus) {
+        elements.asciiStatus.textContent =
+            status || (text ? 'Preview ready' : 'Enter text to render');
+    }
+    const hasText = Boolean(text && text.trim());
+    if (elements.asciiCopy) elements.asciiCopy.disabled = !hasText;
+    if (elements.asciiDownload) elements.asciiDownload.disabled = !hasText;
+    if (status) {
+        setStatus(status, isError);
+    }
+}
+
+async function runAsciiGenerator() {
+    if (!isAsciiTool(state.currentTool)) {
+        setStatus('Select the ASCII Art tool', true);
+        return;
+    }
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    await ensureAsciiFontsLoaded();
+    const text = elements.asciiInput?.value || '';
+    const font = (elements.asciiFont?.value || state.ascii.font || 'standard').toLowerCase();
+    const widthVal = Number.parseInt(elements.asciiWidth?.value || '', 10);
+    const width = Number.isFinite(widthVal) ? widthVal : undefined;
+    const align = currentAsciiAlign();
+    try {
+        const art = generate_ascii_art(text, font, width, align);
+        state.ascii.output = art;
+        state.ascii.font = font;
+        if (width) state.ascii.width = width;
+        state.ascii.align = align;
+        setAsciiOutput(art, 'ASCII art generated');
+    } catch (err) {
+        console.error(err);
+        setAsciiOutput('', err?.message || 'Unable to generate ASCII art', true);
+    }
+}
+
+function activateAsciiTool() {
+    renderAsciiFonts();
+    if (elements.asciiWidth) {
+        elements.asciiWidth.value = state.ascii.width || 80;
+    }
+    const align = state.ascii.align || 'left';
+    const alignInput = document.querySelector(`input[name="asciiAlign"][value="${align}"]`);
+    if (alignInput) {
+        alignInput.checked = true;
+    }
+    if (state.ascii.output) {
+        setAsciiOutput(state.ascii.output, 'Ready');
+    } else {
+        setAsciiOutput('', 'Enter text to render');
+    }
+    ensureAsciiFontsLoaded();
+}
+
+function handleAsciiCopy() {
+    if (!state.ascii.output) {
+        setStatus('No ASCII art to copy', true);
+        return;
+    }
+    copyText(state.ascii.output, 'ASCII art');
+}
+
+function handleAsciiDownload() {
+    if (!state.ascii.output) {
+        setStatus('No ASCII art to download', true);
+        return;
+    }
+    const blob = new Blob([state.ascii.output], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'ascii-art.txt';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setStatus('Downloaded ascii-art.txt', false);
 }
 
 /**

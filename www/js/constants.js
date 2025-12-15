@@ -589,6 +589,11 @@ export const toolGroups = [
                 label: 'Random',
                 description: 'Random strings with customizable charset.',
             },
+            {
+                id: 'generator-ascii',
+                label: 'ASCII Art',
+                description: 'Render text into ASCII art.',
+            },
             // QR generator covers OTP/WiFi/custom text flows.
             {
                 id: 'generator-qr',
@@ -647,6 +652,7 @@ export const workspaceByTool = {
     'generator-uuid': 'uuidWorkspace',
     'generator-useragent': 'userAgentWorkspace',
     'generator-random': 'randomWorkspace',
+    'generator-ascii': 'asciiWorkspace',
     'generator-qr': 'qrWorkspace',
     'generator-totp': 'totpWorkspace',
     'generator-sql': 'dataWorkspace',
@@ -670,6 +676,7 @@ export const generatorTools = new Set([
     'generator-uuid',
     'generator-useragent',
     'generator-random',
+    'generator-ascii',
     'generator-qr',
     'generator-totp',
     'generator-sql',
@@ -730,6 +737,7 @@ export const workspaceIds = [
     'uuidWorkspace',
     'userAgentWorkspace',
     'randomWorkspace',
+    'asciiWorkspace',
     'qrWorkspace',
     'totpWorkspace',
     'dataWorkspace',

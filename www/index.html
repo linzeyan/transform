@@ -1640,6 +1640,95 @@
                     </section>
                 </div>
 
+                <div id="asciiWorkspace" class="tool-view hidden">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>ASCII Art Generator</h2>
+                                <p>Turn text into FIGlet-style ASCII art.</p>
+                            </div>
+                            <div class="generator-actions">
+                                <button id="asciiGenerate">Generate</button>
+                                <button class="ghost-btn copy-btn" id="asciiCopy" disabled>
+                                    📋 Copy
+                                </button>
+                                <button class="ghost-btn" id="asciiDownload" disabled>
+                                    Download .txt
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="ascii-controls">
+                            <label class="ascii-textarea">
+                                <span>Text</span>
+                                <textarea
+                                    id="asciiInput"
+                                    spellcheck="false"
+                                    placeholder="Hello, Transform!"
+                                ></textarea>
+                            </label>
+
+                            <div class="ascii-form-grid">
+                                <label>
+                                    <span>Font</span>
+                                    <select id="asciiFont"></select>
+                                </label>
+                                <label>
+                                    <span>Wrap width (chars)</span>
+                                    <input
+                                        type="number"
+                                        id="asciiWidth"
+                                        min="1"
+                                        max="120"
+                                        value="80"
+                                    />
+                                </label>
+                                <fieldset class="ascii-align">
+                                    <legend>Align</legend>
+                                    <label>
+                                        <input
+                                            type="radio"
+                                            name="asciiAlign"
+                                            id="asciiAlignLeft"
+                                            value="left"
+                                            checked
+                                        />
+                                        <span>Left</span>
+                                    </label>
+                                    <label>
+                                        <input
+                                            type="radio"
+                                            name="asciiAlign"
+                                            id="asciiAlignCenter"
+                                            value="center"
+                                        />
+                                        <span>Center</span>
+                                    </label>
+                                    <label>
+                                        <input
+                                            type="radio"
+                                            name="asciiAlign"
+                                            id="asciiAlignRight"
+                                            value="right"
+                                        />
+                                        <span>Right</span>
+                                    </label>
+                                </fieldset>
+                            </div>
+                        </div>
+
+                        <div class="ascii-output-card">
+                            <div class="panel-header">
+                                <div>
+                                    <h3>Output</h3>
+                                    <p class="muted" id="asciiStatus">Enter text to render</p>
+                                </div>
+                            </div>
+                            <pre id="asciiOutput" class="ascii-output" aria-live="polite"></pre>
+                        </div>
+                    </section>
+                </div>
+
                 <!-- QR Code workspace: generates OTP/WiFi/custom payloads into 250×250 images. -->
                 <div id="qrWorkspace" class="tool-view hidden">
                     <section class="panel">

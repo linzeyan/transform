@@ -626,6 +626,77 @@
     transition: var(--transition-smooth);
 }
 
+/* ASCII Art Generator */
+.ascii-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.ascii-textarea {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ascii-textarea textarea {
+    min-height: 140px;
+    font-family: var(--mono, 'SFMono-Regular', Consolas, monospace);
+}
+
+.ascii-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    align-items: end;
+}
+
+.ascii-form-grid label span {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.ascii-align {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    gap: 12px;
+    margin: 0;
+}
+
+.ascii-align legend {
+    padding: 0 6px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.ascii-align label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+}
+
+.ascii-output-card {
+    margin-top: 12px;
+}
+
+.ascii-output {
+    background: rgb(0 0 0 / 25%);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    min-height: 160px;
+    white-space: pre;
+    overflow: auto;
+    font-family: var(--mono, 'SFMono-Regular', Consolas, monospace);
+}
+
 .query-row:hover {
     border-color: var(--card-hover-border);
     background: rgb(255 255 255 / 6%);

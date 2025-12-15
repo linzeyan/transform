@@ -12,11 +12,11 @@ use wasm_core::{
     argon2_hash, argon2_verify, bcrypt_hash, bcrypt_verify, convert_image_format,
     convert_number_base, convert_tabular_format, convert_timestamp, convert_units, decode_content,
     decode_content_bytes, decrypt_bytes, encode_content, encode_content_bytes, encrypt_bytes,
-    generate_insert_statements, generate_qr_code, generate_text_diff, generate_unified_text_diff,
-    generate_user_agents, generate_uuids, hash_content, hash_content_bytes, html_to_markdown_text,
-    inspect_certificates, ipv4_info, jwt_decode, jwt_encode, markdown_to_html_text,
-    random_number_sequences, random_numeric_range_sequences, totp_token, transform_format,
-    url_decode, url_encode,
+    generate_ascii_art, generate_insert_statements, generate_qr_code, generate_text_diff,
+    generate_unified_text_diff, generate_user_agents, generate_uuids, hash_content,
+    hash_content_bytes, html_to_markdown_text, inspect_certificates, ipv4_info, jwt_decode,
+    jwt_encode, list_ascii_fonts, markdown_to_html_text, random_number_sequences,
+    random_numeric_range_sequences, totp_token, transform_format, url_decode, url_encode,
 };
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -227,6 +227,36 @@ fn qr_generator_exposes_ecc_selector() {
 }
 
 #[wasm_bindgen_test]
+fn ascii_workspace_has_controls() {
+    const INDEX_HTML: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    assert!(
+        INDEX_HTML.contains("id=\"asciiWorkspace\""),
+        "ASCII workspace container should exist"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"asciiInput\""),
+        "Input textarea should exist"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"asciiFont\""),
+        "Font selector should exist"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"asciiWidth\""),
+        "Width input should exist"
+    );
+    assert!(
+        INDEX_HTML.contains("name=\"asciiAlign\""),
+        "Alignment radio group should exist"
+    );
+    assert!(
+        INDEX_HTML.contains("id=\"asciiDownload\""),
+        "Download button should be present"
+    );
+}
+
+#[wasm_bindgen_test]
 fn ssl_inspector_workspace_is_wired() {
     const INDEX_HTML: &str =
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
@@ -395,6 +425,20 @@ fn format_converter_json_to_graphql_camelizes_field_names() {
     let gql = transform_format("JSON", "GraphQL Schema", input).expect("json -> gql");
     assert!(gql.contains("plugins: Plugins"));
     assert!(gql.contains("proxyRewrite: ProxyRewrite"));
+}
+
+#[wasm_bindgen_test]
+fn ascii_generator_produces_output_and_lists_fonts() {
+    let fonts = js_to_json(list_ascii_fonts().expect("fonts ok"));
+    let array = fonts.as_array().expect("fonts array");
+    assert!(
+        array.iter().any(|v| v.as_str() == Some("standard")),
+        "font list should include standard"
+    );
+    let art =
+        generate_ascii_art("Hi", "standard", Some(20), Some("left".to_string())).expect("art ok");
+    assert!(!art.trim().is_empty());
+    assert!(art.lines().count() >= 5);
 }
 
 #[wasm_bindgen_test]

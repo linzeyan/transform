@@ -44,10 +44,13 @@ use uuid as uuid_crate;
 use uuid_crate::{Context, NoContext, Timestamp};
 use wasm_bindgen::prelude::*;
 
+mod ascii;
 mod cert;
 mod convert;
 mod diff;
 mod images;
+
+pub use crate::ascii::{generate_ascii_art, list_ascii_fonts};
 
 /// Wasm entry point that installs a panic hook so Rust panics appear in the browser console.
 #[wasm_bindgen(start)]

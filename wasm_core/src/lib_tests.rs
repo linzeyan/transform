@@ -1,5 +1,5 @@
 use super::*;
-use crate::cert;
+use crate::{ascii, cert};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64_STD; // Base64 encoder used by QR tests.
 use bcrypt::BASE_64;
@@ -883,4 +883,29 @@ fn convert_timestamp_internal_now_returns_current_time() {
     assert!(rfc3339.contains('.'));
     // Ensure it ends with Z
     assert!(rfc3339.ends_with('Z'));
+}
+
+#[test]
+fn ascii_art_rejects_empty_and_long_input() {
+    assert!(ascii::generate_ascii_art_internal("", "standard", None, None).is_err());
+    let long = "a".repeat(257);
+    let err = ascii::generate_ascii_art_internal(&long, "standard", None, None).unwrap_err();
+    assert!(err.contains("256"));
+}
+
+#[test]
+fn ascii_art_renders_and_wraps() {
+    let art = ascii::generate_ascii_art_internal("rustacean", "standard", Some(4), Some("center"))
+        .expect("art generated");
+    assert!(!art.trim().is_empty());
+    // Wrapping 9 chars at width=4 should yield multiple rendered blocks.
+    assert!(art.split('\n').count() >= 6);
+}
+
+#[test]
+fn ascii_font_allowlist_exposed() {
+    let fonts = ascii::list_ascii_fonts_internal();
+    assert!(fonts.contains(&"standard".to_string()));
+    assert!(fonts.contains(&"slant".to_string()));
+    assert!(fonts.contains(&"small".to_string()));
 }
