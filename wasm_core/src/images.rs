@@ -9,8 +9,10 @@ use std::path::Path;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use font8x8::{BASIC_FONTS, UnicodeFonts};
 use image::{
     DynamicImage, ExtendedColorType, GenericImageView, ImageEncoder, ImageFormat, ImageReader,
+    Rgba, RgbaImage,
 };
 use serde::{Deserialize, Serialize};
 
@@ -106,6 +108,151 @@ pub struct ImageBatchResult {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum WatermarkDirection {
+    Horizontal,
+    Vertical,
+    #[default]
+    Both,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WatermarkOptions {
+    /// Text to render as the watermark.
+    pub text: String,
+    /// Opacity in the range [0.0, 1.0]; clamped during normalization.
+    #[serde(default = "default_watermark_opacity")]
+    pub opacity: f32,
+    /// Rotation in degrees applied around the image center.
+    #[serde(default)]
+    pub rotation_deg: f32,
+    /// Pixel spacing between repeated watermarks; clamped to a minimum of 10px.
+    #[serde(default = "default_watermark_spacing")]
+    pub spacing: u32,
+    /// Requested font size in pixels; rendered using a compact bitmap font.
+    #[serde(default = "default_watermark_font_size")]
+    pub font_size: u32,
+    /// Text color in hex (e.g., #FFFFFF or FFFFFF); alpha channel optional.
+    #[serde(default = "default_watermark_color")]
+    pub color: String,
+    /// Tiling direction across the canvas.
+    #[serde(default)]
+    pub direction: WatermarkDirection,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WatermarkBatchInput {
+    pub from: String,
+    pub to: String,
+    pub bytes: Vec<u8>,
+    pub file_name: Option<String>,
+    #[serde(default)]
+    pub options: ImageOptions,
+    pub watermark: WatermarkOptions,
+}
+
+fn default_watermark_opacity() -> f32 {
+    0.35
+}
+
+fn default_watermark_spacing() -> u32 {
+    32
+}
+
+fn default_watermark_font_size() -> u32 {
+    32
+}
+
+fn default_watermark_color() -> String {
+    "#FFFFFF".into()
+}
+
+#[derive(Clone, Copy, Debug)]
+struct RgbaColor {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+
+#[derive(Clone, Debug)]
+struct NormalizedWatermark {
+    text: String,
+    opacity: f32,
+    rotation_rad: f32,
+    spacing: u32,
+    font_size: u32,
+    color: RgbaColor,
+    direction: WatermarkDirection,
+}
+
+impl WatermarkOptions {
+    fn normalize(&self) -> Result<NormalizedWatermark, String> {
+        let text = self.text.trim().to_string();
+        if text.is_empty() {
+            return Err("watermark text cannot be empty".into());
+        }
+        let opacity = self.opacity.clamp(0.0, 1.0);
+        if opacity <= f32::EPSILON {
+            return Err("watermark opacity must be greater than 0".into());
+        }
+        let spacing = self.spacing.clamp(10, 2_000);
+        let font_size = self.font_size.clamp(8, 256);
+        let color = parse_hex_color(&self.color).unwrap_or(RgbaColor {
+            r: 255,
+            g: 255,
+            b: 255,
+            a: 255,
+        });
+        let rotation_rad = self.rotation_deg.to_radians();
+        Ok(NormalizedWatermark {
+            text,
+            opacity,
+            rotation_rad,
+            spacing,
+            font_size,
+            color,
+            direction: self.direction,
+        })
+    }
+}
+
+impl Default for WatermarkOptions {
+    fn default() -> Self {
+        Self {
+            text: "watermark".into(),
+            opacity: default_watermark_opacity(),
+            rotation_deg: 0.0,
+            spacing: default_watermark_spacing(),
+            font_size: default_watermark_font_size(),
+            color: default_watermark_color(),
+            direction: WatermarkDirection::Both,
+        }
+    }
+}
+
+fn parse_hex_color(input: &str) -> Option<RgbaColor> {
+    let trimmed = input.trim().trim_start_matches('#');
+    let hex = if trimmed.len() == 6 || trimmed.len() == 8 {
+        trimmed
+    } else {
+        return None;
+    };
+    let (rgb, alpha) = if hex.len() == 6 {
+        (hex, "ff")
+    } else {
+        hex.split_at(6)
+    };
+    let r = u8::from_str_radix(&rgb[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&rgb[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&rgb[4..6], 16).ok()?;
+    let a = u8::from_str_radix(alpha, 16).ok()?;
+    Some(RgbaColor { r, g, b, a })
+}
+
 #[derive(Debug, Default, Deserialize, Clone, Copy)]
 pub struct ImageOptions {
     /// 1-100 quality where supported (JPEG/AVIF); defaults per format.
@@ -167,6 +314,113 @@ pub fn convert_image_batch(entries: Vec<ImageBatchInput>) -> Result<Vec<ImageBat
             continue;
         }
         match convert_image_bytes(&entry.from, &entry.to, &entry.bytes, entry.options) {
+            Ok(mut res) => {
+                res.download_name = derive_download_name(&name, &res.format);
+                results.push(ImageBatchResult {
+                    file_name: name,
+                    result: Some(res),
+                    error: None,
+                });
+            }
+            Err(err) => results.push(ImageBatchResult {
+                file_name: name,
+                result: None,
+                error: Some(err),
+            }),
+        }
+    }
+    Ok(results)
+}
+
+fn resolve_target_format(source: &str, target: &str) -> Result<PictureFormat, String> {
+    if target.trim().eq_ignore_ascii_case("original") {
+        PictureFormat::parse(source)
+    } else {
+        PictureFormat::parse(target)
+    }
+}
+
+fn conversion_result_from_bytes(
+    encoded: Vec<u8>,
+    target: PictureFormat,
+    width: u32,
+    height: u32,
+    download_name: String,
+) -> ImageConversionResult {
+    let data_base64 = STANDARD.encode(&encoded);
+    let data_url = format!("data:{};base64,{}", target.mime(), data_base64);
+    ImageConversionResult {
+        format: target.extension().into(),
+        mime: target.mime().into(),
+        width,
+        height,
+        data_base64,
+        data_url,
+        download_name,
+    }
+}
+
+fn encode_image_result(
+    image: &DynamicImage,
+    target: PictureFormat,
+    options: ImageOptions,
+    download_name: String,
+) -> Result<ImageConversionResult, String> {
+    let (width, height) = image.dimensions();
+    encode_image(image, target, options)
+        .map(|bytes| conversion_result_from_bytes(bytes, target, width, height, download_name))
+}
+
+pub fn apply_image_watermark_bytes(
+    from: &str,
+    to: &str,
+    bytes: &[u8],
+    options: ImageOptions,
+    watermark: WatermarkOptions,
+) -> Result<ImageConversionResult, String> {
+    if bytes.is_empty() {
+        return Err("input image is empty".into());
+    }
+    let source_fmt = PictureFormat::parse(from)?;
+    let target_fmt = resolve_target_format(from, to)?;
+    let decoded = decode_image(bytes, source_fmt)?;
+    let normalized = watermark.normalize()?;
+    let stamped = apply_watermark(&decoded, &normalized);
+    let download_name = derive_download_name("watermarked", target_fmt.extension());
+    encode_image_result(
+        &DynamicImage::ImageRgba8(stamped),
+        target_fmt,
+        options,
+        download_name,
+    )
+}
+
+pub fn apply_image_watermark_batch(
+    entries: Vec<WatermarkBatchInput>,
+) -> Result<Vec<ImageBatchResult>, String> {
+    let mut results = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let name = entry
+            .file_name
+            .as_deref()
+            .map(str::to_string)
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "converted".to_string());
+        if entry.bytes.is_empty() {
+            results.push(ImageBatchResult {
+                file_name: name,
+                result: None,
+                error: Some("input image is empty".into()),
+            });
+            continue;
+        }
+        match apply_image_watermark_bytes(
+            &entry.from,
+            &entry.to,
+            &entry.bytes,
+            entry.options,
+            entry.watermark.clone(),
+        ) {
             Ok(mut res) => {
                 res.download_name = derive_download_name(&name, &res.format);
                 results.push(ImageBatchResult {
@@ -295,6 +549,128 @@ fn encode_image(
         }
     }
     Ok(buffer)
+}
+
+fn build_watermark_bitmap(text: &str, scale: u32, alpha: u8) -> (Vec<(i32, i32, u8)>, i32, i32) {
+    let scale = scale.max(1);
+    let glyph_gap = scale.max(1);
+    let mut cursor_x: i32 = 0;
+    let mut max_height: i32 = 0;
+    let mut pixels: Vec<(i32, i32, u8)> = Vec::new();
+
+    let total = text.chars().count();
+    for (idx, ch) in text.chars().enumerate() {
+        let glyph = BASIC_FONTS
+            .get(ch)
+            .unwrap_or_else(|| BASIC_FONTS.get('?').unwrap());
+        // Each glyph is 8x8 bits; we scale it up using nearest-neighbor.
+        let glyph_width = (8 * scale) as i32;
+        let glyph_height = (8 * scale) as i32;
+        max_height = max_height.max(glyph_height);
+
+        for (row, bits) in glyph.iter().enumerate() {
+            for col in 0..8 {
+                if (bits >> col) & 1 == 0 {
+                    continue;
+                }
+                let base_x = cursor_x + (col * scale as usize) as i32;
+                let base_y = (row * scale as usize) as i32;
+                for dx in 0..scale {
+                    for dy in 0..scale {
+                        pixels.push((base_x + dx as i32, base_y + dy as i32, alpha));
+                    }
+                }
+            }
+        }
+        // Advance cursor with a small gap to keep glyphs readable.
+        cursor_x += glyph_width + glyph_gap as i32;
+        // Avoid trailing gap on the final glyph.
+        if idx + 1 == total {
+            cursor_x -= glyph_gap as i32;
+        }
+    }
+
+    let width = cursor_x.max(1);
+    let height = max_height.max(1);
+    (pixels, width, height)
+}
+
+fn apply_watermark(image: &DynamicImage, opts: &NormalizedWatermark) -> RgbaImage {
+    let mut canvas = image.to_rgba8();
+    let (img_w, img_h) = canvas.dimensions();
+    let center_x = img_w as f32 / 2.0;
+    let center_y = img_h as f32 / 2.0;
+
+    let alpha = ((opts.opacity * opts.color.a as f32).clamp(0.0, 255.0)).round() as u8;
+    let (bitmap, text_w, text_h) = build_watermark_bitmap(&opts.text, opts.font_size, alpha);
+
+    let step_x = (text_w + opts.spacing as i32).max((opts.spacing as i32) + 1);
+    let step_y = (text_h + opts.spacing as i32).max((opts.spacing as i32) + 1);
+
+    let mut x_starts: Vec<i32> = Vec::new();
+    let mut y_starts: Vec<i32> = Vec::new();
+
+    match opts.direction {
+        WatermarkDirection::Horizontal => {
+            x_starts.extend((-text_w..img_w as i32 + text_w).step_by(step_x as usize));
+            y_starts.push((img_h as i32 / 2).saturating_sub(text_h / 2));
+        }
+        WatermarkDirection::Vertical => {
+            x_starts.push((img_w as i32 / 2).saturating_sub(text_w / 2));
+            y_starts.extend((-text_h..img_h as i32 + text_h).step_by(step_y as usize));
+        }
+        WatermarkDirection::Both => {
+            x_starts.extend((-text_w..img_w as i32 + text_w).step_by(step_x as usize));
+            y_starts.extend((-text_h..img_h as i32 + text_h).step_by(step_y as usize));
+        }
+    }
+
+    if y_starts.is_empty() {
+        y_starts.push(0);
+    }
+    if x_starts.is_empty() {
+        x_starts.push(0);
+    }
+
+    let cos_t = opts.rotation_rad.cos();
+    let sin_t = opts.rotation_rad.sin();
+
+    for base_y in &y_starts {
+        for base_x in &x_starts {
+            for (px, py, px_alpha) in bitmap.iter().copied() {
+                let src_x = *base_x + px;
+                let src_y = *base_y + py;
+                let dx = src_x as f32 - center_x;
+                let dy = src_y as f32 - center_y;
+                let rx = dx * cos_t - dy * sin_t + center_x;
+                let ry = dx * sin_t + dy * cos_t + center_y;
+                let tx = rx.round() as i32;
+                let ty = ry.round() as i32;
+                if tx < 0 || ty < 0 || tx >= img_w as i32 || ty >= img_h as i32 {
+                    continue;
+                }
+                let dst = canvas.get_pixel_mut(tx as u32, ty as u32);
+                let alpha = px_alpha;
+                if alpha == 0 {
+                    continue;
+                }
+                // Standard "over" alpha blending.
+                let inv = 255u16 - alpha as u16;
+                let blend = |dst_c: u8, src_c: u8| -> u8 {
+                    (((dst_c as u16 * inv) + (src_c as u16 * alpha as u16)) / 255) as u8
+                };
+                let out_alpha = alpha as u16 + (dst[3] as u16 * inv + 127) / 255; // rounded over operator
+                *dst = Rgba([
+                    blend(dst[0], opts.color.r),
+                    blend(dst[1], opts.color.g),
+                    blend(dst[2], opts.color.b),
+                    out_alpha.min(255) as u8,
+                ]);
+            }
+        }
+    }
+
+    canvas
 }
 
 /// Maps a WebP quality slider (1-100) to a reduced RGB palette and updates the
@@ -558,5 +934,68 @@ mod tests {
         assert_eq!(res.file_name, "blank.png");
         assert!(res.result.is_none());
         assert_eq!(res.error.as_deref(), Some("input image is empty"));
+    }
+
+    #[test]
+    fn watermark_rejects_empty_text() {
+        let png_bytes = encode_sample_as(PictureFormat::Png);
+        let err = apply_image_watermark_bytes(
+            "png",
+            "png",
+            &png_bytes,
+            ImageOptions::default(),
+            WatermarkOptions {
+                text: "".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+        assert!(err.to_lowercase().contains("watermark text"));
+    }
+
+    #[test]
+    fn watermark_draws_and_preserves_dimensions() {
+        let png_bytes = encode_sample_as(PictureFormat::Png);
+        let res = apply_image_watermark_bytes(
+            "png",
+            "png",
+            &png_bytes,
+            ImageOptions::default(),
+            WatermarkOptions {
+                text: "WATERMARK".into(),
+                opacity: 0.5,
+                rotation_deg: 30.0,
+                spacing: 12,
+                font_size: 16,
+                color: "#FF0000".into(),
+                direction: WatermarkDirection::Both,
+            },
+        )
+        .expect("watermark applied");
+        assert_eq!(res.width, 2);
+        assert_eq!(res.height, 2);
+        assert!(res.data_base64.len() > 8);
+    }
+
+    #[test]
+    fn watermark_spacing_is_clamped() {
+        let png_bytes = encode_sample_as(PictureFormat::Png);
+        let res = apply_image_watermark_bytes(
+            "png",
+            "png",
+            &png_bytes,
+            ImageOptions::default(),
+            WatermarkOptions {
+                text: "X".into(),
+                opacity: 0.7,
+                rotation_deg: 0.0,
+                spacing: 1, // below minimum
+                font_size: 12,
+                color: "#00FF00".into(),
+                direction: WatermarkDirection::Horizontal,
+            },
+        )
+        .expect("watermark applied");
+        assert!(res.data_url.starts_with("data:image/png;base64,"));
     }
 }

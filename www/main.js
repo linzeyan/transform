@@ -40,6 +40,7 @@ import initWasm, {
     generate_ascii_art,
     convert_number_base,
     convert_units,
+    apply_image_watermark_batch,
     convert_image_format_batch,
     convert_tabular_format,
     ipv4_info,
@@ -99,8 +100,9 @@ const formats = [
 const tabularFormats = ['Parquet', 'Avro', 'Arrow IPC', 'Feather', 'CSV', 'TSV', 'JSON'];
 
 // Image converter supports these formats.
-const imageFormats = ['jpg', 'png', 'webp', 'avif'];
+const imageFormats = ['original', 'jpg', 'png', 'webp', 'avif'];
 const imageFormatLabels = {
+    original: 'Original (keep format)',
     jpg: 'JPG',
     png: 'PNG',
     webp: 'WebP',
@@ -828,6 +830,16 @@ const state = {
             webp: { quality: 100 },
             avif: { quality: 80, speed: 4, lossless: false },
         },
+        watermark: {
+            enabled: false,
+            text: 'Transform',
+            opacity: 35,
+            rotation: 30,
+            spacing: 32,
+            fontSize: 32,
+            color: '#ffffff',
+            direction: 'both',
+        },
     },
     numberSyncing: false,
     unitSyncing: false,
@@ -1105,6 +1117,18 @@ function cacheElements() {
     elements.imageProgress = document.getElementById('imageProgress');
     elements.imageProgressFill = document.getElementById('imageProgressFill');
     elements.imageProgressLabel = document.getElementById('imageProgressLabel');
+    elements.watermarkText = document.getElementById('watermarkText');
+    elements.watermarkOpacity = document.getElementById('watermarkOpacity');
+    elements.watermarkRotation = document.getElementById('watermarkRotation');
+    elements.watermarkSpacing = document.getElementById('watermarkSpacing');
+    elements.watermarkFontSize = document.getElementById('watermarkFontSize');
+    elements.watermarkColor = document.getElementById('watermarkColor');
+    elements.watermarkToggle = document.getElementById('watermarkToggle');
+    elements.watermarkDirection = document.getElementsByName('watermarkDirection');
+    elements.watermarkOpacityValue = document.getElementById('watermarkOpacityValue');
+    elements.watermarkRotationValue = document.getElementById('watermarkRotationValue');
+    elements.watermarkSpacingValue = document.getElementById('watermarkSpacingValue');
+    elements.watermarkFontSizeValue = document.getElementById('watermarkFontSizeValue');
     elements.qrParseWorkspace = document.getElementById('qrParseWorkspace');
     elements.qrParseFile = document.getElementById('qrParseFile');
     elements.qrParseDrop = document.getElementById('qrParseDrop');
@@ -1449,10 +1473,21 @@ function bindUI() {
     elements.imageTargetFormat?.addEventListener('change', (event) => {
         state.image.targetFormat = (event.target.value || 'webp').trim().toLowerCase();
         renderImageOptions(state.image.targetFormat);
+        renderWatermarkControls();
     });
     elements.imageConvert?.addEventListener('click', handleImageConvert);
     elements.imageDownload?.addEventListener('click', handleImageDownload);
     elements.imageBatchList?.addEventListener('click', handleImageBatchListClick);
+    elements.watermarkToggle?.addEventListener('change', handleWatermarkToggle);
+    elements.watermarkText?.addEventListener('input', handleWatermarkChange);
+    elements.watermarkOpacity?.addEventListener('input', handleWatermarkRangeChange);
+    elements.watermarkRotation?.addEventListener('input', handleWatermarkRangeChange);
+    elements.watermarkSpacing?.addEventListener('input', handleWatermarkRangeChange);
+    elements.watermarkFontSize?.addEventListener('input', handleWatermarkRangeChange);
+    elements.watermarkColor?.addEventListener('input', handleWatermarkChange);
+    elements.watermarkDirection?.forEach?.((input) =>
+        input.addEventListener('change', handleWatermarkChange)
+    );
     elements.qrParseFile?.addEventListener('change', handleQrParseFileChange);
     elements.qrParseDrop?.addEventListener('dragover', (event) => {
         event.preventDefault();
@@ -3407,10 +3442,146 @@ function renderIPv4Row(label, value) {
   `;
 }
 
+function renderWatermarkControls() {
+    if (!isImageTool(state.currentTool)) return;
+    if (elements.watermarkToggle) {
+        elements.watermarkToggle.checked = Boolean(state.image.watermark.enabled);
+    }
+    const panel = document.getElementById('imageWatermarkControls');
+    if (panel) {
+        if (state.image.watermark.enabled) {
+            panel.classList.remove('hidden');
+        } else {
+            panel.classList.add('hidden');
+        }
+    }
+    if (!state.image.watermark.enabled) {
+        return;
+    }
+    if (elements.watermarkText) {
+        elements.watermarkText.value = state.image.watermark.text || '';
+    }
+    const syncRange = (input, valueEl, value) => {
+        if (input) input.value = String(value);
+        if (valueEl) valueEl.textContent = String(value);
+    };
+    syncRange(
+        elements.watermarkOpacity,
+        elements.watermarkOpacityValue,
+        state.image.watermark.opacity
+    );
+    syncRange(
+        elements.watermarkRotation,
+        elements.watermarkRotationValue,
+        state.image.watermark.rotation
+    );
+    syncRange(
+        elements.watermarkSpacing,
+        elements.watermarkSpacingValue,
+        state.image.watermark.spacing
+    );
+    syncRange(
+        elements.watermarkFontSize,
+        elements.watermarkFontSizeValue,
+        state.image.watermark.fontSize
+    );
+    if (elements.watermarkColor) {
+        elements.watermarkColor.value = state.image.watermark.color || '#ffffff';
+    }
+    if (elements.watermarkDirection && elements.watermarkDirection.forEach) {
+        elements.watermarkDirection.forEach((input) => {
+            input.checked = input.value === state.image.watermark.direction;
+        });
+    }
+}
+
+function handleWatermarkToggle(event) {
+    const enabled = Boolean(event?.target?.checked);
+    state.image.watermark.enabled = enabled;
+    renderWatermarkControls();
+}
+
+function handleWatermarkChange() {
+    if (!state.image.watermark.enabled) return;
+    state.image.watermark.text = elements.watermarkText?.value || state.image.watermark.text;
+    state.image.watermark.color = elements.watermarkColor?.value || state.image.watermark.color;
+    if (elements.watermarkDirection && elements.watermarkDirection.forEach) {
+        elements.watermarkDirection.forEach((input) => {
+            if (input.checked) {
+                state.image.watermark.direction = input.value || state.image.watermark.direction;
+            }
+        });
+    }
+}
+
+function handleWatermarkRangeChange(event) {
+    const target = event.target;
+    if (!target) return;
+    if (!state.image.watermark.enabled) return;
+    const raw = Number(target.value);
+    const value = Number.isFinite(raw) ? raw : 0;
+    switch (target.id) {
+        case 'watermarkOpacity':
+            state.image.watermark.opacity = Math.min(100, Math.max(0, value));
+            if (elements.watermarkOpacityValue) {
+                elements.watermarkOpacityValue.textContent = String(state.image.watermark.opacity);
+            }
+            break;
+        case 'watermarkRotation':
+            state.image.watermark.rotation = Math.min(90, Math.max(-90, value));
+            if (elements.watermarkRotationValue) {
+                elements.watermarkRotationValue.textContent = String(
+                    state.image.watermark.rotation
+                );
+            }
+            break;
+        case 'watermarkSpacing':
+            state.image.watermark.spacing = Math.min(200, Math.max(10, value));
+            if (elements.watermarkSpacingValue) {
+                elements.watermarkSpacingValue.textContent = String(state.image.watermark.spacing);
+            }
+            break;
+        case 'watermarkFontSize':
+            state.image.watermark.fontSize = Math.min(96, Math.max(8, value));
+            if (elements.watermarkFontSizeValue) {
+                elements.watermarkFontSizeValue.textContent = String(
+                    state.image.watermark.fontSize
+                );
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+function buildWatermarkPayload() {
+    if (!state.image.watermark.enabled) {
+        return null;
+    }
+    const text = (elements.watermarkText?.value || state.image.watermark.text || '').trim();
+    if (!text) {
+        throw new Error('Enter watermark text first');
+    }
+    const direction =
+        Array.from(elements.watermarkDirection || []).find((el) => el.checked)?.value ||
+        state.image.watermark.direction ||
+        'both';
+    return {
+        text,
+        opacity: (state.image.watermark.opacity || 0) / 100,
+        rotationDeg: state.image.watermark.rotation || 0,
+        spacing: state.image.watermark.spacing || 32,
+        fontSize: state.image.watermark.fontSize || 32,
+        color: elements.watermarkColor?.value || state.image.watermark.color || '#ffffff',
+        direction,
+    };
+}
+
 // Image converter: reads uploads, calls wasm for transcoding, and keeps preview/download in sync.
 function activateImageTool() {
     renderImageFormatSelect();
     renderImageOptions(state.image.targetFormat || 'webp');
+    renderWatermarkControls();
     renderImageInputMeta();
     renderImageOriginalPreview();
     renderImageOutput(state.image.result);
@@ -3637,8 +3808,13 @@ function renderImageOptions(format) {
         .toString()
         .trim()
         .toLowerCase();
-    const specs = imageFormatOptions[normalizedFormat] || [];
-    const existing = state.image.optionsByFormat[normalizedFormat] || {};
+    const detectedSource =
+        normalizeImageExt(state.image.detectedFormat) ||
+        normalizeImageExt(state.image.files?.[0]?.detectedFormat || '');
+    const effectiveFormat =
+        normalizedFormat === 'original' ? detectedSource || 'png' : normalizedFormat;
+    const specs = imageFormatOptions[effectiveFormat] || [];
+    const existing = state.image.optionsByFormat[effectiveFormat] || {};
     const opts = { ...existing };
     specs.forEach((spec) => {
         if (spec.type === 'note') return;
@@ -3646,7 +3822,7 @@ function renderImageOptions(format) {
             opts[spec.key] = spec.defaultValue;
         }
     });
-    state.image.optionsByFormat[normalizedFormat] = opts;
+    state.image.optionsByFormat[effectiveFormat] = opts;
     if (!specs.length) {
         elements.imageOptions.innerHTML =
             '<div class="image-option-note">No adjustable options for this format.</div>';
@@ -3694,7 +3870,11 @@ function handleImageOptionChange(event) {
         .toString()
         .trim()
         .toLowerCase();
-    const current = { ...(state.image.optionsByFormat[format] || {}) };
+    const detectedSource =
+        normalizeImageExt(state.image.detectedFormat) ||
+        normalizeImageExt(state.image.files?.[0]?.detectedFormat || '');
+    const effectiveFormat = format === 'original' ? detectedSource || 'png' : format;
+    const current = { ...(state.image.optionsByFormat[effectiveFormat] || {}) };
     if (event.target.type === 'checkbox') {
         current[key] = Boolean(event.target.checked);
     } else {
@@ -3708,7 +3888,7 @@ function handleImageOptionChange(event) {
             }
         }
     }
-    state.image.optionsByFormat[format] = current;
+    state.image.optionsByFormat[effectiveFormat] = current;
 }
 
 function handleImageConvert() {
@@ -3727,20 +3907,40 @@ function handleImageConvert() {
     }
     const target = elements.imageTargetFormat?.value || state.image.targetFormat || 'webp';
     state.image.targetFormat = (target || '').toString().trim().toLowerCase();
-    const options = state.image.optionsByFormat[target] || {};
+    const applyWatermark = Boolean(state.image.watermark.enabled);
+    let watermark = null;
+    if (applyWatermark) {
+        try {
+            watermark = buildWatermarkPayload();
+        } catch (err) {
+            setStatus(err?.message || 'Watermark configuration invalid', true);
+            return;
+        }
+    }
     try {
         state.image.progress = { completed: 0, total: files.length };
         renderImageProgress();
-        setStatus('Converting images...', false);
+        setStatus(applyWatermark ? 'Applying watermark...' : 'Converting images...', false);
         // Build batch payload so the wasm helper can process files in one call.
-        const payload = files.map((file) => ({
-            from: detectImageFormat(file.bytes, file.name) || file.detectedFormat || 'png',
-            to: target,
-            bytes: file.bytes,
-            fileName: file.name,
-            options,
-        }));
-        const raw = convert_image_format_batch(payload);
+        const payload = files.map((file) => {
+            const detected =
+                detectImageFormat(file.bytes, file.name) || file.detectedFormat || 'png';
+            const to =
+                state.image.targetFormat === 'original' ? 'original' : state.image.targetFormat;
+            const formatForOptions = to === 'original' ? detected : to;
+            const options = state.image.optionsByFormat[formatForOptions] || {};
+            const base = {
+                from: detected,
+                to,
+                bytes: file.bytes,
+                fileName: file.name,
+                options,
+            };
+            return applyWatermark ? { ...base, watermark } : base;
+        });
+        const raw = applyWatermark
+            ? apply_image_watermark_batch(payload)
+            : convert_image_format_batch(payload);
         const items = Array.isArray(raw) ? raw : [];
         const normalized = items.map(normalizeBatchImageResult);
         state.image.batchResults = normalized;

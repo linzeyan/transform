@@ -9,14 +9,15 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
 
 use wasm_core::{
-    argon2_hash, argon2_verify, bcrypt_hash, bcrypt_verify, convert_image_format,
-    convert_number_base, convert_tabular_format, convert_timestamp, convert_units, decode_content,
-    decode_content_bytes, decrypt_bytes, encode_content, encode_content_bytes, encrypt_bytes,
-    generate_ascii_art, generate_insert_statements, generate_qr_code, generate_text_diff,
-    generate_unified_text_diff, generate_user_agents, generate_uuids, hash_content,
-    hash_content_bytes, html_to_markdown_text, inspect_certificates, ipv4_info, jwt_decode,
-    jwt_encode, list_ascii_fonts, markdown_to_html_text, random_number_sequences,
-    random_numeric_range_sequences, totp_token, transform_format, url_decode, url_encode,
+    apply_image_watermark, argon2_hash, argon2_verify, bcrypt_hash, bcrypt_verify,
+    convert_image_format, convert_number_base, convert_tabular_format, convert_timestamp,
+    convert_units, decode_content, decode_content_bytes, decrypt_bytes, encode_content,
+    encode_content_bytes, encrypt_bytes, generate_ascii_art, generate_insert_statements,
+    generate_qr_code, generate_text_diff, generate_unified_text_diff, generate_user_agents,
+    generate_uuids, hash_content, hash_content_bytes, html_to_markdown_text, inspect_certificates,
+    ipv4_info, jwt_decode, jwt_encode, list_ascii_fonts, markdown_to_html_text,
+    random_number_sequences, random_numeric_range_sequences, totp_token, transform_format,
+    url_decode, url_encode,
 };
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -396,6 +397,52 @@ fn image_converter_png_to_webp_via_wasm() {
         .unwrap_or_default();
     assert_eq!((width, height), (1, 1));
     assert_eq!(field(&obj, "format"), "webp");
+}
+
+#[wasm_bindgen_test]
+fn image_watermark_round_trip() {
+    let mut png_bytes = Vec::new();
+    let png = image::DynamicImage::new_rgba8(2, 2);
+    png.write_to(
+        &mut std::io::Cursor::new(&mut png_bytes),
+        image::ImageFormat::Png,
+    )
+    .expect("encode png fixture");
+
+    let watermark = Object::new();
+    let set_field = |key: &str, value: JsValue| {
+        Reflect::set(&watermark, &JsValue::from_str(key), &value).expect("set watermark field");
+    };
+    set_field("text", JsValue::from_str("demo"));
+    set_field("opacity", JsValue::from_f64(0.6));
+    set_field("rotationDeg", JsValue::from_f64(30.0));
+    set_field("spacing", JsValue::from_f64(12.0));
+    set_field("fontSize", JsValue::from_f64(18.0));
+    set_field("color", JsValue::from_str("#FF00FF"));
+    set_field("direction", JsValue::from_str("both"));
+
+    let js_val = apply_image_watermark(
+        "png",
+        "original",
+        &png_bytes,
+        watermark.into(),
+        JsValue::NULL,
+    )
+    .expect("watermark via wasm");
+    let obj = js_to_json(js_val);
+    assert_eq!(field(&obj, "format"), "png");
+    assert_eq!(field(&obj, "mime"), "image/png");
+    let data_url = field(&obj, "data_url");
+    assert!(data_url.starts_with("data:image/png;base64,"));
+    let width = obj
+        .get("width")
+        .and_then(|v| v.as_u64())
+        .unwrap_or_default();
+    let height = obj
+        .get("height")
+        .and_then(|v| v.as_u64())
+        .unwrap_or_default();
+    assert_eq!((width, height), (2, 2));
 }
 
 #[wasm_bindgen_test]

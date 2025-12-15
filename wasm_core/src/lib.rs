@@ -2863,6 +2863,33 @@ pub fn convert_image_format_batch(files: JsValue) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
+/// Applies a text watermark to an image and returns the encoded result as a data URL.
+pub fn apply_image_watermark(
+    from: &str,
+    to: &str,
+    bytes: &[u8],
+    watermark: JsValue,
+    options: JsValue,
+) -> Result<JsValue, JsValue> {
+    let opts: images::ImageOptions = serde_wasm_bindgen::from_value(options).unwrap_or_default();
+    let wm: images::WatermarkOptions = serde_wasm_bindgen::from_value(watermark)
+        .map_err(|err| JsValue::from_str(&format!("invalid watermark payload: {err}")))?;
+    images::apply_image_watermark_bytes(from, to, bytes, opts, wm)
+        .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
+        .map_err(|err| JsValue::from_str(&err))
+}
+
+#[wasm_bindgen]
+/// Batch watermarking helper so the UI can keep the progress bar in sync.
+pub fn apply_image_watermark_batch(files: JsValue) -> Result<JsValue, JsValue> {
+    let inputs: Vec<images::WatermarkBatchInput> = serde_wasm_bindgen::from_value(files)
+        .map_err(|err| JsValue::from_str(&format!("invalid watermark batch payload: {err}")))?;
+    images::apply_image_watermark_batch(inputs)
+        .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
+        .map_err(|err| JsValue::from_str(&err))
+}
+
+#[wasm_bindgen]
 /// Converts Markdown to HTML using the same rules as the web playground so previews
 /// look identical between Rust tests and the browser.
 pub fn markdown_to_html_text(input: &str) -> Result<String, JsValue> {

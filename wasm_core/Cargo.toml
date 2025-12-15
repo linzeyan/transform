@@ -60,6 +60,7 @@ avro-schema = "0.3"
 parquet2 = { version = "0.17", default-features = false }
 apache-avro = { version = "0.21", default-features = false }
 figlet-rs = "0.1"
+font8x8 = "0.3"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

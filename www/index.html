@@ -1,2128 +1,2282 @@
 <!doctype html>
 <html lang="en-US">
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width,initial-scale=1" />
-        <title>transform</title>
-        <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-        <link rel="stylesheet" href="css/main.css" />
-    </head>
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width,initial-scale=1" />
+		<title>transform</title>
+		<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+		<link rel="stylesheet" href="css/main.css" />
+	</head>
 
-    <body>
-        <!-- Single-page toolbox driven by wasm_core exports. Sidebar selects a workspace panel on the right. -->
-        <div class="app-shell">
-            <aside id="sidebar">
-                <button
-                    id="sidebarCollapseBtn"
-                    class="sidebar-collapse-btn"
-                    aria-label="Collapse sidebar"
-                    title="Collapse sidebar"
-                >
-                    ◀
-                </button>
-                <div class="sidebar-brand">
-                    <div class="sidebar-brand-content">
-                        <strong>transform</strong>
-                        <span>Toolbox</span>
-                    </div>
-                </div>
-                <nav id="toolGroups"></nav>
-            </aside>
-            <div id="sidebarResizer"></div>
-            <div class="workspace">
-                <header class="topbar">
-                    <button
-                        class="sidebar-toggle"
-                        id="sidebarToggle"
-                        aria-label="Toggle navigation"
-                    >
-                        ☰
-                    </button>
-                    <div class="tool-info">
-                        <h1 id="toolName">Format Converter</h1>
-                        <p id="toolDesc">Convert between structured data formats.</p>
-                    </div>
-                    <div class="converter-controls" id="converterControls">
-                        <div class="mode-select">
-                            <select id="fromSelect">
-                                <option value="JSON">JSON</option>
-                                <option value="Go Struct">Go Struct</option>
-                                <option value="YAML">YAML</option>
-                                <option value="TOML">TOML</option>
-                                <option value="XML">XML</option>
-                                <option value="JSON Schema">JSON Schema</option>
-                                <option value="GraphQL Schema">GraphQL Schema</option>
-                                <option value="Protobuf">Protobuf</option>
-                                <option value="TOON">TOON</option>
-                                <option value="MsgPack">MsgPack</option>
-                            </select>
-                            <button id="swap" title="Swap">&#8646;</button>
-                            <select id="toSelect">
-                                <option value="Go Struct">Go Struct</option>
-                                <option value="JSON">JSON</option>
-                                <option value="YAML">YAML</option>
-                                <option value="TOML">TOML</option>
-                                <option value="XML">XML</option>
-                                <option value="JSON Schema">JSON Schema</option>
-                                <option value="GraphQL Schema">GraphQL Schema</option>
-                                <option value="Protobuf">Protobuf</option>
-                                <option value="TOON">TOON</option>
-                                <option value="MsgPack">MsgPack</option>
-                            </select>
-                        </div>
-                        <div class="actions converter-only">
-                            <button id="copy" class="copy-btn" title="Copy output to clipboard">
-                                📋 Copy output
-                            </button>
-                            <button id="clear">Clear</button>
-                        </div>
-                    </div>
-                </header>
+	<body>
+		<!-- Single-page toolbox driven by wasm_core exports. Sidebar selects a workspace panel on the right. -->
+		<div class="app-shell">
+			<aside id="sidebar">
+				<button
+					id="sidebarCollapseBtn"
+					class="sidebar-collapse-btn"
+					aria-label="Collapse sidebar"
+					title="Collapse sidebar"
+				>
+					◀
+				</button>
+				<div class="sidebar-brand">
+					<div class="sidebar-brand-content">
+						<strong>transform</strong>
+						<span>Toolbox</span>
+					</div>
+				</div>
+				<nav id="toolGroups"></nav>
+			</aside>
+			<div id="sidebarResizer"></div>
+			<div class="workspace">
+				<header class="topbar">
+					<button
+						class="sidebar-toggle"
+						id="sidebarToggle"
+						aria-label="Toggle navigation"
+					>
+						☰
+					</button>
+					<div class="tool-info">
+						<h1 id="toolName">Format Converter</h1>
+						<p id="toolDesc">Convert between structured data formats.</p>
+					</div>
+					<div class="converter-controls" id="converterControls">
+						<div class="mode-select">
+							<select id="fromSelect">
+								<option value="JSON">JSON</option>
+								<option value="Go Struct">Go Struct</option>
+								<option value="YAML">YAML</option>
+								<option value="TOML">TOML</option>
+								<option value="XML">XML</option>
+								<option value="JSON Schema">JSON Schema</option>
+								<option value="GraphQL Schema">GraphQL Schema</option>
+								<option value="Protobuf">Protobuf</option>
+								<option value="TOON">TOON</option>
+								<option value="MsgPack">MsgPack</option>
+							</select>
+							<button id="swap" title="Swap">&#8646;</button>
+							<select id="toSelect">
+								<option value="Go Struct">Go Struct</option>
+								<option value="JSON">JSON</option>
+								<option value="YAML">YAML</option>
+								<option value="TOML">TOML</option>
+								<option value="XML">XML</option>
+								<option value="JSON Schema">JSON Schema</option>
+								<option value="GraphQL Schema">GraphQL Schema</option>
+								<option value="Protobuf">Protobuf</option>
+								<option value="TOON">TOON</option>
+								<option value="MsgPack">MsgPack</option>
+							</select>
+						</div>
+						<div class="actions converter-only">
+							<button
+								id="copy"
+								class="copy-btn"
+								title="Copy output to clipboard"
+							>
+								📋 Copy output
+							</button>
+							<button id="clear">Clear</button>
+						</div>
+					</div>
+				</header>
 
-                <div id="converterWorkspace" class="tool-view">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2 id="inputLabel">Input</h2>
-                            </div>
-                            <div class="panel-actions">
-                                <button class="ghost-btn" id="formatInput">Format</button>
-                                <button class="ghost-btn" id="minifyInput">Minimize</button>
-                            </div>
-                        </div>
-                        <textarea
-                            id="input"
-                            spellcheck="false"
-                            placeholder="Paste JSON or Go struct..."
-                        ></textarea>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2 id="outputLabel">Output</h2>
-                            </div>
-                            <div class="panel-actions">
-                                <button class="ghost-btn" id="formatOutput">Format</button>
-                                <button class="ghost-btn" id="minifyOutput">Minimize</button>
-                            </div>
-                        </div>
-                        <textarea id="output" spellcheck="false" readonly></textarea>
-                    </section>
+				<div id="converterWorkspace" class="tool-view">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2 id="inputLabel">Input</h2>
+							</div>
+							<div class="panel-actions">
+								<button class="ghost-btn" id="formatInput">Format</button>
+								<button class="ghost-btn" id="minifyInput">Minimize</button>
+							</div>
+						</div>
+						<textarea
+							id="input"
+							spellcheck="false"
+							placeholder="Paste JSON or Go struct..."
+						></textarea>
+					</section>
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2 id="outputLabel">Output</h2>
+							</div>
+							<div class="panel-actions">
+								<button class="ghost-btn" id="formatOutput">Format</button>
+								<button class="ghost-btn" id="minifyOutput">Minimize</button>
+							</div>
+						</div>
+						<textarea id="output" spellcheck="false" readonly></textarea>
+					</section>
 
-                    <!-- Tabular file converter: uploads binary/text tables and routes through wasm. -->
-                    <section class="panel panel-wide" id="tabularSection">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Data File Conversion</h2>
-                                <p>
-                                    Convert Parquet / Avro / Arrow IPC / CSV / TSV / JSON and
-                                    download.
-                                </p>
-                            </div>
-                            <div class="panel-actions">
-                                <label class="ghost-btn file-label" for="tabularFile"
-                                    >Choose files</label
-                                >
-                                <input type="file" id="tabularFile" class="hidden" multiple />
-                            </div>
-                        </div>
-                        <div class="tabular-grid">
-                            <div class="tabular-controls">
-                                <label>
-                                    <span>Source format</span>
-                                    <select id="tabularFrom"></select>
-                                </label>
-                                <label>
-                                    <span>Target format</span>
-                                    <select id="tabularTo"></select>
-                                </label>
-                                <div class="tabular-actions">
-                                    <button id="tabularConvert" type="button">Convert</button>
-                                    <button id="tabularDownload" type="button" disabled>
-                                        Download
-                                    </button>
-                                </div>
-                                <div class="tabular-progress" id="tabularProgress">
-                                    <div class="progress-bar"></div>
-                                </div>
-                                <div class="tabular-status" id="tabularStatus">
-                                    No file selected
-                                </div>
-                            </div>
-                            <div class="tabular-meta">
-                                <p>
-                                    <strong>File</strong>: <span id="tabularFileName">(none)</span>
-                                </p>
-                                <p><strong>Rows</strong>: <span id="tabularRowCount">0</span></p>
-                                <p>
-                                    <strong>Output name</strong>:
-                                    <span id="tabularOutputName">converted</span>
-                                </p>
-                            </div>
-                        </div>
-                    </section>
-                </div>
+					<!-- Tabular file converter: uploads binary/text tables and routes through wasm. -->
+					<section class="panel panel-wide" id="tabularSection">
+						<div class="panel-header">
+							<div>
+								<h2>Data File Conversion</h2>
+								<p>
+									Convert Parquet / Avro / Arrow IPC / CSV / TSV / JSON and
+									download.
+								</p>
+							</div>
+							<div class="panel-actions">
+								<label class="ghost-btn file-label" for="tabularFile"
+									>Choose files</label
+								>
+								<input type="file" id="tabularFile" class="hidden" multiple />
+							</div>
+						</div>
+						<div class="tabular-grid">
+							<div class="tabular-controls">
+								<label>
+									<span>Source format</span>
+									<select id="tabularFrom"></select>
+								</label>
+								<label>
+									<span>Target format</span>
+									<select id="tabularTo"></select>
+								</label>
+								<div class="tabular-actions">
+									<button id="tabularConvert" type="button">Convert</button>
+									<button id="tabularDownload" type="button" disabled>
+										Download
+									</button>
+								</div>
+								<div class="tabular-progress" id="tabularProgress">
+									<div class="progress-bar"></div>
+								</div>
+								<div class="tabular-status" id="tabularStatus">
+									No file selected
+								</div>
+							</div>
+							<div class="tabular-meta">
+								<p>
+									<strong>File</strong>:
+									<span id="tabularFileName">(none)</span>
+								</p>
+								<p>
+									<strong>Rows</strong>: <span id="tabularRowCount">0</span>
+								</p>
+								<p>
+									<strong>Output name</strong>:
+									<span id="tabularOutputName">converted</span>
+								</p>
+							</div>
+						</div>
+					</section>
+				</div>
 
-                <!-- Image Converter workspace: converts common raster formats and keeps alpha intact. -->
-                <div id="imageWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Image Converter</h2>
-                                <p>JPG / PNG / WebP / AVIF → pick a target format.</p>
-                            </div>
-                            <div class="panel-actions">
-                                <label class="ghost-btn file-label" for="imageFile"
-                                    >Select image</label
-                                >
-                                <input
-                                    type="file"
-                                    id="imageFile"
-                                    class="hidden"
-                                    multiple
-                                    accept=".png,.jpg,.jpeg,.webp,.avif,image/*"
-                                />
-                            </div>
-                        </div>
-                        <div class="image-meta" id="imageInputMeta">No image selected</div>
-                        <div class="image-controls">
-                            <label>
-                                <span>Convert to</span>
-                                <select id="imageTargetFormat"></select>
-                            </label>
-                        </div>
-                        <div class="image-options" id="imageOptions"></div>
-                        <div class="image-preview-grid">
-                            <div class="image-card">
-                                <div class="image-card-head">
-                                    <h3>Original</h3>
-                                    <p class="muted">Shows the selected file</p>
-                                </div>
-                                <div class="image-frame" id="imageOriginalPreview">
-                                    <div class="muted">Select an image to preview</div>
-                                </div>
-                            </div>
-                            <div class="image-card">
-                                <div class="image-card-head">
-                                    <h3>Converted</h3>
-                                    <p class="muted">Updated after conversion</p>
-                                </div>
-                                <div class="image-frame" id="imageOutputPreview">
-                                    <div class="muted">Run a conversion to see the result</div>
-                                </div>
-                                <div class="image-meta" id="imageOutputMeta"></div>
-                            </div>
-                        </div>
-                        <div class="image-batch">
-                            <div class="image-progress" id="imageProgress">
-                                <div class="progress-bar">
-                                    <div class="progress-bar-fill" id="imageProgressFill"></div>
-                                </div>
-                                <div class="progress-label" id="imageProgressLabel">0 / 0</div>
-                            </div>
-                            <div class="image-batch-list" id="imageBatchList">
-                                <div class="muted">Select images to build a conversion queue.</div>
-                            </div>
-                        </div>
-                        <div class="image-footer">
-                            <div class="image-actions">
-                                <button id="imageConvert" type="button">Convert</button>
-                                <button id="imageDownload" type="button" disabled>Download</button>
-                            </div>
-                            <div class="image-error" id="imageError"></div>
-                        </div>
-                    </section>
-                </div>
+				<!-- Image Converter workspace: converts common raster formats and keeps alpha intact. -->
+				<div id="imageWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Image Converter</h2>
+								<p>JPG / PNG / WebP / AVIF → pick a target format.</p>
+							</div>
+							<div class="panel-actions">
+								<label class="ghost-btn file-label" for="imageFile"
+									>Select image</label
+								>
+								<input
+									type="file"
+									id="imageFile"
+									class="hidden"
+									multiple
+									accept=".png,.jpg,.jpeg,.webp,.avif,image/*"
+								/>
+							</div>
+						</div>
+						<div class="image-meta" id="imageInputMeta">No image selected</div>
+						<div class="image-controls">
+							<label>
+								<span>Convert to</span>
+								<select id="imageTargetFormat"></select>
+							</label>
+						</div>
+						<div class="image-options" id="imageOptions"></div>
+						<div class="image-watermark">
+							<label class="checkbox">
+								<input type="checkbox" id="watermarkToggle" />
+								<span>Add watermark</span>
+							</label>
+							<div class="watermark-grid hidden" id="imageWatermarkControls">
+								<label>
+									<span>Text</span>
+									<input
+										type="text"
+										id="watermarkText"
+										placeholder="Enter watermark text"
+										spellcheck="false"
+									/>
+								</label>
+								<label>
+									<span>Opacity</span>
+									<div class="range-input-wrapper">
+										<input
+											type="range"
+											id="watermarkOpacity"
+											min="0"
+											max="100"
+											value="35"
+										/>
+										<span class="range-value" id="watermarkOpacityValue"
+											>35</span
+										>
+									</div>
+								</label>
+								<label>
+									<span>Rotation (°)</span>
+									<div class="range-input-wrapper">
+										<input
+											type="range"
+											id="watermarkRotation"
+											min="-90"
+											max="90"
+											value="30"
+										/>
+										<span class="range-value" id="watermarkRotationValue"
+											>30</span
+										>
+									</div>
+								</label>
+								<label>
+									<span>Spacing (px)</span>
+									<div class="range-input-wrapper">
+										<input
+											type="range"
+											id="watermarkSpacing"
+											min="10"
+											max="200"
+											value="32"
+										/>
+										<span class="range-value" id="watermarkSpacingValue"
+											>32</span
+										>
+									</div>
+								</label>
+								<label>
+									<span>Font size (px)</span>
+									<div class="range-input-wrapper">
+										<input
+											type="range"
+											id="watermarkFontSize"
+											min="8"
+											max="96"
+											value="32"
+										/>
+										<span class="range-value" id="watermarkFontSizeValue"
+											>32</span
+										>
+									</div>
+								</label>
+								<label>
+									<span>Color</span>
+									<input type="color" id="watermarkColor" value="#ffffff" />
+								</label>
+								<fieldset class="watermark-direction">
+									<legend>Direction</legend>
+									<label class="checkbox inline">
+										<input
+											type="radio"
+											name="watermarkDirection"
+											value="both"
+											checked
+										/>
+										<span>Horizontal + Vertical</span>
+									</label>
+									<label class="checkbox inline">
+										<input
+											type="radio"
+											name="watermarkDirection"
+											value="horizontal"
+										/>
+										<span>Horizontal</span>
+									</label>
+									<label class="checkbox inline">
+										<input
+											type="radio"
+											name="watermarkDirection"
+											value="vertical"
+										/>
+										<span>Vertical</span>
+									</label>
+								</fieldset>
+							</div>
+						</div>
+						<div class="image-preview-grid">
+							<div class="image-card">
+								<div class="image-card-head">
+									<h3>Original</h3>
+									<p class="muted">Shows the selected file</p>
+								</div>
+								<div class="image-frame" id="imageOriginalPreview">
+									<div class="muted">Select an image to preview</div>
+								</div>
+							</div>
+							<div class="image-card">
+								<div class="image-card-head">
+									<h3>Converted</h3>
+									<p class="muted">Updated after conversion</p>
+								</div>
+								<div class="image-frame" id="imageOutputPreview">
+									<div class="muted">Run a conversion to see the result</div>
+								</div>
+								<div class="image-meta" id="imageOutputMeta"></div>
+							</div>
+						</div>
+						<div class="image-batch">
+							<div class="image-progress" id="imageProgress">
+								<div class="progress-bar">
+									<div class="progress-bar-fill" id="imageProgressFill"></div>
+								</div>
+								<div class="progress-label" id="imageProgressLabel">0 / 0</div>
+							</div>
+							<div class="image-batch-list" id="imageBatchList">
+								<div class="muted">
+									Select images to build a conversion queue.
+								</div>
+							</div>
+						</div>
+						<div class="image-footer">
+							<div class="image-actions">
+								<button id="imageConvert" type="button">Convert</button>
+								<button id="imageDownload" type="button" disabled>
+									Download
+								</button>
+							</div>
+							<div class="image-error" id="imageError"></div>
+						</div>
+					</section>
+				</div>
 
-                <div id="coderWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header coder-header">
-                            <div>
-                                <h2 id="coderWorkspaceTitle">Encode</h2>
-                                <p id="coderModeHint">Encode text into multiple bases.</p>
-                            </div>
-                            <label class="decode-select hidden" id="decodeVariantWrap">
-                                <span>Decoder</span>
-                                <select id="decodeVariant"></select>
-                            </label>
-                            <div class="hash-controls hidden" id="hashControls">
-                                <label>
-                                    <span>Digest Output</span>
-                                    <select id="hashEncoding">
-                                        <option value="base16">Base16</option>
-                                        <option value="base64">Base64</option>
-                                        <option value="base64_raw">Base64 (no padding)</option>
-                                        <option value="base64_url">Base64 URL</option>
-                                        <option value="base64_url_raw">
-                                            Base64 URL (no padding)
-                                        </option>
-                                    </select>
-                                </label>
-                                <label class="hash-hmac-toggle">
-                                    <input type="checkbox" id="hashUseHmac" />
-                                    <span>Use HMAC</span>
-                                </label>
-                                <input
-                                    type="password"
-                                    id="hashHmacSecret"
-                                    class="hidden"
-                                    placeholder="Secret key"
-                                    spellcheck="false"
-                                />
-                            </div>
-                        </div>
-                        <div class="coder-mode-row" id="coderInputControls">
-                            <label class="checkbox">
-                                <input
-                                    type="radio"
-                                    name="coderInputMode"
-                                    id="coderModeText"
-                                    value="text"
-                                    checked
-                                />
-                                <span>Use text</span>
-                            </label>
-                            <label class="checkbox">
-                                <input
-                                    type="radio"
-                                    name="coderInputMode"
-                                    id="coderModeFile"
-                                    value="file"
-                                />
-                                <span>Use file</span>
-                            </label>
-                            <input type="file" id="coderFile" class="hidden" />
-                            <div id="coderFileMeta" class="muted hidden">No file selected</div>
-                        </div>
-                        <textarea
-                            id="coderInput"
-                            spellcheck="false"
-                            placeholder="Type or paste text..."
-                        ></textarea>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2 id="coderResultHeading">Encodings</h2>
-                                <p id="coderResultHint">Base32 / Base64 / Base85 / Base91 / Hex</p>
-                            </div>
-                            <div class="panel-actions hidden" id="coderResultActions">
-                                <button
-                                    class="ghost-btn hidden"
-                                    id="hashToggleCase"
-                                    data-upper="false"
-                                >
-                                    Toggle Case
-                                </button>
-                                <button
-                                    class="ghost-btn hidden"
-                                    id="coderDownloadDecoded"
-                                    type="button"
-                                >
-                                    Download decoded file
-                                </button>
-                            </div>
-                        </div>
-                        <div id="coderDecodeMeta" class="muted hidden"></div>
-                        <div id="coderResults" class="coder-results">
-                            <div class="muted">Enter content to see results</div>
-                        </div>
-                    </section>
-                </div>
+				<div id="coderWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header coder-header">
+							<div>
+								<h2 id="coderWorkspaceTitle">Encode</h2>
+								<p id="coderModeHint">Encode text into multiple bases.</p>
+							</div>
+							<label class="decode-select hidden" id="decodeVariantWrap">
+								<span>Decoder</span>
+								<select id="decodeVariant"></select>
+							</label>
+							<div class="hash-controls hidden" id="hashControls">
+								<label>
+									<span>Digest Output</span>
+									<select id="hashEncoding">
+										<option value="base16">Base16</option>
+										<option value="base64">Base64</option>
+										<option value="base64_raw">Base64 (no padding)</option>
+										<option value="base64_url">Base64 URL</option>
+										<option value="base64_url_raw">
+											Base64 URL (no padding)
+										</option>
+									</select>
+								</label>
+								<label class="hash-hmac-toggle">
+									<input type="checkbox" id="hashUseHmac" />
+									<span>Use HMAC</span>
+								</label>
+								<input
+									type="password"
+									id="hashHmacSecret"
+									class="hidden"
+									placeholder="Secret key"
+									spellcheck="false"
+								/>
+							</div>
+						</div>
+						<div class="coder-mode-row" id="coderInputControls">
+							<label class="checkbox">
+								<input
+									type="radio"
+									name="coderInputMode"
+									id="coderModeText"
+									value="text"
+									checked
+								/>
+								<span>Use text</span>
+							</label>
+							<label class="checkbox">
+								<input
+									type="radio"
+									name="coderInputMode"
+									id="coderModeFile"
+									value="file"
+								/>
+								<span>Use file</span>
+							</label>
+							<input type="file" id="coderFile" class="hidden" />
+							<div id="coderFileMeta" class="muted hidden">
+								No file selected
+							</div>
+						</div>
+						<textarea
+							id="coderInput"
+							spellcheck="false"
+							placeholder="Type or paste text..."
+						></textarea>
+					</section>
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2 id="coderResultHeading">Encodings</h2>
+								<p id="coderResultHint">
+									Base32 / Base64 / Base85 / Base91 / Hex
+								</p>
+							</div>
+							<div class="panel-actions hidden" id="coderResultActions">
+								<button
+									class="ghost-btn hidden"
+									id="hashToggleCase"
+									data-upper="false"
+								>
+									Toggle Case
+								</button>
+								<button
+									class="ghost-btn hidden"
+									id="coderDownloadDecoded"
+									type="button"
+								>
+									Download decoded file
+								</button>
+							</div>
+						</div>
+						<div id="coderDecodeMeta" class="muted hidden"></div>
+						<div id="coderResults" class="coder-results">
+							<div class="muted">Enter content to see results</div>
+						</div>
+					</section>
+				</div>
 
-                <div id="kdfWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Password Hashers</h2>
-                                <p>Bcrypt / Argon2 — generate and verify.</p>
-                            </div>
-                            <div class="panel-actions">
-                                <button id="kdfRefreshSalts">Random salt</button>
-                                <select id="kdfAlgoSelect">
-                                    <option value="bcrypt">Bcrypt</option>
-                                    <option value="argon2">Argon2</option>
-                                </select>
-                            </div>
-                        </div>
-                        <p class="muted kdf-note">
-                            Enter a password to hash. Paste an existing hash (or plain text) to
-                            verify against the password. Empty salt will be auto-generated.
-                        </p>
-                        <div class="kdf-grid">
-                            <div class="kdf-card" data-algo="bcrypt">
-                                <div class="kdf-card-head">
-                                    <div>
-                                        <h3>Bcrypt</h3>
-                                        <p class="muted">Good for login flows, cost 4-31</p>
-                                    </div>
-                                    <span id="bcryptStatus" class="kdf-status muted">Idle</span>
-                                </div>
-                                <label>
-                                    <span>Password</span>
-                                    <input
-                                        id="bcryptPassword"
-                                        type="password"
-                                        spellcheck="false"
-                                        placeholder="Enter password"
-                                    />
-                                </label>
-                                <div class="kdf-inline">
-                                    <label>
-                                        <span>Cost</span>
-                                        <input
-                                            id="bcryptCost"
-                                            type="number"
-                                            min="4"
-                                            max="31"
-                                            value="10"
-                                        />
-                                    </label>
-                                    <label class="flex-1">
-                                        <span>Salt (leave blank for random)</span>
-                                        <input
-                                            id="bcryptSalt"
-                                            spellcheck="false"
-                                            placeholder="Auto-generate salt when empty"
-                                        />
-                                    </label>
-                                </div>
-                                <div class="kdf-actions">
-                                    <button id="bcryptHashBtn">Generate</button>
-                                </div>
-                                <textarea
-                                    id="bcryptOutput"
-                                    spellcheck="false"
-                                    placeholder="Bcrypt hash will appear here (editable)"
-                                ></textarea>
-                                <div class="kdf-verify">
-                                    <input
-                                        id="bcryptVerifyHash"
-                                        spellcheck="false"
-                                        placeholder="Paste bcrypt hash OR plain text to verify"
-                                    />
-                                    <button class="ghost-btn" id="bcryptVerifyBtn">Verify</button>
-                                </div>
-                            </div>
+				<div id="kdfWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Password Hashers</h2>
+								<p>Bcrypt / Argon2 — generate and verify.</p>
+							</div>
+							<div class="panel-actions">
+								<button id="kdfRefreshSalts">Random salt</button>
+								<select id="kdfAlgoSelect">
+									<option value="bcrypt">Bcrypt</option>
+									<option value="argon2">Argon2</option>
+								</select>
+							</div>
+						</div>
+						<p class="muted kdf-note">
+							Enter a password to hash. Paste an existing hash (or plain text)
+							to verify against the password. Empty salt will be auto-generated.
+						</p>
+						<div class="kdf-grid">
+							<div class="kdf-card" data-algo="bcrypt">
+								<div class="kdf-card-head">
+									<div>
+										<h3>Bcrypt</h3>
+										<p class="muted">Good for login flows, cost 4-31</p>
+									</div>
+									<span id="bcryptStatus" class="kdf-status muted">Idle</span>
+								</div>
+								<label>
+									<span>Password</span>
+									<input
+										id="bcryptPassword"
+										type="password"
+										spellcheck="false"
+										placeholder="Enter password"
+									/>
+								</label>
+								<div class="kdf-inline">
+									<label>
+										<span>Cost</span>
+										<input
+											id="bcryptCost"
+											type="number"
+											min="4"
+											max="31"
+											value="10"
+										/>
+									</label>
+									<label class="flex-1">
+										<span>Salt (leave blank for random)</span>
+										<input
+											id="bcryptSalt"
+											spellcheck="false"
+											placeholder="Auto-generate salt when empty"
+										/>
+									</label>
+								</div>
+								<div class="kdf-actions">
+									<button id="bcryptHashBtn">Generate</button>
+								</div>
+								<textarea
+									id="bcryptOutput"
+									spellcheck="false"
+									placeholder="Bcrypt hash will appear here (editable)"
+								></textarea>
+								<div class="kdf-verify">
+									<input
+										id="bcryptVerifyHash"
+										spellcheck="false"
+										placeholder="Paste bcrypt hash OR plain text to verify"
+									/>
+									<button class="ghost-btn" id="bcryptVerifyBtn">Verify</button>
+								</div>
+							</div>
 
-                            <div class="kdf-card" data-algo="argon2">
-                                <div class="kdf-card-head">
-                                    <div>
-                                        <h3>Argon2</h3>
-                                        <p class="muted">
-                                            Default Argon2id, modern password hashing
-                                        </p>
-                                    </div>
-                                    <span id="argonStatus" class="kdf-status muted">Idle</span>
-                                </div>
-                                <label>
-                                    <span>Password</span>
-                                    <input
-                                        id="argonPassword"
-                                        type="password"
-                                        spellcheck="false"
-                                        placeholder="Enter password"
-                                    />
-                                </label>
-                                <div class="kdf-inline">
-                                    <label>
-                                        <span>Time cost (t)</span>
-                                        <input id="argonTime" type="number" min="1" value="3" />
-                                    </label>
-                                    <label>
-                                        <span>Memory (KiB)</span>
-                                        <input
-                                            id="argonMem"
-                                            type="number"
-                                            min="4096"
-                                            step="1024"
-                                            value="65536"
-                                        />
-                                    </label>
-                                </div>
-                                <div class="kdf-inline">
-                                    <label>
-                                        <span>Parallelism</span>
-                                        <input
-                                            id="argonParallelism"
-                                            type="number"
-                                            min="1"
-                                            max="8"
-                                            value="1"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>Hash length</span>
-                                        <input
-                                            id="argonHashLen"
-                                            type="number"
-                                            min="16"
-                                            max="64"
-                                            value="32"
-                                        />
-                                    </label>
-                                    <label class="flex-1">
-                                        <span>Variant</span>
-                                        <select id="argonType">
-                                            <option value="argon2id">Argon2id</option>
-                                            <option value="argon2i">Argon2i</option>
-                                            <option value="argon2d">Argon2d</option>
-                                        </select>
-                                    </label>
-                                </div>
-                                <label>
-                                    <span>Salt (Base64)</span>
-                                    <input
-                                        id="argonSalt"
-                                        spellcheck="false"
-                                        placeholder="Leave blank to auto-generate 16-byte salt"
-                                    />
-                                </label>
-                                <div class="kdf-actions">
-                                    <button id="argonHashBtn">Generate</button>
-                                </div>
-                                <textarea
-                                    id="argonOutput"
-                                    spellcheck="false"
-                                    placeholder="Argon2 PHC string will appear here (editable)"
-                                ></textarea>
-                                <div class="kdf-verify">
-                                    <input
-                                        id="argonVerifyHash"
-                                        spellcheck="false"
-                                        placeholder="Paste Argon2 PHC string OR plain text to verify"
-                                    />
-                                    <button class="ghost-btn" id="argonVerifyBtn">Verify</button>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-                </div>
+							<div class="kdf-card" data-algo="argon2">
+								<div class="kdf-card-head">
+									<div>
+										<h3>Argon2</h3>
+										<p class="muted">
+											Default Argon2id, modern password hashing
+										</p>
+									</div>
+									<span id="argonStatus" class="kdf-status muted">Idle</span>
+								</div>
+								<label>
+									<span>Password</span>
+									<input
+										id="argonPassword"
+										type="password"
+										spellcheck="false"
+										placeholder="Enter password"
+									/>
+								</label>
+								<div class="kdf-inline">
+									<label>
+										<span>Time cost (t)</span>
+										<input id="argonTime" type="number" min="1" value="3" />
+									</label>
+									<label>
+										<span>Memory (KiB)</span>
+										<input
+											id="argonMem"
+											type="number"
+											min="4096"
+											step="1024"
+											value="65536"
+										/>
+									</label>
+								</div>
+								<div class="kdf-inline">
+									<label>
+										<span>Parallelism</span>
+										<input
+											id="argonParallelism"
+											type="number"
+											min="1"
+											max="8"
+											value="1"
+										/>
+									</label>
+									<label>
+										<span>Hash length</span>
+										<input
+											id="argonHashLen"
+											type="number"
+											min="16"
+											max="64"
+											value="32"
+										/>
+									</label>
+									<label class="flex-1">
+										<span>Variant</span>
+										<select id="argonType">
+											<option value="argon2id">Argon2id</option>
+											<option value="argon2i">Argon2i</option>
+											<option value="argon2d">Argon2d</option>
+										</select>
+									</label>
+								</div>
+								<label>
+									<span>Salt (Base64)</span>
+									<input
+										id="argonSalt"
+										spellcheck="false"
+										placeholder="Leave blank to auto-generate 16-byte salt"
+									/>
+								</label>
+								<div class="kdf-actions">
+									<button id="argonHashBtn">Generate</button>
+								</div>
+								<textarea
+									id="argonOutput"
+									spellcheck="false"
+									placeholder="Argon2 PHC string will appear here (editable)"
+								></textarea>
+								<div class="kdf-verify">
+									<input
+										id="argonVerifyHash"
+										spellcheck="false"
+										placeholder="Paste Argon2 PHC string OR plain text to verify"
+									/>
+									<button class="ghost-btn" id="argonVerifyBtn">Verify</button>
+								</div>
+							</div>
+						</div>
+					</section>
+				</div>
 
-                <!-- Crypto workspace: encrypt/decrypt text or files with modern AEAD ciphers. -->
-                <div id="cryptoWorkspace" class="tool-view hidden">
-                    <!-- Configuration Section -->
-                    <section class="panel crypto-config">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Configuration</h2>
-                                <p>Select algorithm and manage keys.</p>
-                            </div>
-                            <div class="panel-actions">
-                                <label class="algo-select">
-                                    <span>Algorithm</span>
-                                    <select id="cryptoAlgorithm">
-                                        <option value="aes-256-gcm">AES-256-GCM</option>
-                                        <option value="chacha20-poly1305">ChaCha20-Poly1305</option>
-                                        <option value="xchacha20-poly1305">
-                                            XChaCha20-Poly1305
-                                        </option>
-                                    </select>
-                                </label>
-                            </div>
-                        </div>
-                        <div class="crypto-params">
-                            <div class="param-group">
-                                <label for="cryptoKey">Key (Base64)</label>
-                                <div class="input-with-action">
-                                    <input
-                                        id="cryptoKey"
-                                        spellcheck="false"
-                                        placeholder="Auto-generated if empty"
-                                    />
-                                    <button
-                                        id="cryptoGenerateKey"
-                                        type="button"
-                                        class="ghost-btn"
-                                        title="Generate Random Key"
-                                    >
-                                        ↻
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="param-group">
-                                <label for="cryptoNonce">Nonce (Base64)</label>
-                                <div class="input-with-action">
-                                    <input
-                                        id="cryptoNonce"
-                                        spellcheck="false"
-                                        placeholder="Auto-generated if empty"
-                                    />
-                                    <button
-                                        id="cryptoGenerateNonce"
-                                        type="button"
-                                        class="ghost-btn"
-                                        title="Generate Random Nonce"
-                                    >
-                                        ↻
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
+				<!-- Crypto workspace: encrypt/decrypt text or files with modern AEAD ciphers. -->
+				<div id="cryptoWorkspace" class="tool-view hidden">
+					<!-- Configuration Section -->
+					<section class="panel crypto-config">
+						<div class="panel-header">
+							<div>
+								<h2>Configuration</h2>
+								<p>Select algorithm and manage keys.</p>
+							</div>
+							<div class="panel-actions">
+								<label class="algo-select">
+									<span>Algorithm</span>
+									<select id="cryptoAlgorithm">
+										<option value="aes-256-gcm">AES-256-GCM</option>
+										<option value="chacha20-poly1305">ChaCha20-Poly1305</option>
+										<option value="xchacha20-poly1305">
+											XChaCha20-Poly1305
+										</option>
+									</select>
+								</label>
+							</div>
+						</div>
+						<div class="crypto-params">
+							<div class="param-group">
+								<label for="cryptoKey">Key (Base64)</label>
+								<div class="input-with-action">
+									<input
+										id="cryptoKey"
+										spellcheck="false"
+										placeholder="Auto-generated if empty"
+									/>
+									<button
+										id="cryptoGenerateKey"
+										type="button"
+										class="ghost-btn"
+										title="Generate Random Key"
+									>
+										↻
+									</button>
+								</div>
+							</div>
+							<div class="param-group">
+								<label for="cryptoNonce">Nonce (Base64)</label>
+								<div class="input-with-action">
+									<input
+										id="cryptoNonce"
+										spellcheck="false"
+										placeholder="Auto-generated if empty"
+									/>
+									<button
+										id="cryptoGenerateNonce"
+										type="button"
+										class="ghost-btn"
+										title="Generate Random Nonce"
+									>
+										↻
+									</button>
+								</div>
+							</div>
+						</div>
+					</section>
 
-                    <!-- Operations Section -->
-                    <div class="crypto-operations">
-                        <!-- Encrypt Column -->
-                        <section class="panel crypto-panel">
-                            <div class="panel-header">
-                                <h3>Encrypt</h3>
-                                <div class="crypto-mode-switch">
-                                    <label
-                                        ><input
-                                            type="radio"
-                                            name="cryptoInputMode"
-                                            id="cryptoModeText"
-                                            value="text"
-                                            checked
-                                        />
-                                        Text</label
-                                    >
-                                    <label
-                                        ><input
-                                            type="radio"
-                                            name="cryptoInputMode"
-                                            id="cryptoModeFile"
-                                            value="file"
-                                        />
-                                        File</label
-                                    >
-                                </div>
-                            </div>
-                            <div class="panel-body">
-                                <input type="file" id="cryptoFile" class="hidden" multiple />
-                                <div id="cryptoFileMeta" class="file-meta hidden">
-                                    No file selected
-                                </div>
+					<!-- Operations Section -->
+					<div class="crypto-operations">
+						<!-- Encrypt Column -->
+						<section class="panel crypto-panel">
+							<div class="panel-header">
+								<h3>Encrypt</h3>
+								<div class="crypto-mode-switch">
+									<label
+										><input
+											type="radio"
+											name="cryptoInputMode"
+											id="cryptoModeText"
+											value="text"
+											checked
+										/>
+										Text</label
+									>
+									<label
+										><input
+											type="radio"
+											name="cryptoInputMode"
+											id="cryptoModeFile"
+											value="file"
+										/>
+										File</label
+									>
+								</div>
+							</div>
+							<div class="panel-body">
+								<input type="file" id="cryptoFile" class="hidden" multiple />
+								<div id="cryptoFileMeta" class="file-meta hidden">
+									No file selected
+								</div>
 
-                                <textarea
-                                    id="cryptoPlaintext"
-                                    spellcheck="false"
-                                    placeholder="Enter text to encrypt..."
-                                ></textarea>
+								<textarea
+									id="cryptoPlaintext"
+									spellcheck="false"
+									placeholder="Enter text to encrypt..."
+								></textarea>
 
-                                <div class="action-row">
-                                    <button id="cryptoEncrypt" type="button" class="primary-btn">
-                                        Encrypt 🔒
-                                    </button>
-                                    <button
-                                        id="cryptoDownload"
-                                        type="button"
-                                        class="ghost-btn"
-                                        disabled
-                                    >
-                                        Download
-                                    </button>
-                                </div>
+								<div class="action-row">
+									<button id="cryptoEncrypt" type="button" class="primary-btn">
+										Encrypt 🔒
+									</button>
+									<button
+										id="cryptoDownload"
+										type="button"
+										class="ghost-btn"
+										disabled
+									>
+										Download
+									</button>
+								</div>
 
-                                <div class="result-box">
-                                    <label>Ciphertext (Output)</label>
-                                    <div class="textarea-wrapper">
-                                        <textarea
-                                            id="cryptoCiphertext"
-                                            spellcheck="false"
-                                            placeholder="Result will appear here..."
-                                        ></textarea>
-                                        <button
-                                            id="cryptoCopyCiphertext"
-                                            type="button"
-                                            class="ghost-btn sm-btn copy-overlay copy-btn"
-                                            title="Copy ciphertext"
-                                        >
-                                            📋 Copy
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
+								<div class="result-box">
+									<label>Ciphertext (Output)</label>
+									<div class="textarea-wrapper">
+										<textarea
+											id="cryptoCiphertext"
+											spellcheck="false"
+											placeholder="Result will appear here..."
+										></textarea>
+										<button
+											id="cryptoCopyCiphertext"
+											type="button"
+											class="ghost-btn sm-btn copy-overlay copy-btn"
+											title="Copy ciphertext"
+										>
+											📋 Copy
+										</button>
+									</div>
+								</div>
+							</div>
+						</section>
 
-                        <!-- Decrypt Column -->
-                        <section class="panel crypto-panel">
-                            <div class="panel-header">
-                                <h3>Decrypt</h3>
-                            </div>
-                            <div class="panel-body">
-                                <label class="input-label">Ciphertext (Input)</label>
-                                <textarea
-                                    id="cryptoDecryptInput"
-                                    spellcheck="false"
-                                    placeholder="Paste ciphertext here..."
-                                ></textarea>
+						<!-- Decrypt Column -->
+						<section class="panel crypto-panel">
+							<div class="panel-header">
+								<h3>Decrypt</h3>
+							</div>
+							<div class="panel-body">
+								<label class="input-label">Ciphertext (Input)</label>
+								<textarea
+									id="cryptoDecryptInput"
+									spellcheck="false"
+									placeholder="Paste ciphertext here..."
+								></textarea>
 
-                                <div class="action-row">
-                                    <button id="cryptoDecrypt" type="button" class="primary-btn">
-                                        Unlock 🔓
-                                    </button>
-                                </div>
+								<div class="action-row">
+									<button id="cryptoDecrypt" type="button" class="primary-btn">
+										Unlock 🔓
+									</button>
+								</div>
 
-                                <div class="result-box">
-                                    <label>Plaintext (Output)</label>
-                                    <textarea
-                                        id="cryptoDecryptOutput"
-                                        spellcheck="false"
-                                        readonly
-                                        placeholder="Decrypted text..."
-                                    ></textarea>
-                                </div>
-                            </div>
-                        </section>
-                    </div>
-                </div>
+								<div class="result-box">
+									<label>Plaintext (Output)</label>
+									<textarea
+										id="cryptoDecryptOutput"
+										spellcheck="false"
+										readonly
+										placeholder="Decrypted text..."
+									></textarea>
+								</div>
+							</div>
+						</section>
+					</div>
+				</div>
 
-                <div id="pairWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2 id="pairInputLabel">Encode</h2>
-                                <p id="pairInputHint">Enter text to encode</p>
-                            </div>
-                            <div class="pair-controls">
-                                <div id="jwtControls" class="jwt-controls hidden">
-                                    <label>
-                                        <span>Algorithm</span>
-                                        <select id="jwtAlgorithm">
-                                            <option value="HS256">HS256</option>
-                                            <option value="HS384">HS384</option>
-                                            <option value="HS512">HS512</option>
-                                        </select>
-                                    </label>
-                                    <label>
-                                        <span>Secret</span>
-                                        <input
-                                            type="password"
-                                            id="jwtSecret"
-                                            placeholder="Enter secret"
-                                            spellcheck="false"
-                                        />
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                        <textarea
-                            id="pairInput"
-                            spellcheck="false"
-                            placeholder="Enter content to encode"
-                        ></textarea>
-                        <div id="urlQuerySection" class="query-panel hidden">
-                            <div class="query-panel-head">
-                                <div>
-                                    <h3>Query Parameters</h3>
-                                    <p class="muted">Edit params and keep URL Encode in sync</p>
-                                </div>
-                                <div class="query-panel-actions">
-                                    <button class="ghost-btn" id="urlQueryAdd" type="button">
-                                        Add parameter
-                                    </button>
-                                </div>
-                            </div>
-                            <div id="urlQueryTable" class="query-table"></div>
-                            <div id="urlQueryEmpty" class="query-empty muted hidden">
-                                No query parameters detected. Add one to start.
-                            </div>
-                        </div>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2 id="pairOutputLabel">Decode</h2>
-                                <p id="pairOutputHint">Paste encoded text to decode</p>
-                            </div>
-                        </div>
-                        <textarea
-                            id="pairOutput"
-                            spellcheck="false"
-                            placeholder="Paste content to decode"
-                        ></textarea>
-                        <pre id="pairOutputMeta" class="pair-meta hidden"></pre>
-                    </section>
-                </div>
+				<div id="pairWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2 id="pairInputLabel">Encode</h2>
+								<p id="pairInputHint">Enter text to encode</p>
+							</div>
+							<div class="pair-controls">
+								<div id="jwtControls" class="jwt-controls hidden">
+									<label>
+										<span>Algorithm</span>
+										<select id="jwtAlgorithm">
+											<option value="HS256">HS256</option>
+											<option value="HS384">HS384</option>
+											<option value="HS512">HS512</option>
+										</select>
+									</label>
+									<label>
+										<span>Secret</span>
+										<input
+											type="password"
+											id="jwtSecret"
+											placeholder="Enter secret"
+											spellcheck="false"
+										/>
+									</label>
+								</div>
+							</div>
+						</div>
+						<textarea
+							id="pairInput"
+							spellcheck="false"
+							placeholder="Enter content to encode"
+						></textarea>
+						<div id="urlQuerySection" class="query-panel hidden">
+							<div class="query-panel-head">
+								<div>
+									<h3>Query Parameters</h3>
+									<p class="muted">Edit params and keep URL Encode in sync</p>
+								</div>
+								<div class="query-panel-actions">
+									<button class="ghost-btn" id="urlQueryAdd" type="button">
+										Add parameter
+									</button>
+								</div>
+							</div>
+							<div id="urlQueryTable" class="query-table"></div>
+							<div id="urlQueryEmpty" class="query-empty muted hidden">
+								No query parameters detected. Add one to start.
+							</div>
+						</div>
+					</section>
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2 id="pairOutputLabel">Decode</h2>
+								<p id="pairOutputHint">Paste encoded text to decode</p>
+							</div>
+						</div>
+						<textarea
+							id="pairOutput"
+							spellcheck="false"
+							placeholder="Paste content to decode"
+						></textarea>
+						<pre id="pairOutputMeta" class="pair-meta hidden"></pre>
+					</section>
+				</div>
 
-                <div id="numberWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Number Converter</h2>
-                                <p>Update any field to sync all bases</p>
-                            </div>
-                        </div>
-                        <div class="number-grid">
-                            <label>
-                                <span>Binary</span>
-                                <input
-                                    id="numberBinary"
-                                    spellcheck="false"
-                                    placeholder="e.g. 1010"
-                                />
-                            </label>
-                            <label>
-                                <span>Octal</span>
-                                <input id="numberOctal" spellcheck="false" placeholder="e.g. 12" />
-                            </label>
-                            <label>
-                                <span>Decimal</span>
-                                <input
-                                    id="numberDecimal"
-                                    spellcheck="false"
-                                    placeholder="e.g. 10"
-                                />
-                            </label>
-                            <label>
-                                <span>Hexadecimal</span>
-                                <input id="numberHex" spellcheck="false" placeholder="e.g. a" />
-                            </label>
-                        </div>
-                    </section>
-                </div>
+				<div id="numberWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Number Converter</h2>
+								<p>Update any field to sync all bases</p>
+							</div>
+						</div>
+						<div class="number-grid">
+							<label>
+								<span>Binary</span>
+								<input
+									id="numberBinary"
+									spellcheck="false"
+									placeholder="e.g. 1010"
+								/>
+							</label>
+							<label>
+								<span>Octal</span>
+								<input
+									id="numberOctal"
+									spellcheck="false"
+									placeholder="e.g. 12"
+								/>
+							</label>
+							<label>
+								<span>Decimal</span>
+								<input
+									id="numberDecimal"
+									spellcheck="false"
+									placeholder="e.g. 10"
+								/>
+							</label>
+							<label>
+								<span>Hexadecimal</span>
+								<input id="numberHex" spellcheck="false" placeholder="e.g. a" />
+							</label>
+						</div>
+					</section>
+				</div>
 
-                <div id="unitWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Unit Converter</h2>
-                                <p>Bits ↔ Bytes with binary multiples</p>
-                            </div>
-                        </div>
-                        <div class="number-grid">
-                            <label>
-                                <span>Bit</span>
-                                <input id="unitBit" spellcheck="false" placeholder="e.g. 8" />
-                            </label>
-                            <label>
-                                <span>Byte</span>
-                                <input id="unitByte" spellcheck="false" placeholder="e.g. 1" />
-                            </label>
-                            <label>
-                                <span>Kilobit</span>
-                                <input id="unitKilobit" spellcheck="false" placeholder="e.g. 1" />
-                            </label>
-                            <label>
-                                <span>Kilobyte</span>
-                                <input
-                                    id="unitKilobyte"
-                                    spellcheck="false"
-                                    placeholder="e.g. 0.125"
-                                />
-                            </label>
-                            <label>
-                                <span>Megabit</span>
-                                <input
-                                    id="unitMegabit"
-                                    spellcheck="false"
-                                    placeholder="e.g. 0.001"
-                                />
-                            </label>
-                            <label>
-                                <span>Megabyte</span>
-                                <input
-                                    id="unitMegabyte"
-                                    spellcheck="false"
-                                    placeholder="e.g. 0.000125"
-                                />
-                            </label>
-                            <label>
-                                <span>Gigabit</span>
-                                <input
-                                    id="unitGigabit"
-                                    spellcheck="false"
-                                    placeholder="e.g. 0.000001"
-                                />
-                            </label>
-                            <label>
-                                <span>Gigabyte</span>
-                                <input
-                                    id="unitGigabyte"
-                                    spellcheck="false"
-                                    placeholder="e.g. 0.000000125"
-                                />
-                            </label>
-                            <label>
-                                <span>Terabit</span>
-                                <input
-                                    id="unitTerabit"
-                                    spellcheck="false"
-                                    placeholder="e.g. 0.000000001"
-                                />
-                            </label>
-                            <label>
-                                <span>Terabyte</span>
-                                <input
-                                    id="unitTerabyte"
-                                    spellcheck="false"
-                                    placeholder="e.g. 0.000000000125"
-                                />
-                            </label>
-                        </div>
-                    </section>
-                </div>
+				<div id="unitWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Unit Converter</h2>
+								<p>Bits ↔ Bytes with binary multiples</p>
+							</div>
+						</div>
+						<div class="number-grid">
+							<label>
+								<span>Bit</span>
+								<input id="unitBit" spellcheck="false" placeholder="e.g. 8" />
+							</label>
+							<label>
+								<span>Byte</span>
+								<input id="unitByte" spellcheck="false" placeholder="e.g. 1" />
+							</label>
+							<label>
+								<span>Kilobit</span>
+								<input
+									id="unitKilobit"
+									spellcheck="false"
+									placeholder="e.g. 1"
+								/>
+							</label>
+							<label>
+								<span>Kilobyte</span>
+								<input
+									id="unitKilobyte"
+									spellcheck="false"
+									placeholder="e.g. 0.125"
+								/>
+							</label>
+							<label>
+								<span>Megabit</span>
+								<input
+									id="unitMegabit"
+									spellcheck="false"
+									placeholder="e.g. 0.001"
+								/>
+							</label>
+							<label>
+								<span>Megabyte</span>
+								<input
+									id="unitMegabyte"
+									spellcheck="false"
+									placeholder="e.g. 0.000125"
+								/>
+							</label>
+							<label>
+								<span>Gigabit</span>
+								<input
+									id="unitGigabit"
+									spellcheck="false"
+									placeholder="e.g. 0.000001"
+								/>
+							</label>
+							<label>
+								<span>Gigabyte</span>
+								<input
+									id="unitGigabyte"
+									spellcheck="false"
+									placeholder="e.g. 0.000000125"
+								/>
+							</label>
+							<label>
+								<span>Terabit</span>
+								<input
+									id="unitTerabit"
+									spellcheck="false"
+									placeholder="e.g. 0.000000001"
+								/>
+							</label>
+							<label>
+								<span>Terabyte</span>
+								<input
+									id="unitTerabyte"
+									spellcheck="false"
+									placeholder="e.g. 0.000000000125"
+								/>
+							</label>
+						</div>
+					</section>
+				</div>
 
-                <div id="timestampWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Timestamp Converter</h2>
-                                <p>Convert between different timestamp formats and timezones.</p>
-                            </div>
-                        </div>
-                        <div class="timestamp-presets" id="timestampPresets">
-                            <button type="button" data-preset="now">Now</button>
-                        </div>
+				<div id="timestampWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Timestamp Converter</h2>
+								<p>
+									Convert between different timestamp formats and timezones.
+								</p>
+							</div>
+						</div>
+						<div class="timestamp-presets" id="timestampPresets">
+							<button type="button" data-preset="now">Now</button>
+						</div>
 
-                        <!-- Unix Timestamps Section -->
-                        <div class="timestamp-section">
-                            <div class="timestamp-section-header">
-                                <h3>Unix Timestamps</h3>
-                                <span class="timestamp-section-badge">Epoch Time</span>
-                            </div>
-                            <div class="timestamp-unix-grid">
-                                <label>
-                                    <span>Seconds</span>
-                                    <input
-                                        id="timestampSeconds"
-                                        data-field="timestamp_seconds"
-                                        type="text"
-                                        inputmode="numeric"
-                                        spellcheck="false"
-                                        placeholder="1710324566"
-                                    />
-                                </label>
-                                <label>
-                                    <span>Milliseconds</span>
-                                    <input
-                                        id="timestampMillis"
-                                        data-field="timestamp_milliseconds"
-                                        type="text"
-                                        inputmode="numeric"
-                                        spellcheck="false"
-                                        placeholder="1710324566000"
-                                    />
-                                </label>
-                                <label>
-                                    <span>Microseconds</span>
-                                    <input
-                                        id="timestampMicros"
-                                        data-field="timestamp_microseconds"
-                                        type="text"
-                                        inputmode="numeric"
-                                        spellcheck="false"
-                                        placeholder="1710324566000000"
-                                    />
-                                </label>
-                                <label>
-                                    <span>Nanoseconds</span>
-                                    <input
-                                        id="timestampNanos"
-                                        data-field="timestamp_nanoseconds"
-                                        type="text"
-                                        inputmode="numeric"
-                                        spellcheck="false"
-                                        placeholder="1710324566000000000"
-                                    />
-                                </label>
-                            </div>
-                        </div>
+						<!-- Unix Timestamps Section -->
+						<div class="timestamp-section">
+							<div class="timestamp-section-header">
+								<h3>Unix Timestamps</h3>
+								<span class="timestamp-section-badge">Epoch Time</span>
+							</div>
+							<div class="timestamp-unix-grid">
+								<label>
+									<span>Seconds</span>
+									<input
+										id="timestampSeconds"
+										data-field="timestamp_seconds"
+										type="text"
+										inputmode="numeric"
+										spellcheck="false"
+										placeholder="1710324566"
+									/>
+								</label>
+								<label>
+									<span>Milliseconds</span>
+									<input
+										id="timestampMillis"
+										data-field="timestamp_milliseconds"
+										type="text"
+										inputmode="numeric"
+										spellcheck="false"
+										placeholder="1710324566000"
+									/>
+								</label>
+								<label>
+									<span>Microseconds</span>
+									<input
+										id="timestampMicros"
+										data-field="timestamp_microseconds"
+										type="text"
+										inputmode="numeric"
+										spellcheck="false"
+										placeholder="1710324566000000"
+									/>
+								</label>
+								<label>
+									<span>Nanoseconds</span>
+									<input
+										id="timestampNanos"
+										data-field="timestamp_nanoseconds"
+										type="text"
+										inputmode="numeric"
+										spellcheck="false"
+										placeholder="1710324566000000000"
+									/>
+								</label>
+							</div>
+						</div>
 
-                        <!-- UTC Formats Section -->
-                        <div class="timestamp-section">
-                            <div class="timestamp-section-header">
-                                <h3>UTC Formats</h3>
-                                <span class="timestamp-section-badge utc">UTC+0</span>
-                            </div>
-                            <div class="timestamp-formats-grid">
-                                <label>
-                                    <span>ISO 8601</span>
-                                    <input
-                                        id="timestampIso"
-                                        data-field="iso8601"
-                                        spellcheck="false"
-                                        placeholder="2025-03-13T15:09:26Z"
-                                    />
-                                </label>
-                                <label>
-                                    <span>RFC 3339 (with nanoseconds)</span>
-                                    <input
-                                        id="timestampRfc3339"
-                                        data-field="rfc3339"
-                                        spellcheck="false"
-                                        placeholder="2025-03-13T15:09:26.123456789Z"
-                                    />
-                                </label>
-                                <label>
-                                    <span>RFC 2822</span>
-                                    <input
-                                        id="timestampRfc"
-                                        data-field="rfc2822"
-                                        spellcheck="false"
-                                        placeholder="Thu, 13 Mar 2025 15:09:26 +0000"
-                                    />
-                                </label>
-                                <label>
-                                    <span>ISO 9075 (SQL with timezone)</span>
-                                    <input
-                                        id="timestampIso9075"
-                                        data-field="iso9075"
-                                        spellcheck="false"
-                                        placeholder="2025-03-13 15:09:26+00:00"
-                                    />
-                                </label>
-                                <label>
-                                    <span>RFC 7231 (HTTP)</span>
-                                    <input
-                                        id="timestampRfc7231"
-                                        data-field="rfc7231"
-                                        spellcheck="false"
-                                        placeholder="Thu, 13 Mar 2025 15:09:26 GMT"
-                                    />
-                                </label>
-                                <label>
-                                    <span>SQL DateTime</span>
-                                    <input
-                                        id="timestampSql"
-                                        data-field="sql_datetime"
-                                        spellcheck="false"
-                                        placeholder="2025-03-13 15:09:26"
-                                    />
-                                </label>
-                                <label>
-                                    <span>SQL Date</span>
-                                    <input
-                                        id="timestampSqlDate"
-                                        data-field="sql_date"
-                                        spellcheck="false"
-                                        placeholder="2025-03-13"
-                                    />
-                                </label>
-                            </div>
-                        </div>
+						<!-- UTC Formats Section -->
+						<div class="timestamp-section">
+							<div class="timestamp-section-header">
+								<h3>UTC Formats</h3>
+								<span class="timestamp-section-badge utc">UTC+0</span>
+							</div>
+							<div class="timestamp-formats-grid">
+								<label>
+									<span>ISO 8601</span>
+									<input
+										id="timestampIso"
+										data-field="iso8601"
+										spellcheck="false"
+										placeholder="2025-03-13T15:09:26Z"
+									/>
+								</label>
+								<label>
+									<span>RFC 3339 (with nanoseconds)</span>
+									<input
+										id="timestampRfc3339"
+										data-field="rfc3339"
+										spellcheck="false"
+										placeholder="2025-03-13T15:09:26.123456789Z"
+									/>
+								</label>
+								<label>
+									<span>RFC 2822</span>
+									<input
+										id="timestampRfc"
+										data-field="rfc2822"
+										spellcheck="false"
+										placeholder="Thu, 13 Mar 2025 15:09:26 +0000"
+									/>
+								</label>
+								<label>
+									<span>ISO 9075 (SQL with timezone)</span>
+									<input
+										id="timestampIso9075"
+										data-field="iso9075"
+										spellcheck="false"
+										placeholder="2025-03-13 15:09:26+00:00"
+									/>
+								</label>
+								<label>
+									<span>RFC 7231 (HTTP)</span>
+									<input
+										id="timestampRfc7231"
+										data-field="rfc7231"
+										spellcheck="false"
+										placeholder="Thu, 13 Mar 2025 15:09:26 GMT"
+									/>
+								</label>
+								<label>
+									<span>SQL DateTime</span>
+									<input
+										id="timestampSql"
+										data-field="sql_datetime"
+										spellcheck="false"
+										placeholder="2025-03-13 15:09:26"
+									/>
+								</label>
+								<label>
+									<span>SQL Date</span>
+									<input
+										id="timestampSqlDate"
+										data-field="sql_date"
+										spellcheck="false"
+										placeholder="2025-03-13"
+									/>
+								</label>
+							</div>
+						</div>
 
-                        <!-- Local Timezone Section -->
-                        <div class="timestamp-section">
-                            <div class="timestamp-section-header">
-                                <h3>Local Timezone</h3>
-                                <span class="timestamp-section-badge local">Browser Time</span>
-                            </div>
-                            <div class="timestamp-formats-grid">
-                                <label>
-                                    <span>ISO 8601</span>
-                                    <input
-                                        id="browserIso8601"
-                                        data-field="browser_iso8601"
-                                        spellcheck="false"
-                                        placeholder="2025-03-13T15:09:26+0800"
-                                        readonly
-                                    />
-                                </label>
-                                <label>
-                                    <span>RFC 3339 (with nanoseconds)</span>
-                                    <input
-                                        id="browserRfc3339"
-                                        data-field="browser_rfc3339"
-                                        spellcheck="false"
-                                        placeholder="2025-03-13T15:09:26.123456789+08:00"
-                                        readonly
-                                    />
-                                </label>
-                                <label>
-                                    <span>RFC 2822</span>
-                                    <input
-                                        id="browserRfc2822"
-                                        data-field="browser_rfc2822"
-                                        spellcheck="false"
-                                        placeholder="Thu, 13 Mar 2025 15:09:26 +0800"
-                                        readonly
-                                    />
-                                </label>
-                                <label>
-                                    <span>ISO 9075 (SQL with timezone)</span>
-                                    <input
-                                        id="browserIso9075"
-                                        data-field="browser_iso9075"
-                                        spellcheck="false"
-                                        placeholder="2025-03-13 15:09:26+08:00"
-                                        readonly
-                                    />
-                                </label>
-                                <label>
-                                    <span>RFC 7231 (HTTP)</span>
-                                    <input
-                                        id="browserRfc7231"
-                                        data-field="browser_rfc7231"
-                                        spellcheck="false"
-                                        placeholder="Thu, 13 Mar 2025 15:09:26 CST"
-                                        readonly
-                                    />
-                                </label>
-                                <label>
-                                    <span>SQL DateTime</span>
-                                    <input
-                                        id="browserSqlDatetime"
-                                        data-field="browser_sql_datetime"
-                                        spellcheck="false"
-                                        placeholder="2025-03-13 15:09:26"
-                                        readonly
-                                    />
-                                </label>
-                                <label>
-                                    <span>SQL Date</span>
-                                    <input
-                                        id="browserSqlDate"
-                                        data-field="browser_sql_date"
-                                        spellcheck="false"
-                                        placeholder="2025-03-13"
-                                        readonly
-                                    />
-                                </label>
-                            </div>
-                        </div>
-                    </section>
-                </div>
+						<!-- Local Timezone Section -->
+						<div class="timestamp-section">
+							<div class="timestamp-section-header">
+								<h3>Local Timezone</h3>
+								<span class="timestamp-section-badge local">Browser Time</span>
+							</div>
+							<div class="timestamp-formats-grid">
+								<label>
+									<span>ISO 8601</span>
+									<input
+										id="browserIso8601"
+										data-field="browser_iso8601"
+										spellcheck="false"
+										placeholder="2025-03-13T15:09:26+0800"
+										readonly
+									/>
+								</label>
+								<label>
+									<span>RFC 3339 (with nanoseconds)</span>
+									<input
+										id="browserRfc3339"
+										data-field="browser_rfc3339"
+										spellcheck="false"
+										placeholder="2025-03-13T15:09:26.123456789+08:00"
+										readonly
+									/>
+								</label>
+								<label>
+									<span>RFC 2822</span>
+									<input
+										id="browserRfc2822"
+										data-field="browser_rfc2822"
+										spellcheck="false"
+										placeholder="Thu, 13 Mar 2025 15:09:26 +0800"
+										readonly
+									/>
+								</label>
+								<label>
+									<span>ISO 9075 (SQL with timezone)</span>
+									<input
+										id="browserIso9075"
+										data-field="browser_iso9075"
+										spellcheck="false"
+										placeholder="2025-03-13 15:09:26+08:00"
+										readonly
+									/>
+								</label>
+								<label>
+									<span>RFC 7231 (HTTP)</span>
+									<input
+										id="browserRfc7231"
+										data-field="browser_rfc7231"
+										spellcheck="false"
+										placeholder="Thu, 13 Mar 2025 15:09:26 CST"
+										readonly
+									/>
+								</label>
+								<label>
+									<span>SQL DateTime</span>
+									<input
+										id="browserSqlDatetime"
+										data-field="browser_sql_datetime"
+										spellcheck="false"
+										placeholder="2025-03-13 15:09:26"
+										readonly
+									/>
+								</label>
+								<label>
+									<span>SQL Date</span>
+									<input
+										id="browserSqlDate"
+										data-field="browser_sql_date"
+										spellcheck="false"
+										placeholder="2025-03-13"
+										readonly
+									/>
+								</label>
+							</div>
+						</div>
+					</section>
+				</div>
 
-                <div id="ipv4Workspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>IPv4 Tools</h2>
-                                <p>Enter an IP, CIDR, or IP with subnet mask</p>
-                            </div>
-                        </div>
-                        <textarea
-                            id="ipv4Input"
-                            spellcheck="false"
-                            placeholder="Examples: 192.168.0.1, 192.168.0.0/24, 10.0.0.0/255.255.0.0"
-                        ></textarea>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Results</h2>
-                                <p>Shows range, totals, and alternate formats</p>
-                            </div>
-                        </div>
-                        <div id="ipv4Results" class="ipv4-results">
-                            <div class="muted">Enter an IPv4 or CIDR block to see details</div>
-                        </div>
-                    </section>
-                </div>
+				<div id="ipv4Workspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>IPv4 Tools</h2>
+								<p>Enter an IP, CIDR, or IP with subnet mask</p>
+							</div>
+						</div>
+						<textarea
+							id="ipv4Input"
+							spellcheck="false"
+							placeholder="Examples: 192.168.0.1, 192.168.0.0/24, 10.0.0.0/255.255.0.0"
+						></textarea>
+					</section>
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Results</h2>
+								<p>Shows range, totals, and alternate formats</p>
+							</div>
+						</div>
+						<div id="ipv4Results" class="ipv4-results">
+							<div class="muted">
+								Enter an IPv4 or CIDR block to see details
+							</div>
+						</div>
+					</section>
+				</div>
 
-                <div id="uuidWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>UUID</h2>
-                                <p>Generate UUID v1 ~ v8, GUID, and ULID</p>
-                            </div>
-                            <div class="generator-actions">
-                                <button id="uuidToggleCase" data-upper="false">Toggle Case</button>
-                                <button id="uuidRegenerate">Regenerate</button>
-                            </div>
-                        </div>
-                        <div id="uuidList" class="uuid-list"></div>
-                    </section>
-                </div>
+				<div id="uuidWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>UUID</h2>
+								<p>Generate UUID v1 ~ v8, GUID, and ULID</p>
+							</div>
+							<div class="generator-actions">
+								<button id="uuidToggleCase" data-upper="false">
+									Toggle Case
+								</button>
+								<button id="uuidRegenerate">Regenerate</button>
+							</div>
+						</div>
+						<div id="uuidList" class="uuid-list"></div>
+					</section>
+				</div>
 
-                <div id="userAgentWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>User-Agent Generator</h2>
-                                <p>Generate realistic browser user agent strings</p>
-                            </div>
-                        </div>
+				<div id="userAgentWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>User-Agent Generator</h2>
+								<p>Generate realistic browser user agent strings</p>
+							</div>
+						</div>
 
-                        <!-- Filters Section -->
-                        <div class="ua-filters">
-                            <h3 class="ua-section-title">Filters</h3>
-                            <div class="ua-filters-grid">
-                                <label class="ua-filter-field">
-                                    <span>Browser</span>
-                                    <select id="uaBrowser">
-                                        <option value="">All Browsers</option>
-                                        <option value="chrome">Chrome</option>
-                                        <option value="firefox">Firefox</option>
-                                        <option value="safari">Safari</option>
-                                        <option value="edge">Edge</option>
-                                        <option value="vivaldi">Vivaldi</option>
-                                        <option value="yandex">Yandex</option>
-                                    </select>
-                                </label>
-                                <label class="ua-filter-field">
-                                    <span>Platform</span>
-                                    <select id="uaOS">
-                                        <option value="">All Platforms</option>
-                                        <option value="windows">Windows</option>
-                                        <option value="macos">macOS</option>
-                                        <option value="android">Android</option>
-                                        <option value="ios">iOS</option>
-                                    </select>
-                                </label>
-                            </div>
-                        </div>
+						<!-- Filters Section -->
+						<div class="ua-filters">
+							<h3 class="ua-section-title">Filters</h3>
+							<div class="ua-filters-grid">
+								<label class="ua-filter-field">
+									<span>Browser</span>
+									<select id="uaBrowser">
+										<option value="">All Browsers</option>
+										<option value="chrome">Chrome</option>
+										<option value="firefox">Firefox</option>
+										<option value="safari">Safari</option>
+										<option value="edge">Edge</option>
+										<option value="vivaldi">Vivaldi</option>
+										<option value="yandex">Yandex</option>
+									</select>
+								</label>
+								<label class="ua-filter-field">
+									<span>Platform</span>
+									<select id="uaOS">
+										<option value="">All Platforms</option>
+										<option value="windows">Windows</option>
+										<option value="macos">macOS</option>
+										<option value="android">Android</option>
+										<option value="ios">iOS</option>
+									</select>
+								</label>
+							</div>
+						</div>
 
-                        <!-- Results Section -->
-                        <div class="ua-results-section">
-                            <div class="ua-results-header">
-                                <h3 class="ua-section-title">Generated User Agents</h3>
-                                <span class="ua-count" id="uaCount"></span>
-                            </div>
-                            <div id="uaResults" class="ua-results">
-                                <div class="ua-placeholder">
-                                    Choose filters above to generate user agents
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-                </div>
+						<!-- Results Section -->
+						<div class="ua-results-section">
+							<div class="ua-results-header">
+								<h3 class="ua-section-title">Generated User Agents</h3>
+								<span class="ua-count" id="uaCount"></span>
+							</div>
+							<div id="uaResults" class="ua-results">
+								<div class="ua-placeholder">
+									Choose filters above to generate user agents
+								</div>
+							</div>
+						</div>
+					</section>
+				</div>
 
-                <div id="sshWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>SSH Key Generator</h2>
-                                <p>
-                                    Generate OpenSSH public/private key pairs for secure
-                                    authentication
-                                </p>
-                            </div>
-                            <div class="generator-actions">
-                                <button id="sshGenerate">Generate</button>
-                            </div>
-                        </div>
+				<div id="sshWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>SSH Key Generator</h2>
+								<p>
+									Generate OpenSSH public/private key pairs for secure
+									authentication
+								</p>
+							</div>
+							<div class="generator-actions">
+								<button id="sshGenerate">Generate</button>
+							</div>
+						</div>
 
-                        <!-- Key Type & Format Section -->
-                        <div class="ssh-section">
-                            <h3 class="ssh-section-title">Key Configuration</h3>
-                            <div class="ssh-config-grid">
-                                <label class="ssh-config-field">
-                                    <span>Key Type</span>
-                                    <select id="sshType">
-                                        <option value="ed25519" selected>Ed25519</option>
-                                        <option value="ed25519-sk">Ed25519 SK</option>
-                                        <option value="rsa">RSA</option>
-                                    </select>
-                                    <small class="ssh-field-hint">Recommended: Ed25519</small>
-                                </label>
-                                <label class="ssh-config-field ssh-bits-row">
-                                    <span>Key Size (RSA)</span>
-                                    <input
-                                        type="number"
-                                        id="sshBits"
-                                        min="2048"
-                                        max="8192"
-                                        value="4096"
-                                        disabled
-                                    />
-                                    <small class="ssh-field-hint">2048-8192 bits</small>
-                                </label>
-                                <label class="ssh-config-field">
-                                    <span>Format</span>
-                                    <select id="sshFormat">
-                                        <option value="openssh" selected>OpenSSH</option>
-                                        <option value="pem">PEM</option>
-                                    </select>
-                                    <small class="ssh-field-hint">Output format</small>
-                                </label>
-                                <label class="ssh-config-field">
-                                    <span>KDF Rounds</span>
-                                    <input
-                                        type="number"
-                                        id="sshKdf"
-                                        min="16"
-                                        max="500"
-                                        value="16"
-                                    />
-                                    <small class="ssh-field-hint">16-500 (higher = slower)</small>
-                                </label>
-                            </div>
-                        </div>
+						<!-- Key Type & Format Section -->
+						<div class="ssh-section">
+							<h3 class="ssh-section-title">Key Configuration</h3>
+							<div class="ssh-config-grid">
+								<label class="ssh-config-field">
+									<span>Key Type</span>
+									<select id="sshType">
+										<option value="ed25519" selected>Ed25519</option>
+										<option value="ed25519-sk">Ed25519 SK</option>
+										<option value="rsa">RSA</option>
+									</select>
+									<small class="ssh-field-hint">Recommended: Ed25519</small>
+								</label>
+								<label class="ssh-config-field ssh-bits-row">
+									<span>Key Size (RSA)</span>
+									<input
+										type="number"
+										id="sshBits"
+										min="2048"
+										max="8192"
+										value="4096"
+										disabled
+									/>
+									<small class="ssh-field-hint">2048-8192 bits</small>
+								</label>
+								<label class="ssh-config-field">
+									<span>Format</span>
+									<select id="sshFormat">
+										<option value="openssh" selected>OpenSSH</option>
+										<option value="pem">PEM</option>
+									</select>
+									<small class="ssh-field-hint">Output format</small>
+								</label>
+								<label class="ssh-config-field">
+									<span>KDF Rounds</span>
+									<input
+										type="number"
+										id="sshKdf"
+										min="16"
+										max="500"
+										value="16"
+									/>
+									<small class="ssh-field-hint">16-500 (higher = slower)</small>
+								</label>
+							</div>
+						</div>
 
-                        <!-- Comment Section -->
-                        <div class="ssh-section">
-                            <h3 class="ssh-section-title">Key Comment</h3>
-                            <div class="ssh-comment-wrapper">
-                                <label class="ssh-comment-field">
-                                    <span>Comment (optional)</span>
-                                    <input
-                                        type="text"
-                                        id="sshComment"
-                                        spellcheck="false"
-                                        placeholder="user@host (e.g., alice@server.example.com)"
-                                    />
-                                    <small class="ssh-field-hint"
-                                        >Helps identify the key's purpose or owner</small
-                                    >
-                                </label>
-                            </div>
-                        </div>
+						<!-- Comment Section -->
+						<div class="ssh-section">
+							<h3 class="ssh-section-title">Key Comment</h3>
+							<div class="ssh-comment-wrapper">
+								<label class="ssh-comment-field">
+									<span>Comment (optional)</span>
+									<input
+										type="text"
+										id="sshComment"
+										spellcheck="false"
+										placeholder="user@host (e.g., alice@server.example.com)"
+									/>
+									<small class="ssh-field-hint"
+										>Helps identify the key's purpose or owner</small
+									>
+								</label>
+							</div>
+						</div>
 
-                        <!-- Security Key Options (for ed25519-sk) -->
-                        <div class="ssh-section ssh-sk-section hidden" id="sshSkOptions">
-                            <h3 class="ssh-section-title">Security Key Options</h3>
-                            <div class="ssh-sk-options">
-                                <label class="ssh-checkbox-option ssh-sk-resident">
-                                    <input type="checkbox" id="sshResident" />
-                                    <div class="ssh-checkbox-content">
-                                        <span class="ssh-checkbox-label">Resident Key</span>
-                                        <small class="ssh-checkbox-hint"
-                                            >Store key on hardware token</small
-                                        >
-                                    </div>
-                                </label>
-                                <label class="ssh-checkbox-option ssh-sk-verify">
-                                    <input type="checkbox" id="sshVerify" />
-                                    <div class="ssh-checkbox-content">
-                                        <span class="ssh-checkbox-label">Verify Required</span>
-                                        <small class="ssh-checkbox-hint"
-                                            >Require touch on each use</small
-                                        >
-                                    </div>
-                                </label>
-                            </div>
-                        </div>
-                    </section>
+						<!-- Security Key Options (for ed25519-sk) -->
+						<div class="ssh-section ssh-sk-section hidden" id="sshSkOptions">
+							<h3 class="ssh-section-title">Security Key Options</h3>
+							<div class="ssh-sk-options">
+								<label class="ssh-checkbox-option ssh-sk-resident">
+									<input type="checkbox" id="sshResident" />
+									<div class="ssh-checkbox-content">
+										<span class="ssh-checkbox-label">Resident Key</span>
+										<small class="ssh-checkbox-hint"
+											>Store key on hardware token</small
+										>
+									</div>
+								</label>
+								<label class="ssh-checkbox-option ssh-sk-verify">
+									<input type="checkbox" id="sshVerify" />
+									<div class="ssh-checkbox-content">
+										<span class="ssh-checkbox-label">Verify Required</span>
+										<small class="ssh-checkbox-hint"
+											>Require touch on each use</small
+										>
+									</div>
+								</label>
+							</div>
+						</div>
+					</section>
 
-                    <!-- Keys Section (Public + Private) -->
-                    <section class="panel">
-                        <!-- Public Key Section -->
-                        <div class="ssh-key-section">
-                            <div class="panel-header">
-                                <div>
-                                    <h2>Public Key</h2>
-                                    <p>Add this to authorized_keys on remote servers</p>
-                                </div>
-                                <div class="panel-actions">
-                                    <button
-                                        class="ghost-btn copy-btn"
-                                        id="sshCopyPublic"
-                                        title="Copy public key"
-                                    >
-                                        📋 Copy
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="ssh-key-display">
-                                <textarea
-                                    id="sshPublic"
-                                    spellcheck="false"
-                                    readonly
-                                    placeholder="Public key will appear here after generation"
-                                ></textarea>
-                                <div class="ssh-key-hint">
-                                    <span>💡</span>
-                                    <span
-                                        >Paste this into ~/.ssh/authorized_keys on your server</span
-                                    >
-                                </div>
-                            </div>
-                        </div>
+					<!-- Keys Section (Public + Private) -->
+					<section class="panel">
+						<!-- Public Key Section -->
+						<div class="ssh-key-section">
+							<div class="panel-header">
+								<div>
+									<h2>Public Key</h2>
+									<p>Add this to authorized_keys on remote servers</p>
+								</div>
+								<div class="panel-actions">
+									<button
+										class="ghost-btn copy-btn"
+										id="sshCopyPublic"
+										title="Copy public key"
+									>
+										📋 Copy
+									</button>
+								</div>
+							</div>
+							<div class="ssh-key-display">
+								<textarea
+									id="sshPublic"
+									spellcheck="false"
+									readonly
+									placeholder="Public key will appear here after generation"
+								></textarea>
+								<div class="ssh-key-hint">
+									<span>💡</span>
+									<span
+										>Paste this into ~/.ssh/authorized_keys on your server</span
+									>
+								</div>
+							</div>
+						</div>
 
-                        <!-- Private Key Section -->
-                        <div class="ssh-key-section ssh-key-section-divider">
-                            <div class="panel-header">
-                                <div>
-                                    <h2>Private Key</h2>
-                                    <p>Keep this secure and never share it</p>
-                                </div>
-                                <div class="panel-actions">
-                                    <button
-                                        class="ghost-btn copy-btn"
-                                        id="sshCopyPrivate"
-                                        title="Copy private key"
-                                    >
-                                        📋 Copy
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="ssh-key-display">
-                                <textarea
-                                    id="sshPrivate"
-                                    spellcheck="false"
-                                    readonly
-                                    placeholder="Private key will appear here after generation"
-                                ></textarea>
-                                <div class="ssh-key-hint ssh-key-warning">
-                                    <span>⚠️</span>
-                                    <span
-                                        >Keep this private key secure. Save it to
-                                        ~/.ssh/id_ed25519</span
-                                    >
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-                </div>
+						<!-- Private Key Section -->
+						<div class="ssh-key-section ssh-key-section-divider">
+							<div class="panel-header">
+								<div>
+									<h2>Private Key</h2>
+									<p>Keep this secure and never share it</p>
+								</div>
+								<div class="panel-actions">
+									<button
+										class="ghost-btn copy-btn"
+										id="sshCopyPrivate"
+										title="Copy private key"
+									>
+										📋 Copy
+									</button>
+								</div>
+							</div>
+							<div class="ssh-key-display">
+								<textarea
+									id="sshPrivate"
+									spellcheck="false"
+									readonly
+									placeholder="Private key will appear here after generation"
+								></textarea>
+								<div class="ssh-key-hint ssh-key-warning">
+									<span>⚠️</span>
+									<span
+										>Keep this private key secure. Save it to
+										~/.ssh/id_ed25519</span
+									>
+								</div>
+							</div>
+						</div>
+					</section>
+				</div>
 
-                <!-- Browser Fingerprint surface: shows passive signals we can read without permissions. -->
-                <div id="fingerprintWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Browser Fingerprint</h2>
-                                <p>
-                                    Inspect what the browser exposes without permissions via
-                                    standard Web APIs
-                                </p>
-                            </div>
-                            <div class="panel-actions">
-                                <button class="ghost-btn" id="fingerprintRefresh">Refresh</button>
-                                <button
-                                    class="ghost-btn copy-btn"
-                                    id="fingerprintCopyAll"
-                                    style="display: none"
-                                    title="Copy all fingerprint data"
-                                >
-                                    📋 Copy All
-                                </button>
-                            </div>
-                        </div>
-                        <div class="fingerprint-controls">
-                            <div id="fingerprintSummary" class="fingerprint-summary">
-                                <span class="fingerprint-summary-text"
-                                    >Loading fingerprint data…</span
-                                >
-                                <span class="fingerprint-count" id="fingerprintCount"></span>
-                            </div>
-                            <div class="fingerprint-search">
-                                <input
-                                    type="text"
-                                    id="fingerprintSearch"
-                                    placeholder="Search fingerprint data..."
-                                    spellcheck="false"
-                                />
-                            </div>
-                        </div>
-                        <div id="fingerprintGrid" class="fingerprint-grid">
-                            <div class="muted">Loading…</div>
-                        </div>
-                    </section>
-                </div>
+				<!-- Browser Fingerprint surface: shows passive signals we can read without permissions. -->
+				<div id="fingerprintWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Browser Fingerprint</h2>
+								<p>
+									Inspect what the browser exposes without permissions via
+									standard Web APIs
+								</p>
+							</div>
+							<div class="panel-actions">
+								<button class="ghost-btn" id="fingerprintRefresh">
+									Refresh
+								</button>
+								<button
+									class="ghost-btn copy-btn"
+									id="fingerprintCopyAll"
+									style="display: none"
+									title="Copy all fingerprint data"
+								>
+									📋 Copy All
+								</button>
+							</div>
+						</div>
+						<div class="fingerprint-controls">
+							<div id="fingerprintSummary" class="fingerprint-summary">
+								<span class="fingerprint-summary-text"
+									>Loading fingerprint data…</span
+								>
+								<span class="fingerprint-count" id="fingerprintCount"></span>
+							</div>
+							<div class="fingerprint-search">
+								<input
+									type="text"
+									id="fingerprintSearch"
+									placeholder="Search fingerprint data..."
+									spellcheck="false"
+								/>
+							</div>
+						</div>
+						<div id="fingerprintGrid" class="fingerprint-grid">
+							<div class="muted">Loading…</div>
+						</div>
+					</section>
+				</div>
 
-                <!-- SSL Inspector workspace: decodes PEM certificates or chains. -->
-                <div id="certWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>SSL Inspector</h2>
-                                <p>Paste a PEM certificate or chain to view decoded fields.</p>
-                            </div>
-                            <div class="panel-actions">
-                                <button class="ghost-btn" id="certSample">Load sample</button>
-                                <button id="certParse">Parse</button>
-                            </div>
-                        </div>
-                        <textarea
-                            id="certInput"
-                            spellcheck="false"
-                            placeholder="-----BEGIN CERTIFICATE-----"
-                        ></textarea>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Certificates</h2>
-                                <p id="certSummary" class="muted">No certificates parsed yet.</p>
-                            </div>
-                        </div>
-                        <div id="certResults" class="cert-grid">
-                            <div class="muted">Paste a certificate to see details.</div>
-                        </div>
-                    </section>
-                </div>
+				<!-- SSL Inspector workspace: decodes PEM certificates or chains. -->
+				<div id="certWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>SSL Inspector</h2>
+								<p>Paste a PEM certificate or chain to view decoded fields.</p>
+							</div>
+							<div class="panel-actions">
+								<button class="ghost-btn" id="certSample">Load sample</button>
+								<button id="certParse">Parse</button>
+							</div>
+						</div>
+						<textarea
+							id="certInput"
+							spellcheck="false"
+							placeholder="-----BEGIN CERTIFICATE-----"
+						></textarea>
+					</section>
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Certificates</h2>
+								<p id="certSummary" class="muted">
+									No certificates parsed yet.
+								</p>
+							</div>
+						</div>
+						<div id="certResults" class="cert-grid">
+							<div class="muted">Paste a certificate to see details.</div>
+						</div>
+					</section>
+				</div>
 
-                <div id="randomWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Random String Generator</h2>
-                                <p>
-                                    Generate random strings with customizable character sets and
-                                    rules
-                                </p>
-                            </div>
-                            <div class="generator-actions">
-                                <button id="randomGenerate">Generate</button>
-                            </div>
-                        </div>
+				<div id="randomWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Random String Generator</h2>
+								<p>
+									Generate random strings with customizable character sets and
+									rules
+								</p>
+							</div>
+							<div class="generator-actions">
+								<button id="randomGenerate">Generate</button>
+							</div>
+						</div>
 
-                        <!-- Basic Settings Section -->
-                        <div class="random-basic-settings">
-                            <h3 class="random-section-title">Basic Settings</h3>
-                            <div class="random-basic-grid">
-                                <label class="random-basic-field">
-                                    <span>String Length</span>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        max="2048"
-                                        value="24"
-                                        id="randomLength"
-                                    />
-                                    <small class="random-field-hint">1-2048 characters</small>
-                                </label>
-                                <label class="random-basic-field">
-                                    <span>Count</span>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        max="256"
-                                        value="5"
-                                        id="randomCount"
-                                    />
-                                    <small class="random-field-hint"
-                                        >Number of strings to generate</small
-                                    >
-                                </label>
-                            </div>
-                        </div>
+						<!-- Basic Settings Section -->
+						<div class="random-basic-settings">
+							<h3 class="random-section-title">Basic Settings</h3>
+							<div class="random-basic-grid">
+								<label class="random-basic-field">
+									<span>String Length</span>
+									<input
+										type="number"
+										min="1"
+										max="2048"
+										value="24"
+										id="randomLength"
+									/>
+									<small class="random-field-hint">1-2048 characters</small>
+								</label>
+								<label class="random-basic-field">
+									<span>Count</span>
+									<input
+										type="number"
+										min="1"
+										max="256"
+										value="5"
+										id="randomCount"
+									/>
+									<small class="random-field-hint"
+										>Number of strings to generate</small
+									>
+								</label>
+							</div>
+						</div>
 
-                        <!-- Character Sets Section -->
-                        <div class="random-charsets">
-                            <h3 class="random-section-title">Character Sets</h3>
-                            <div class="random-charset-grid">
-                                <!-- Digits Card -->
-                                <div class="random-charset-card" data-charset="digits">
-                                    <div class="random-charset-header">
-                                        <label class="checkbox random-charset-toggle">
-                                            <input
-                                                type="checkbox"
-                                                id="randomIncludeDigits"
-                                                checked
-                                            />
-                                            <span class="random-charset-label">Digits (0-9)</span>
-                                        </label>
-                                    </div>
-                                    <div class="random-charset-options" id="randomDigitsOptions">
-                                        <div class="random-option-row" id="randomMinDigitsRow">
-                                            <label for="randomMinDigits">Minimum count</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value="0"
-                                                id="randomMinDigits"
-                                                class="min-count"
-                                            />
-                                        </div>
-                                        <div class="random-option-row" id="randomAllowZeroRow">
-                                            <label class="checkbox">
-                                                <input
-                                                    type="checkbox"
-                                                    id="randomAllowZero"
-                                                    checked
-                                                />
-                                                <span>Allow leading zero</span>
-                                            </label>
-                                        </div>
-                                        <div
-                                            class="random-option-row range-row hidden"
-                                            id="randomDigitRangeRow"
-                                        >
-                                            <div class="range-field">
-                                                <label for="randomDigitMin">Min value</label>
-                                                <input type="number" id="randomDigitMin" />
-                                            </div>
-                                            <div class="range-field">
-                                                <label for="randomDigitMax">Max value</label>
-                                                <input type="number" id="randomDigitMax" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+						<!-- Character Sets Section -->
+						<div class="random-charsets">
+							<h3 class="random-section-title">Character Sets</h3>
+							<div class="random-charset-grid">
+								<!-- Digits Card -->
+								<div class="random-charset-card" data-charset="digits">
+									<div class="random-charset-header">
+										<label class="checkbox random-charset-toggle">
+											<input type="checkbox" id="randomIncludeDigits" checked />
+											<span class="random-charset-label">Digits (0-9)</span>
+										</label>
+									</div>
+									<div class="random-charset-options" id="randomDigitsOptions">
+										<div class="random-option-row" id="randomMinDigitsRow">
+											<label for="randomMinDigits">Minimum count</label>
+											<input
+												type="number"
+												min="0"
+												value="0"
+												id="randomMinDigits"
+												class="min-count"
+											/>
+										</div>
+										<div class="random-option-row" id="randomAllowZeroRow">
+											<label class="checkbox">
+												<input type="checkbox" id="randomAllowZero" checked />
+												<span>Allow leading zero</span>
+											</label>
+										</div>
+										<div
+											class="random-option-row range-row hidden"
+											id="randomDigitRangeRow"
+										>
+											<div class="range-field">
+												<label for="randomDigitMin">Min value</label>
+												<input type="number" id="randomDigitMin" />
+											</div>
+											<div class="range-field">
+												<label for="randomDigitMax">Max value</label>
+												<input type="number" id="randomDigitMax" />
+											</div>
+										</div>
+									</div>
+								</div>
 
-                                <!-- Lowercase Letters Card -->
-                                <div class="random-charset-card" data-charset="lower">
-                                    <div class="random-charset-header">
-                                        <label class="checkbox random-charset-toggle">
-                                            <input type="checkbox" id="randomIncludeLower" />
-                                            <span class="random-charset-label"
-                                                >Lowercase (a-z)</span
-                                            >
-                                        </label>
-                                    </div>
-                                    <div class="random-charset-options" id="randomLowerOptions">
-                                        <div class="random-option-row" id="randomMinLowerRow">
-                                            <label for="randomMinLower">Minimum count</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value="0"
-                                                id="randomMinLower"
-                                                class="min-count"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
+								<!-- Lowercase Letters Card -->
+								<div class="random-charset-card" data-charset="lower">
+									<div class="random-charset-header">
+										<label class="checkbox random-charset-toggle">
+											<input type="checkbox" id="randomIncludeLower" />
+											<span class="random-charset-label">Lowercase (a-z)</span>
+										</label>
+									</div>
+									<div class="random-charset-options" id="randomLowerOptions">
+										<div class="random-option-row" id="randomMinLowerRow">
+											<label for="randomMinLower">Minimum count</label>
+											<input
+												type="number"
+												min="0"
+												value="0"
+												id="randomMinLower"
+												class="min-count"
+											/>
+										</div>
+									</div>
+								</div>
 
-                                <!-- Uppercase Letters Card -->
-                                <div class="random-charset-card" data-charset="upper">
-                                    <div class="random-charset-header">
-                                        <label class="checkbox random-charset-toggle">
-                                            <input type="checkbox" id="randomIncludeUpper" />
-                                            <span class="random-charset-label"
-                                                >Uppercase (A-Z)</span
-                                            >
-                                        </label>
-                                    </div>
-                                    <div class="random-charset-options" id="randomUpperOptions">
-                                        <div class="random-option-row" id="randomMinUpperRow">
-                                            <label for="randomMinUpper">Minimum count</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value="0"
-                                                id="randomMinUpper"
-                                                class="min-count"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
+								<!-- Uppercase Letters Card -->
+								<div class="random-charset-card" data-charset="upper">
+									<div class="random-charset-header">
+										<label class="checkbox random-charset-toggle">
+											<input type="checkbox" id="randomIncludeUpper" />
+											<span class="random-charset-label">Uppercase (A-Z)</span>
+										</label>
+									</div>
+									<div class="random-charset-options" id="randomUpperOptions">
+										<div class="random-option-row" id="randomMinUpperRow">
+											<label for="randomMinUpper">Minimum count</label>
+											<input
+												type="number"
+												min="0"
+												value="0"
+												id="randomMinUpper"
+												class="min-count"
+											/>
+										</div>
+									</div>
+								</div>
 
-                                <!-- Symbols Card -->
-                                <div class="random-charset-card" data-charset="symbols">
-                                    <div class="random-charset-header">
-                                        <span class="random-charset-label">Symbols</span>
-                                    </div>
-                                    <div class="random-charset-options">
-                                        <div
-                                            class="symbol-toggle-grid"
-                                            id="randomSymbolToggles"
-                                        ></div>
-                                        <div
-                                            class="random-option-row symbol-min hidden"
-                                            id="randomSymbolMinRow"
-                                        >
-                                            <label for="randomMinSymbols">Minimum count</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value="0"
-                                                id="randomMinSymbols"
-                                                class="min-count"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+								<!-- Symbols Card -->
+								<div class="random-charset-card" data-charset="symbols">
+									<div class="random-charset-header">
+										<span class="random-charset-label">Symbols</span>
+									</div>
+									<div class="random-charset-options">
+										<div
+											class="symbol-toggle-grid"
+											id="randomSymbolToggles"
+										></div>
+										<div
+											class="random-option-row symbol-min hidden"
+											id="randomSymbolMinRow"
+										>
+											<label for="randomMinSymbols">Minimum count</label>
+											<input
+												type="number"
+												min="0"
+												value="0"
+												id="randomMinSymbols"
+												class="min-count"
+											/>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
 
-                        <!-- Advanced Options Section -->
-                        <div class="random-advanced">
-                            <h3 class="random-section-title">Advanced Options</h3>
-                            <div class="random-exclude">
-                                <label>
-                                    <span>Exclude characters</span>
-                                    <input
-                                        type="text"
-                                        id="randomExclude"
-                                        spellcheck="false"
-                                        placeholder="e.g. O0Il (characters to exclude from generation)"
-                                    />
-                                </label>
-                            </div>
-                        </div>
+						<!-- Advanced Options Section -->
+						<div class="random-advanced">
+							<h3 class="random-section-title">Advanced Options</h3>
+							<div class="random-exclude">
+								<label>
+									<span>Exclude characters</span>
+									<input
+										type="text"
+										id="randomExclude"
+										spellcheck="false"
+										placeholder="e.g. O0Il (characters to exclude from generation)"
+									/>
+								</label>
+							</div>
+						</div>
 
-                        <!-- Results Section -->
-                        <div class="random-results-section">
-                            <div class="random-results-header">
-                                <h3 class="random-section-title">Generated Strings</h3>
-                                <button
-                                    class="ghost-btn copy-btn"
-                                    id="randomCopyAll"
-                                    style="display: none"
-                                    title="Copy all generated strings"
-                                >
-                                    📋 Copy All
-                                </button>
-                            </div>
-                            <div id="randomResults" class="random-results">
-                                <div class="random-placeholder">
-                                    Click Generate to produce strings
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-                </div>
+						<!-- Results Section -->
+						<div class="random-results-section">
+							<div class="random-results-header">
+								<h3 class="random-section-title">Generated Strings</h3>
+								<button
+									class="ghost-btn copy-btn"
+									id="randomCopyAll"
+									style="display: none"
+									title="Copy all generated strings"
+								>
+									📋 Copy All
+								</button>
+							</div>
+							<div id="randomResults" class="random-results">
+								<div class="random-placeholder">
+									Click Generate to produce strings
+								</div>
+							</div>
+						</div>
+					</section>
+				</div>
 
-                <div id="asciiWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>ASCII Art Generator</h2>
-                                <p>Turn text into FIGlet-style ASCII art.</p>
-                            </div>
-                            <div class="generator-actions">
-                                <button id="asciiGenerate">Generate</button>
-                                <button class="ghost-btn copy-btn" id="asciiCopy" disabled>
-                                    📋 Copy
-                                </button>
-                                <button class="ghost-btn" id="asciiDownload" disabled>
-                                    Download .txt
-                                </button>
-                            </div>
-                        </div>
+				<div id="asciiWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>ASCII Art Generator</h2>
+								<p>Turn text into FIGlet-style ASCII art.</p>
+							</div>
+							<div class="generator-actions">
+								<button id="asciiGenerate">Generate</button>
+								<button class="ghost-btn copy-btn" id="asciiCopy" disabled>
+									📋 Copy
+								</button>
+								<button class="ghost-btn" id="asciiDownload" disabled>
+									Download .txt
+								</button>
+							</div>
+						</div>
 
-                        <div class="ascii-controls">
-                            <label class="ascii-textarea">
-                                <span>Text</span>
-                                <textarea
-                                    id="asciiInput"
-                                    spellcheck="false"
-                                    placeholder="Hello, Transform!"
-                                ></textarea>
-                            </label>
+						<div class="ascii-controls">
+							<label class="ascii-textarea">
+								<span>Text</span>
+								<textarea
+									id="asciiInput"
+									spellcheck="false"
+									placeholder="Hello, Transform!"
+								></textarea>
+							</label>
 
-                            <div class="ascii-form-grid">
-                                <label>
-                                    <span>Font</span>
-                                    <select id="asciiFont"></select>
-                                </label>
-                                <label>
-                                    <span>Wrap width (chars)</span>
-                                    <input
-                                        type="number"
-                                        id="asciiWidth"
-                                        min="1"
-                                        max="120"
-                                        value="80"
-                                    />
-                                </label>
-                                <fieldset class="ascii-align">
-                                    <legend>Align</legend>
-                                    <label>
-                                        <input
-                                            type="radio"
-                                            name="asciiAlign"
-                                            id="asciiAlignLeft"
-                                            value="left"
-                                            checked
-                                        />
-                                        <span>Left</span>
-                                    </label>
-                                    <label>
-                                        <input
-                                            type="radio"
-                                            name="asciiAlign"
-                                            id="asciiAlignCenter"
-                                            value="center"
-                                        />
-                                        <span>Center</span>
-                                    </label>
-                                    <label>
-                                        <input
-                                            type="radio"
-                                            name="asciiAlign"
-                                            id="asciiAlignRight"
-                                            value="right"
-                                        />
-                                        <span>Right</span>
-                                    </label>
-                                </fieldset>
-                            </div>
-                        </div>
+							<div class="ascii-form-grid">
+								<label>
+									<span>Font</span>
+									<select id="asciiFont"></select>
+								</label>
+								<label>
+									<span>Wrap width (chars)</span>
+									<input
+										type="number"
+										id="asciiWidth"
+										min="1"
+										max="120"
+										value="80"
+									/>
+								</label>
+								<fieldset class="ascii-align">
+									<legend>Align</legend>
+									<label>
+										<input
+											type="radio"
+											name="asciiAlign"
+											id="asciiAlignLeft"
+											value="left"
+											checked
+										/>
+										<span>Left</span>
+									</label>
+									<label>
+										<input
+											type="radio"
+											name="asciiAlign"
+											id="asciiAlignCenter"
+											value="center"
+										/>
+										<span>Center</span>
+									</label>
+									<label>
+										<input
+											type="radio"
+											name="asciiAlign"
+											id="asciiAlignRight"
+											value="right"
+										/>
+										<span>Right</span>
+									</label>
+								</fieldset>
+							</div>
+						</div>
 
-                        <div class="ascii-output-card">
-                            <div class="panel-header">
-                                <div>
-                                    <h3>Output</h3>
-                                    <p class="muted" id="asciiStatus">Enter text to render</p>
-                                </div>
-                            </div>
-                            <pre id="asciiOutput" class="ascii-output" aria-live="polite"></pre>
-                        </div>
-                    </section>
-                </div>
+						<div class="ascii-output-card">
+							<div class="panel-header">
+								<div>
+									<h3>Output</h3>
+									<p class="muted" id="asciiStatus">Enter text to render</p>
+								</div>
+							</div>
+							<pre
+								id="asciiOutput"
+								class="ascii-output"
+								aria-live="polite"
+							></pre>
+						</div>
+					</section>
+				</div>
 
-                <!-- QR Code workspace: generates OTP/WiFi/custom payloads into 250×250 images. -->
-                <div id="qrWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>QR Code</h2>
-                                <p>Create 250×250 QR images for OTP, WiFi, or custom text.</p>
-                            </div>
-                            <div class="generator-actions">
-                                <button class="ghost-btn" id="qrDownload" disabled>Download</button>
-                                <button id="qrGenerate">Generate</button>
-                            </div>
-                        </div>
-                        <div class="qr-grid">
-                            <div class="qr-controls">
-                                <div class="qr-modes" role="group" aria-label="QR payload type">
-                                    <label class="checkbox">
-                                        <input
-                                            type="radio"
-                                            name="qrMode"
-                                            id="qrModeOtp"
-                                            value="otp"
-                                            checked
-                                        />
-                                        <span>OTP</span>
-                                    </label>
-                                    <label class="checkbox">
-                                        <input
-                                            type="radio"
-                                            name="qrMode"
-                                            id="qrModeWifi"
-                                            value="wifi"
-                                        />
-                                        <span>WiFi</span>
-                                    </label>
-                                    <label class="checkbox">
-                                        <input
-                                            type="radio"
-                                            name="qrMode"
-                                            id="qrModeCustom"
-                                            value="custom"
-                                        />
-                                        <span>Custom</span>
-                                    </label>
-                                </div>
-                                <div class="qr-row" data-mode="otp">
-                                    <label>
-                                        <span>Account</span>
-                                        <input
-                                            type="text"
-                                            id="qrOtpAccount"
-                                            spellcheck="false"
-                                            placeholder="user@example.com"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>Secret</span>
-                                        <input
-                                            type="text"
-                                            id="qrOtpSecret"
-                                            spellcheck="false"
-                                            placeholder="JBSWY3DPEHPK3PXP"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>Issuer</span>
-                                        <input
-                                            type="text"
-                                            id="qrOtpIssuer"
-                                            spellcheck="false"
-                                            placeholder="Transform"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>Algorithm</span>
-                                        <select id="qrOtpAlgorithm">
-                                            <option value="SHA1" selected>SHA1</option>
-                                            <option value="SHA256">SHA256</option>
-                                            <option value="SHA512">SHA512</option>
-                                        </select>
-                                    </label>
-                                    <label>
-                                        <span>Period (seconds)</span>
-                                        <input
-                                            type="number"
-                                            id="qrOtpPeriod"
-                                            min="1"
-                                            max="300"
-                                            value="30"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>Digits</span>
-                                        <input
-                                            type="number"
-                                            id="qrOtpDigits"
-                                            min="4"
-                                            max="10"
-                                            value="6"
-                                        />
-                                    </label>
-                                </div>
-                                <div class="qr-row hidden" data-mode="wifi">
-                                    <label>
-                                        <span>Type</span>
-                                        <select id="qrWifiType">
-                                            <option value="WPA" selected>WPA/WPA2</option>
-                                            <option value="WEP">WEP</option>
-                                            <option value="nopass">None</option>
-                                        </select>
-                                    </label>
-                                    <label>
-                                        <span>SSID</span>
-                                        <input
-                                            type="text"
-                                            id="qrWifiSsid"
-                                            spellcheck="false"
-                                            placeholder="MyNetwork"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>Password</span>
-                                        <input
-                                            type="text"
-                                            id="qrWifiPass"
-                                            spellcheck="false"
-                                            placeholder="Optional if open"
-                                        />
-                                    </label>
-                                </div>
-                                <div class="qr-row hidden" data-mode="custom">
-                                    <label>
-                                        <span>Text</span>
-                                        <input
-                                            type="text"
-                                            id="qrCustomString"
-                                            spellcheck="false"
-                                            placeholder="Any text to encode"
-                                        />
-                                    </label>
-                                </div>
-                                <div class="qr-row">
-                                    <label>
-                                        <span>Error correction</span>
-                                        <select id="qrEccLevel">
-                                            <option value="L">L (7%)</option>
-                                            <option value="M">M (15%)</option>
-                                            <option value="Q" selected>Q (25%)</option>
-                                            <option value="H">H (30%)</option>
-                                        </select>
-                                    </label>
-                                </div>
-                                <div class="qr-row qr-format-row">
-                                    <label>
-                                        <span>Format</span>
-                                        <select id="qrFormat">
-                                            <option value="png">PNG</option>
-                                            <option value="jpg">JPG</option>
-                                            <option value="webp">WEBP</option>
-                                            <option value="svg">SVG</option>
-                                        </select>
-                                    </label>
-                                    <p class="muted qr-size-hint">
-                                        Output size fixed at 250 × 250.
-                                    </p>
-                                </div>
-                            </div>
-                            <div class="qr-preview-wrap">
-                                <div class="qr-preview" id="qrPreview">
-                                    <div class="muted">Generate to see a 250 × 250 QR preview.</div>
-                                </div>
-                                <div class="qr-meta" id="qrMeta"></div>
-                                <div class="qr-error" id="qrError"></div>
-                            </div>
-                        </div>
-                    </section>
-                </div>
+				<!-- QR Code workspace: generates OTP/WiFi/custom payloads into 250×250 images. -->
+				<div id="qrWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>QR Code</h2>
+								<p>Create 250×250 QR images for OTP, WiFi, or custom text.</p>
+							</div>
+							<div class="generator-actions">
+								<button class="ghost-btn" id="qrDownload" disabled>
+									Download
+								</button>
+								<button id="qrGenerate">Generate</button>
+							</div>
+						</div>
+						<div class="qr-grid">
+							<div class="qr-controls">
+								<div class="qr-modes" role="group" aria-label="QR payload type">
+									<label class="checkbox">
+										<input
+											type="radio"
+											name="qrMode"
+											id="qrModeOtp"
+											value="otp"
+											checked
+										/>
+										<span>OTP</span>
+									</label>
+									<label class="checkbox">
+										<input
+											type="radio"
+											name="qrMode"
+											id="qrModeWifi"
+											value="wifi"
+										/>
+										<span>WiFi</span>
+									</label>
+									<label class="checkbox">
+										<input
+											type="radio"
+											name="qrMode"
+											id="qrModeCustom"
+											value="custom"
+										/>
+										<span>Custom</span>
+									</label>
+								</div>
+								<div class="qr-row" data-mode="otp">
+									<label>
+										<span>Account</span>
+										<input
+											type="text"
+											id="qrOtpAccount"
+											spellcheck="false"
+											placeholder="user@example.com"
+										/>
+									</label>
+									<label>
+										<span>Secret</span>
+										<input
+											type="text"
+											id="qrOtpSecret"
+											spellcheck="false"
+											placeholder="JBSWY3DPEHPK3PXP"
+										/>
+									</label>
+									<label>
+										<span>Issuer</span>
+										<input
+											type="text"
+											id="qrOtpIssuer"
+											spellcheck="false"
+											placeholder="Transform"
+										/>
+									</label>
+									<label>
+										<span>Algorithm</span>
+										<select id="qrOtpAlgorithm">
+											<option value="SHA1" selected>SHA1</option>
+											<option value="SHA256">SHA256</option>
+											<option value="SHA512">SHA512</option>
+										</select>
+									</label>
+									<label>
+										<span>Period (seconds)</span>
+										<input
+											type="number"
+											id="qrOtpPeriod"
+											min="1"
+											max="300"
+											value="30"
+										/>
+									</label>
+									<label>
+										<span>Digits</span>
+										<input
+											type="number"
+											id="qrOtpDigits"
+											min="4"
+											max="10"
+											value="6"
+										/>
+									</label>
+								</div>
+								<div class="qr-row hidden" data-mode="wifi">
+									<label>
+										<span>Type</span>
+										<select id="qrWifiType">
+											<option value="WPA" selected>WPA/WPA2</option>
+											<option value="WEP">WEP</option>
+											<option value="nopass">None</option>
+										</select>
+									</label>
+									<label>
+										<span>SSID</span>
+										<input
+											type="text"
+											id="qrWifiSsid"
+											spellcheck="false"
+											placeholder="MyNetwork"
+										/>
+									</label>
+									<label>
+										<span>Password</span>
+										<input
+											type="text"
+											id="qrWifiPass"
+											spellcheck="false"
+											placeholder="Optional if open"
+										/>
+									</label>
+								</div>
+								<div class="qr-row hidden" data-mode="custom">
+									<label>
+										<span>Text</span>
+										<input
+											type="text"
+											id="qrCustomString"
+											spellcheck="false"
+											placeholder="Any text to encode"
+										/>
+									</label>
+								</div>
+								<div class="qr-row">
+									<label>
+										<span>Error correction</span>
+										<select id="qrEccLevel">
+											<option value="L">L (7%)</option>
+											<option value="M">M (15%)</option>
+											<option value="Q" selected>Q (25%)</option>
+											<option value="H">H (30%)</option>
+										</select>
+									</label>
+								</div>
+								<div class="qr-row qr-format-row">
+									<label>
+										<span>Format</span>
+										<select id="qrFormat">
+											<option value="png">PNG</option>
+											<option value="jpg">JPG</option>
+											<option value="webp">WEBP</option>
+											<option value="svg">SVG</option>
+										</select>
+									</label>
+									<p class="muted qr-size-hint">
+										Output size fixed at 250 × 250.
+									</p>
+								</div>
+							</div>
+							<div class="qr-preview-wrap">
+								<div class="qr-preview" id="qrPreview">
+									<div class="muted">
+										Generate to see a 250 × 250 QR preview.
+									</div>
+								</div>
+								<div class="qr-meta" id="qrMeta"></div>
+								<div class="qr-error" id="qrError"></div>
+							</div>
+						</div>
+					</section>
+				</div>
 
-                <!-- QR Parse workspace: upload images to decode embedded QR payloads. -->
-                <div id="qrParseWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>QR Parse</h2>
-                                <p>Upload PNG/JPG/WebP/AVIF to extract all QR payloads.</p>
-                            </div>
-                        </div>
-                        <div class="qr-parse-grid">
-                            <div id="qrParseDrop" class="qr-parse-drop">
-                                <p>Drag & drop images here, or choose files</p>
-                                <input
-                                    type="file"
-                                    id="qrParseFile"
-                                    multiple
-                                    accept="image/png,image/jpeg,image/webp,image/avif"
-                                />
-                                <button class="ghost-btn">Browse</button>
-                            </div>
-                            <div id="qrParseResults" class="qr-parse-results">
-                                <div class="muted">Drop images to see decoded payloads.</div>
-                            </div>
-                        </div>
-                    </section>
-                </div>
+				<!-- QR Parse workspace: upload images to decode embedded QR payloads. -->
+				<div id="qrParseWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>QR Parse</h2>
+								<p>Upload PNG/JPG/WebP/AVIF to extract all QR payloads.</p>
+							</div>
+						</div>
+						<div class="qr-parse-grid">
+							<div id="qrParseDrop" class="qr-parse-drop">
+								<p>Drag & drop images here, or choose files</p>
+								<input
+									type="file"
+									id="qrParseFile"
+									multiple
+									accept="image/png,image/jpeg,image/webp,image/avif"
+								/>
+								<button class="ghost-btn">Browse</button>
+							</div>
+							<div id="qrParseResults" class="qr-parse-results">
+								<div class="muted">Drop images to see decoded payloads.</div>
+							</div>
+						</div>
+					</section>
+				</div>
 
-                <!-- TOTP workspace: computes RFC 6238 codes based on user-selected algorithm/period/digits. -->
-                <div id="totpWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>TOTP</h2>
-                                <p>Compute time-based OTP codes from a Base32 secret.</p>
-                            </div>
-                        </div>
-                        <div class="totp-form">
-                            <label>
-                                <span>Secret</span>
-                                <input
-                                    type="text"
-                                    id="totpSecret"
-                                    spellcheck="false"
-                                    placeholder="6BDRT7ATRRCZV5ISFLOHAHQLYF4ZORG7"
-                                />
-                            </label>
-                            <label>
-                                <span>Algorithm</span>
-                                <select id="totpAlgorithm">
-                                    <option value="SHA256" selected>SHA256</option>
-                                    <option value="SHA1">SHA1</option>
-                                    <option value="SHA512">SHA512</option>
-                                </select>
-                            </label>
-                            <label>
-                                <span>Period (seconds)</span>
-                                <input type="number" id="totpPeriod" min="1" max="300" value="30" />
-                            </label>
-                            <label>
-                                <span>Digits</span>
-                                <input type="number" id="totpDigits" min="4" max="10" value="6" />
-                            </label>
-                        </div>
-                        <div class="totp-result" id="totpResult">
-                            <code id="totpCode" title="Click to copy"></code>
-                            <div class="totp-meta">
-                                <span id="totpPeriodLabel"></span>
-                                <span id="totpRemainingLabel"></span>
-                            </div>
-                            <div class="totp-error" id="totpError"></div>
-                        </div>
-                    </section>
-                </div>
+				<!-- TOTP workspace: computes RFC 6238 codes based on user-selected algorithm/period/digits. -->
+				<div id="totpWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>TOTP</h2>
+								<p>Compute time-based OTP codes from a Base32 secret.</p>
+							</div>
+						</div>
+						<div class="totp-form">
+							<label>
+								<span>Secret</span>
+								<input
+									type="text"
+									id="totpSecret"
+									spellcheck="false"
+									placeholder="6BDRT7ATRRCZV5ISFLOHAHQLYF4ZORG7"
+								/>
+							</label>
+							<label>
+								<span>Algorithm</span>
+								<select id="totpAlgorithm">
+									<option value="SHA256" selected>SHA256</option>
+									<option value="SHA1">SHA1</option>
+									<option value="SHA512">SHA512</option>
+								</select>
+							</label>
+							<label>
+								<span>Period (seconds)</span>
+								<input
+									type="number"
+									id="totpPeriod"
+									min="1"
+									max="300"
+									value="30"
+								/>
+							</label>
+							<label>
+								<span>Digits</span>
+								<input
+									type="number"
+									id="totpDigits"
+									min="4"
+									max="10"
+									value="6"
+								/>
+							</label>
+						</div>
+						<div class="totp-result" id="totpResult">
+							<code id="totpCode" title="Click to copy"></code>
+							<div class="totp-meta">
+								<span id="totpPeriodLabel"></span>
+								<span id="totpRemainingLabel"></span>
+							</div>
+							<div class="totp-error" id="totpError"></div>
+						</div>
+					</section>
+				</div>
 
-                <div id="dataWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>SQL Inserts</h2>
-                                <p>
-                                    Paste MySQL DDL or JSON / JSON Schema to generate sample data.
-                                </p>
-                            </div>
-                            <div class="generator-actions data-actions">
-                                <label>
-                                    <span>Rows</span>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        max="100"
-                                        value="5"
-                                        id="dataRows"
-                                    />
-                                </label>
-                                <button id="dataGenerate">Generate</button>
-                            </div>
-                        </div>
-                        <textarea
-                            id="dataSchema"
-                            spellcheck="false"
-                            placeholder="CREATE TABLE users (\n  id INT PRIMARY KEY,\n  name VARCHAR(64),\n  created_at DATETIME\n);"
-                        ></textarea>
-                        <div id="dataColumnEditor" class="data-column-editor">
-                            <div class="muted">Paste a schema to configure column ranges.</div>
-                        </div>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Generated Data</h2>
-                                <p>Outputs INSERT SQL for DDL, JSON array for JSON inputs.</p>
-                            </div>
-                            <div class="panel-actions">
-                                <button id="dataCopy" class="copy-btn" title="Copy data">
-                                    📋 Copy
-                                </button>
-                            </div>
-                        </div>
-                        <textarea id="dataOutput" spellcheck="false" readonly></textarea>
-                    </section>
-                </div>
+				<div id="dataWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>SQL Inserts</h2>
+								<p>
+									Paste MySQL DDL or JSON / JSON Schema to generate sample data.
+								</p>
+							</div>
+							<div class="generator-actions data-actions">
+								<label>
+									<span>Rows</span>
+									<input
+										type="number"
+										min="1"
+										max="100"
+										value="5"
+										id="dataRows"
+									/>
+								</label>
+								<button id="dataGenerate">Generate</button>
+							</div>
+						</div>
+						<textarea
+							id="dataSchema"
+							spellcheck="false"
+							placeholder="CREATE TABLE users (\n  id INT PRIMARY KEY,\n  name VARCHAR(64),\n  created_at DATETIME\n);"
+						></textarea>
+						<div id="dataColumnEditor" class="data-column-editor">
+							<div class="muted">
+								Paste a schema to configure column ranges.
+							</div>
+						</div>
+					</section>
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Generated Data</h2>
+								<p>Outputs INSERT SQL for DDL, JSON array for JSON inputs.</p>
+							</div>
+							<div class="panel-actions">
+								<button id="dataCopy" class="copy-btn" title="Copy data">
+									📋 Copy
+								</button>
+							</div>
+						</div>
+						<textarea id="dataOutput" spellcheck="false" readonly></textarea>
+					</section>
+				</div>
 
-                <!-- Text Diff workspace: compares two texts using patience diff algorithm. -->
-                <div id="diffWorkspace" class="tool-view hidden">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Text Diff</h2>
-                                <p>Compare two texts using patience diff algorithm (git-style)</p>
-                            </div>
-                            <div class="panel-actions">
-                                <button id="diffClear">Clear</button>
-                                <button id="diffSwap">Swap Texts</button>
-                            </div>
-                        </div>
-                        <div class="diff-input-grid">
-                            <div class="diff-panel">
-                                <div class="panel-header">
-                                    <div>
-                                        <h3 id="diffLeftLabel">Original Text</h3>
-                                    </div>
-                                    <div class="panel-actions">
-                                        <button
-                                            class="ghost-btn copy-btn"
-                                            id="diffCopyLeft"
-                                            title="Copy left input"
-                                        >
-                                            📋 Copy
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="textarea-with-numbers">
-                                    <div class="line-numbers" id="diffLeftLineNumbers"></div>
-                                    <textarea
-                                        id="diffLeftInput"
-                                        spellcheck="false"
-                                        placeholder="Paste original text here..."
-                                        class="diff-textarea"
-                                    ></textarea>
-                                </div>
-                            </div>
-                            <div class="diff-panel">
-                                <div class="panel-header">
-                                    <div>
-                                        <h3 id="diffRightLabel">Modified Text</h3>
-                                    </div>
-                                    <div class="panel-actions">
-                                        <button
-                                            class="ghost-btn copy-btn"
-                                            id="diffCopyRight"
-                                            title="Copy right input"
-                                        >
-                                            📋 Copy
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="textarea-with-numbers">
-                                    <div class="line-numbers" id="diffRightLineNumbers"></div>
-                                    <textarea
-                                        id="diffRightInput"
-                                        spellcheck="false"
-                                        placeholder="Paste modified text here..."
-                                        class="diff-textarea"
-                                    ></textarea>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Diff Output</h2>
-                                <p id="diffSummary">No differences found</p>
-                            </div>
-                            <div class="panel-actions">
-                                <button
-                                    id="diffCopyOutput"
-                                    class="copy-btn"
-                                    title="Copy diff output"
-                                >
-                                    📋 Copy Diff
-                                </button>
-                            </div>
-                        </div>
-                        <pre id="diffOutput" class="diff-output"></pre>
-                    </section>
-                </div>
+				<!-- Text Diff workspace: compares two texts using patience diff algorithm. -->
+				<div id="diffWorkspace" class="tool-view hidden">
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Text Diff</h2>
+								<p>
+									Compare two texts using patience diff algorithm (git-style)
+								</p>
+							</div>
+							<div class="panel-actions">
+								<button id="diffClear">Clear</button>
+								<button id="diffSwap">Swap Texts</button>
+							</div>
+						</div>
+						<div class="diff-input-grid">
+							<div class="diff-panel">
+								<div class="panel-header">
+									<div>
+										<h3 id="diffLeftLabel">Original Text</h3>
+									</div>
+									<div class="panel-actions">
+										<button
+											class="ghost-btn copy-btn"
+											id="diffCopyLeft"
+											title="Copy left input"
+										>
+											📋 Copy
+										</button>
+									</div>
+								</div>
+								<div class="textarea-with-numbers">
+									<div class="line-numbers" id="diffLeftLineNumbers"></div>
+									<textarea
+										id="diffLeftInput"
+										spellcheck="false"
+										placeholder="Paste original text here..."
+										class="diff-textarea"
+									></textarea>
+								</div>
+							</div>
+							<div class="diff-panel">
+								<div class="panel-header">
+									<div>
+										<h3 id="diffRightLabel">Modified Text</h3>
+									</div>
+									<div class="panel-actions">
+										<button
+											class="ghost-btn copy-btn"
+											id="diffCopyRight"
+											title="Copy right input"
+										>
+											📋 Copy
+										</button>
+									</div>
+								</div>
+								<div class="textarea-with-numbers">
+									<div class="line-numbers" id="diffRightLineNumbers"></div>
+									<textarea
+										id="diffRightInput"
+										spellcheck="false"
+										placeholder="Paste modified text here..."
+										class="diff-textarea"
+									></textarea>
+								</div>
+							</div>
+						</div>
+					</section>
+					<section class="panel">
+						<div class="panel-header">
+							<div>
+								<h2>Diff Output</h2>
+								<p id="diffSummary">No differences found</p>
+							</div>
+							<div class="panel-actions">
+								<button
+									id="diffCopyOutput"
+									class="copy-btn"
+									title="Copy diff output"
+								>
+									📋 Copy Diff
+								</button>
+							</div>
+						</div>
+						<pre id="diffOutput" class="diff-output"></pre>
+					</section>
+				</div>
 
-                <footer>
-                    <div id="status">Loading WebAssembly...</div>
-                    <div class="hotkeys">⌘/Ctrl + L Clear · ⌘/Ctrl + Enter Run</div>
-                </footer>
-            </div>
-        </div>
-        <div id="sidebarBackdrop"></div>
+				<footer>
+					<div id="status">Loading WebAssembly...</div>
+					<div class="hotkeys">⌘/Ctrl + L Clear · ⌘/Ctrl + Enter Run</div>
+				</footer>
+			</div>
+		</div>
+		<div id="sidebarBackdrop"></div>
 
-        <script type="module" src="main.js"></script>
-    </body>
+		<script type="module" src="main.js"></script>
+	</body>
 </html>
