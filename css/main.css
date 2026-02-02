@@ -1,0 +1,25 @@
+/* ============================================
+   MAIN CSS ENTRY POINT
+   Imports all CSS modules in correct order
+   ============================================ */
+
+/* Base styles - variables and reset */
+@import url('base/variables.css');
+@import url('base/global.css');
+
+/* Layout components */
+@import url('layout/app-shell.css');
+@import url('layout/sidebar.css');
+@import url('layout/topbar.css');
+
+/* UI components */
+@import url('components/buttons.css');
+@import url('components/forms.css');
+@import url('components/panels.css');
+
+/* Tool-specific styles */
+@import url('tools/uuid.css');
+@import url('tools/tools.css');
+
+/* Utilities and responsive design */
+@import url('utilities/responsive.css');

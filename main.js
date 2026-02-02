@@ -1,0 +1,7845 @@
+// Front-end controller for the Rust/Wasm toolkit. Each workspace (converter,
+// coder, IPv4, SQL inserts, etc.) communicates with wasm exports so the UI can
+// stay deterministic and reflect the behaviors described in the spec session.
+
+// Global error handler to suppress Cursor IDE extension errors that don't affect functionality
+// This addresses the "Cannot read properties of undefined (reading 'control')" error that occurs
+// when the Cursor IDE extension tries to detect form controls for autocomplete functionality.
+// The error is caused by the extension expecting certain DOM properties that may be undefined
+// during certain timing conditions, but doesn't affect the actual application functionality.
+window.addEventListener('error', (event) => {
+    // Suppress specific Cursor IDE extension errors related to form control detection
+    if (
+        event.error &&
+        event.error.message &&
+        event.error.message.includes("Cannot read properties of undefined (reading 'control')") &&
+        event.filename &&
+        event.filename.includes('content_script.js')
+    ) {
+        event.preventDefault();
+        console.warn('Suppressed Cursor IDE extension error:', event.error.message);
+        return false;
+    }
+});
+
+// Suppress unhandled promise rejections from Cursor IDE extension
+window.addEventListener('unhandledrejection', (event) => {
+    if (
+        event.reason &&
+        event.reason.message &&
+        event.reason.message.includes("Cannot read properties of undefined (reading 'control')")
+    ) {
+        event.preventDefault();
+        console.warn('Suppressed Cursor IDE extension promise rejection:', event.reason.message);
+    }
+});
+
+import initWasm, {
+    generate_uuids,
+    generate_user_agents,
+    generate_ascii_art,
+    convert_number_base,
+    convert_units,
+    apply_image_watermark_batch,
+    convert_image_format_batch,
+    convert_tabular_format,
+    ipv4_info,
+    url_encode,
+    url_decode,
+    jwt_encode,
+    jwt_decode,
+    encode_content,
+    encode_content_bytes,
+    decode_content_bytes,
+    hash_content,
+    hash_content_bytes,
+    hash_content_hmac,
+    hash_content_hmac_bytes,
+    transform_format,
+    format_content_text,
+    markdown_to_html_text,
+    html_to_markdown_text,
+    random_number_sequences,
+    random_numeric_range_sequences,
+    generate_insert_statements,
+    generate_qr_code,
+    inspect_schema,
+    convert_timestamp,
+    totp_token,
+    bcrypt_hash,
+    bcrypt_verify,
+    argon2_hash,
+    argon2_verify,
+    generate_ssh_key,
+    inspect_certificates,
+    encrypt_bytes,
+    decrypt_bytes,
+    generate_unified_text_diff,
+    parse_qr_codes_batch,
+    list_ascii_fonts,
+} from './pkg/wasm_core.js';
+
+// Import modular components
+import { initConverters } from './js/converters.js';
+import { initGenerators } from './js/generators.js';
+import { initCoders } from './js/coders.js';
+
+const formats = [
+    'JSON',
+    'Go Struct',
+    'YAML',
+    'TOML',
+    'XML',
+    'JSON Schema',
+    'GraphQL Schema',
+    'Protobuf',
+    'TOON',
+    'MsgPack',
+];
+
+const tabularFormats = ['Parquet', 'Avro', 'Arrow IPC', 'Feather', 'CSV', 'TSV', 'JSON'];
+
+// Image converter supports these formats.
+const imageFormats = ['original', 'jpg', 'png', 'webp', 'avif'];
+const imageFormatLabels = {
+    original: 'Original (keep format)',
+    jpg: 'JPG',
+    png: 'PNG',
+    webp: 'WebP',
+    avif: 'AVIF',
+};
+// Per-format tunables the Rust encoder actually supports.
+const imageFormatOptions = {
+    jpg: [{ key: 'quality', type: 'range', min: 1, max: 100, label: 'Quality', defaultValue: 85 }],
+    png: [
+        {
+            key: 'compression',
+            type: 'range',
+            min: 0,
+            max: 9,
+            label: 'Compression',
+            hint: '0 = store, 9 = maximum',
+            defaultValue: 6,
+        },
+    ],
+    // WebP stays pure-Rust; quality uses pre-quantization before the lossless encoder.
+    webp: [
+        {
+            key: 'quality',
+            type: 'range',
+            min: 1,
+            max: 100,
+            label: 'Quality',
+            hint: '100 = lossless (default)',
+            defaultValue: 100,
+        },
+        {
+            type: 'note',
+            text: 'Lower quality applies RGB quantization before encoding to avoid libwebp bindings.',
+        },
+    ],
+    avif: [
+        { key: 'quality', type: 'range', min: 1, max: 100, label: 'Quality', defaultValue: 80 },
+        { key: 'speed', type: 'range', min: 1, max: 10, label: 'Speed (1=best)', defaultValue: 4 },
+        {
+            key: 'lossless',
+            type: 'checkbox',
+            label: 'Force lossless (quality=100)',
+            defaultValue: false,
+        },
+    ],
+};
+
+const samples = {
+    JSON: '{\n  "name": "Ricky",\n  "age": 27\n}',
+    XML: `<root>\n  <name>Ricky</name>\n  <age>27</age>\n</root>`,
+    'Go Struct': 'type AutoGenerated struct {\n  UserID string `json:"user_id"`\n}\n',
+    YAML: 'name: Ricky\nage: 27',
+    TOML: 'name = "Ricky"\nage = 27',
+    'JSON Schema': `{
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "age": { "type": "number" }
+  },
+  "required": ["name"]
+}`,
+    'GraphQL Schema': `type AutoGenerated {
+  userID: String!
+}`,
+    Protobuf: `message AutoGenerated {
+  string user_id = 1;
+}`,
+    TOON: `users[2]{id,name}:
+  1,Alice
+  2,Bob`,
+    MsgPack: 'Paste base64 MsgPack here...',
+};
+
+// Sample PEM chain used by the SSL Inspector demo and tests.
+const sampleCertificateChain = `-----BEGIN CERTIFICATE-----
+MIIDtDCCApygAwIBAgIJAKXzsY4GAceGMA0GCSqGSIb3DQEBCwUAMEIxCzAJBgNV
+BAYTAlVTMRcwFQYDVQQKDA5UcmFuc2Zvcm0gVGVzdDEaMBgGA1UEAwwRVHJhbnNm
+b3JtIFJvb3QgQ0EwHhcNMjUxMTI2MDcxMDUwWhcNMjgwMjI5MDcxMDUwWjA/MQsw
+CQYDVQQGEwJVUzEXMBUGA1UECgwOVHJhbnNmb3JtIFRlc3QxFzAVBgNVBAMMDnRy
+YW5zZm9ybS50ZXN0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArjn9
+UsyxJJxoH/EwemSWnb2bQEpvURklKM5P5+wmzEWALvwiwViquTCq6hjhiEU5Cfb6
+bME1cgWBmsCEGK4S33IzbTdqUupaupNf2YFr0a7mRoXZtDIFGfb/3W4xg8Sp5lDd
+fRvr/5QGtZCAhXoABwjI8pF5A3TGWVh37xZNrofmx1o2cbS31Vg9cTZ+YXT/72Xf
+hkQBjom9SxRdO3Bub36TTdcStV8Bl9H4FNvRE9WUpY8L5qvpJETI3yJw/SD/qH7n
+GGRrQYA8vQEroNaqWQGGpcurxlhsRgAew5w9UlxP5BrVUdBt5781IWfjKHlFPJD8
+u4/x3mkP5jfDVQvPPwIDAQABo4GvMIGsMAkGA1UdEwQCMAAwCwYDVR0PBAQDAgWg
+MB0GA1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjAzBgNVHREELDAqgg50cmFu
+c2Zvcm0udGVzdIISd3d3LnRyYW5zZm9ybS50ZXN0hwQKAAABMB8GA1UdIwQYMBaA
+FLJcA4w4HHt9Hko8hEHCeRmhpjOAMB0GA1UdDgQWBBTLTRYdFR4zUPFcxs3dlaiE
+umhy1zANBgkqhkiG9w0BAQsFAAOCAQEAruMCZG4bgXDz1BXCaMWztRoJzUvRyen9
+ug4atu5Rz03WT1jVfCvp4dcupEMQYWrW1OIXF3IdpaXOOKzm44/EDu95G/mlTIST
+88ao8+nDqGqM/ZPmeU1FjFF83FhrwOFOpwpWXJ+fwbzJ2ZPfG2x4BduR3l8Ykhrm
+m/qhC4+gjwVBpayuTJLwnqd/7g5Vw4y+bJn87SP8qO051C/2TQWSDXEAt7YetOE8
+XnNTHBPJLu6zcQ35a+aMa2GhYM02WfJUT7pgyER49Jzws0PwQT6kX9OOydabcGaK
+3VQQjdHISXmkytGzcoquq0K0xjyZeadc7mzZT3n2IIg3V8HoB+Egow==
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIDRjCCAi6gAwIBAgIJAMiPjBY38LqXMA0GCSqGSIb3DQEBCwUAMEIxCzAJBgNV
+BAYTAlVTMRcwFQYDVQQKDA5UcmFuc2Zvcm0gVGVzdDEaMBgGA1UEAwwRVHJhbnNm
+b3JtIFJvb3QgQ0EwHhcNMjUxMTI2MDcwOTU0WhcNMzUxMTI0MDcwOTU0WjBCMQsw
+CQYDVQQGEwJVUzEXMBUGA1UECgwOVHJhbnNmb3JtIFRlc3QxGjAYBgNVBAMMEVRy
+YW5zZm9ybSBSb290IENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA
+8+de/n9QrCXYpuJLQ5A4NBcxu08d7N8uWfzDX3v4gsDG39EVknas4XI47fd2HN7+
+k7ZZjg5t0KfQqVFmve/NImypSrlpok58NeSS2xcd/dQMX+31kTOqkoZcIsB9zrC9
+0meZoJeKUdm1XTRXBb2j8KTDK6pP2PQySjf0MKEBNzw0vWhxO+nOmmy+TooHm+b4
+qm5LsI27+uRx6u8iX26vwj4VoOcSMJvZM96RqImP0BfjHDT9lAqn4Flmg+TrR6Pk
+h+2YHZcfHPnSAj+YAgxtFObsi0XpQZQapRiAmBQ7wovac4Yg/5Q1SSrRrUrvhR+F
+M8Ux5PUJG/vce6LBgtrXLQIDAQABoz8wPTAPBgNVHRMECDAGAQH/AgEBMAsGA1Ud
+DwQEAwIBhjAdBgNVHQ4EFgQUslwDjDgce30eSjyEQcJ5GaGmM4AwDQYJKoZIhvcN
+AQELBQADggEBAB7DNWMSBAqNUZng2ALnC762ldv9oVljcnZwtPQOwbsLbbo4bNVr
+Nyk1jOUY0PbIFtrMsbyCC4cOGBNYw1jHwKDTTyAMKEOaC/TjMMPz0kfZUTef79CD
+KDpRTfzl2hJ+mRFkvJWVE6c7aSL9KGwynucW3SH6jFoIBFOUN9dsXO/XD+SRrByz
+MWcQDTVseSO0jCgWsQwJSI/je4rJ9AZXmdw/wYq3yuklUAYGKkwNP8mpilYe5W5l
+pe5Q2Xh4BdECbU15Txl0bzQ5QcIghAEUnGrvaFwFu1vVmsJeuRxE3MdFLW3d4d/u
+F9EJGaYGzbulnbQjpZQQjsje552DD4+qsXI=
+-----END CERTIFICATE-----`;
+
+const supportedFormats = new Set(formats);
+
+const unitKeys = [
+    'bit',
+    'byte',
+    'kilobit',
+    'kilobyte',
+    'megabit',
+    'megabyte',
+    'gigabit',
+    'gigabyte',
+    'terabit',
+    'terabyte',
+];
+
+const timestampFields = [
+    { key: 'iso8601', id: 'timestampIso' },
+    { key: 'rfc3339', id: 'timestampRfc3339' },
+    { key: 'rfc2822', id: 'timestampRfc' },
+    { key: 'iso9075', id: 'timestampIso9075' },
+    { key: 'rfc7231', id: 'timestampRfc7231' },
+    { key: 'sql_datetime', id: 'timestampSql' },
+    { key: 'sql_date', id: 'timestampSqlDate' },
+    { key: 'timestamp_seconds', id: 'timestampSeconds' },
+    { key: 'timestamp_milliseconds', id: 'timestampMillis' },
+    { key: 'timestamp_microseconds', id: 'timestampMicros' },
+    { key: 'timestamp_nanoseconds', id: 'timestampNanos' },
+    // Browser timezone fields (readonly)
+    { key: 'browser_iso8601', id: 'browserIso8601', readonly: true },
+    { key: 'browser_rfc3339', id: 'browserRfc3339', readonly: true },
+    { key: 'browser_rfc2822', id: 'browserRfc2822', readonly: true },
+    { key: 'browser_iso9075', id: 'browserIso9075', readonly: true },
+    { key: 'browser_rfc7231', id: 'browserRfc7231', readonly: true },
+    { key: 'browser_sql_datetime', id: 'browserSqlDatetime', readonly: true },
+    { key: 'browser_sql_date', id: 'browserSqlDate', readonly: true },
+];
+
+const digitCharacters = '0123456789';
+const specialCharacters = [
+    '!',
+    '@',
+    '#',
+    '$',
+    '%',
+    '^',
+    '&',
+    '*',
+    '-',
+    '_',
+    '+',
+    '=',
+    '~',
+    '?',
+    '/',
+    '\\',
+    '|',
+    '[',
+    ']',
+    '(',
+    ')',
+    '{',
+    '}',
+    "'",
+    '"',
+    '.',
+    ',',
+    ':',
+    ';',
+    '`',
+];
+
+const minCountConfig = {
+    digits: {
+        stateKey: 'randomMinDigits',
+        elementKey: 'randomMinDigits',
+        rowKey: 'randomMinDigitsRow',
+    },
+    lower: {
+        stateKey: 'randomMinLower',
+        elementKey: 'randomMinLower',
+        rowKey: 'randomMinLowerRow',
+    },
+    upper: {
+        stateKey: 'randomMinUpper',
+        elementKey: 'randomMinUpper',
+        rowKey: 'randomMinUpperRow',
+    },
+    symbols: {
+        stateKey: 'randomMinSymbols',
+        elementKey: 'randomMinSymbols',
+    },
+};
+
+const coderTools = [
+    {
+        id: 'coder-encode',
+        mode: 'encode',
+        label: 'Base Encoders',
+        description: 'Base32/64/85/91 encodings.',
+    },
+    {
+        id: 'coder-decode',
+        mode: 'decode',
+        label: 'Base Decoders',
+        description: 'Decode BaseX back to plain text.',
+    },
+    {
+        id: 'coder-hash',
+        mode: 'hash',
+        label: 'Hash',
+        description: 'Hashes from stdlib.',
+    },
+    {
+        id: 'coder-url',
+        pair: 'url',
+        label: 'URL Encode/Decode',
+        description: 'Bidirectional URL percent-encoding helper.',
+    },
+    {
+        id: 'coder-jwt',
+        pair: 'jwt',
+        label: 'JWT Encode/Decode',
+        description: 'Sign JSON payloads and inspect JWT tokens.',
+    },
+    {
+        id: 'coder-kdf',
+        mode: 'kdf',
+        label: 'Password Hashers',
+        description: 'Bcrypt / Argon2 generate and verify.',
+    },
+    {
+        id: 'security-crypto',
+        label: 'Encrypt / Decrypt',
+        description: 'AES-GCM + (X)ChaCha20 for text/files.',
+    },
+    {
+        id: 'security-ssl',
+        label: 'SSL Inspector',
+        description: 'Parse PEM certificates or full chains.',
+    },
+];
+
+const coderToolModes = {
+    'coder-encode': 'encode',
+    'coder-decode': 'decode',
+    'coder-hash': 'hash',
+};
+
+const encodingGroups = [
+    {
+        id: 'base16',
+        label: 'Base16',
+        variants: [{ key: 'hex_upper', label: 'Hex' }],
+    },
+    {
+        id: 'base32',
+        label: 'Base32',
+        variants: [
+            { key: 'base32_standard', label: 'Standard' },
+            { key: 'base32_standard_no_padding', label: 'Standard(no padding)' },
+            { key: 'base32_hex', label: 'Hex' },
+            { key: 'base32_hex_no_padding', label: 'Hex(no padding)' },
+        ],
+    },
+    {
+        id: 'base64',
+        label: 'Base64',
+        variants: [
+            { key: 'base64_standard', label: 'Standard' },
+            { key: 'base64_raw_standard', label: 'Standard(no padding)' },
+            { key: 'base64_url', label: 'URL-safe' },
+            { key: 'base64_raw_url', label: 'URL-safe(no padding)' },
+        ],
+    },
+    {
+        id: 'base85',
+        label: 'Base85',
+        variants: [{ key: 'base85_ascii85', label: 'ASCII85' }],
+    },
+    {
+        id: 'base91',
+        label: 'Base91',
+        variants: [{ key: 'base91', label: 'Standard' }],
+    },
+];
+
+const encodingVariantMap = new Map();
+const allEncodingVariants = [];
+encodingGroups.forEach((group) => {
+    group.variants.forEach((variant) => {
+        encodingVariantMap.set(variant.key, {
+            group: group.label,
+            label: variant.label,
+        });
+        allEncodingVariants.push({ ...variant, group: group.label });
+    });
+});
+
+const hashGroups = [
+    { label: 'Message Digest', keys: ['md5', 'sha1'] },
+    {
+        label: 'SHA-2',
+        keys: ['sha224', 'sha256', 'sha384', 'sha512', 'sha512_224', 'sha512_256'],
+    },
+    {
+        label: 'SHA-3',
+        keys: ['sha3_224', 'sha3_256', 'sha3_384', 'sha3_512'],
+    },
+    {
+        label: 'Checksums',
+        keys: ['crc32_ieee', 'crc32_castagnoli', 'crc64_iso', 'crc64_ecma', 'adler32'],
+    },
+    {
+        label: 'FNV',
+        keys: ['fnv32', 'fnv32a', 'fnv64', 'fnv64a', 'fnv128', 'fnv128a'],
+    },
+];
+
+const hashLabels = {
+    md5: 'MD5',
+    sha1: 'SHA-1',
+    sha224: 'SHA-224',
+    sha256: 'SHA-256',
+    sha384: 'SHA-384',
+    sha512: 'SHA-512',
+    sha512_224: 'SHA-512/224',
+    sha512_256: 'SHA-512/256',
+    crc32_ieee: 'CRC32 (IEEE)',
+    crc32_castagnoli: 'CRC32 (Castagnoli)',
+    crc64_iso: 'CRC64 (ISO)',
+    crc64_ecma: 'CRC64 (ECMA)',
+    adler32: 'Adler32',
+    fnv32: 'FNV-1 32',
+    fnv32a: 'FNV-1a 32',
+    fnv64: 'FNV-1 64',
+    fnv64a: 'FNV-1a 64',
+    fnv128: 'FNV-1 128',
+    fnv128a: 'FNV-1a 128',
+    sha3_224: 'SHA3-224',
+    sha3_256: 'SHA3-256',
+    sha3_384: 'SHA3-384',
+    sha3_512: 'SHA3-512',
+};
+
+// Map of supported symmetric ciphers so key/nonce helpers can stay in sync with wasm expectations.
+const cryptoSuites = {
+    'aes-256-gcm': { keyLen: 32, nonceLen: 12, label: 'AES-256-GCM' },
+    'chacha20-poly1305': { keyLen: 32, nonceLen: 12, label: 'ChaCha20-Poly1305' },
+    'xchacha20-poly1305': {
+        keyLen: 32,
+        nonceLen: 24,
+        label: 'XChaCha20-Poly1305',
+    },
+};
+
+const coderModeDescriptions = {
+    encode: 'Encode text or files into multiple bases.',
+    decode: 'Decode text and recover raw bytes.',
+    hash: 'Generate hashes for text or files.',
+};
+
+const coderModeTitles = {
+    encode: 'Encode',
+    decode: 'Decode',
+    hash: 'Hash',
+};
+
+const coderResultHints = {
+    encode: 'Base32 / Base64 / Base85 / Base91 / Hex',
+    decode: 'Decoded output',
+    hash: 'MD5 / SHA / CRC / FNV',
+};
+
+const coderPlaceholders = {
+    encode: 'Type or paste text (or pick a file below)...',
+    decode: 'Paste Base32/64/85/91 text to decode...',
+    hash: 'Enter text or pick a file to compute hashes',
+};
+
+const pairToolConfigs = {
+    'coder-url': {
+        type: 'url',
+        inputLabel: 'URL Encode',
+        inputHint: 'Enter original text to URL-encode.',
+        inputPlaceholder: 'https://example.com/search?q=Taipei 101',
+        outputLabel: 'URL Decode',
+        outputHint: 'Paste encoded text to decode automatically.',
+        outputPlaceholder: 'https%3A%2F%2Fexample.com%2Fsearch%3Fq%3DTaipei101',
+    },
+    'coder-jwt': {
+        type: 'jwt',
+        inputLabel: 'JWT Payload (JSON)',
+        inputHint: 'Enter payload JSON; token is generated using the selected algorithm.',
+        inputPlaceholder: '{\n  "sub": "1234567890",\n  "name": "John Doe"\n}',
+        outputLabel: 'JWT Token',
+        outputHint: 'Paste a JWT token to decode.',
+        outputPlaceholder: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....',
+    },
+    'converter-html-md': {
+        type: 'markdown',
+        inputLabel: 'Markdown → HTML',
+        inputHint: 'Enter Markdown to render HTML on the right.',
+        inputPlaceholder: '# Title\n\n- item 1\n- item 2',
+        outputLabel: 'HTML → Markdown',
+        outputHint: 'Paste HTML to convert back to Markdown.',
+        outputPlaceholder: '<h1>Title</h1>',
+    },
+};
+
+const toolGroups = [
+    {
+        name: 'Converter',
+        icon: '🔄',
+        tools: [
+            {
+                id: 'format',
+                label: 'Format Converter',
+                description: 'Convert between structured data formats.',
+            },
+            {
+                id: 'converter-image',
+                label: 'Image Converter',
+                description: 'JPG/PNG/WebP/AVIF with alpha preservation.',
+            },
+            {
+                id: 'converter-html-md',
+                label: 'HTML ↔ Markdown',
+                description: 'Convert between Markdown and HTML.',
+            },
+            {
+                id: 'converter-number-bases',
+                label: 'Number Bases',
+                description: 'Binary / Octal / Decimal / Hex conversions.',
+            },
+            {
+                id: 'converter-units',
+                label: 'Unit Converter',
+                description: 'Bits, Bytes, and binary multiples.',
+            },
+            {
+                id: 'converter-timestamp',
+                label: 'Timestamp Converter',
+                description: 'Convert Unix timestamps and date formats.',
+            },
+            {
+                id: 'converter-ipv4',
+                label: 'IP Tools',
+                description: 'IPv4/IPv6 helpers for CIDR, ranges, and formats.',
+            },
+            {
+                id: 'converter-diff',
+                label: 'Text Diff',
+                description: 'Compare texts using patience diff algorithm.',
+            },
+        ],
+    },
+    {
+        name: 'Coder',
+        icon: '🔐',
+        tools: coderTools.map((tool) => ({
+            id: tool.id,
+            label: tool.label,
+            description: tool.description,
+        })),
+    },
+    {
+        name: 'Generator',
+        icon: '🎲',
+        tools: [
+            {
+                id: 'generator-uuid',
+                label: 'UUID',
+                description: 'Generate UUID v1-v8, GUID, and ULID.',
+            },
+            {
+                id: 'generator-useragent',
+                label: 'User-Agent',
+                description: 'Generate realistic browser user agents.',
+            },
+            {
+                id: 'generator-random',
+                label: 'Random',
+                description: 'Random strings with customizable charset.',
+            },
+            {
+                id: 'generator-ascii',
+                label: 'ASCII Art',
+                description: 'Render text into ASCII art.',
+            },
+            // QR generator covers OTP/WiFi/custom text flows.
+            {
+                id: 'generator-qr',
+                label: 'QR Code',
+                description: 'Generate QR codes for OTP, WiFi, or custom text.',
+            },
+            {
+                id: 'generator-qr-parse',
+                label: 'QR Parse',
+                description: 'Upload an image to decode embedded QR codes.',
+            },
+            {
+                id: 'generator-totp',
+                label: 'TOTP',
+                description: 'Time-based one-time passwords.',
+            },
+            {
+                id: 'generator-sql',
+                label: 'SQL Inserts',
+                description: 'Generate INSERT statements from MySQL schema.',
+            },
+            {
+                id: 'generator-ssh',
+                label: 'SSH Key',
+                description: 'Generate SSH public/private key pairs.',
+            },
+        ],
+    },
+    {
+        name: 'Fingerprint',
+        icon: '👆',
+        tools: [
+            {
+                id: 'fingerprint-browser',
+                label: 'Browser Fingerprint',
+                description: 'Show readable browser/device hints.',
+            },
+        ],
+    },
+];
+
+const workspaceByTool = {
+    format: 'converterWorkspace',
+    'converter-image': 'imageWorkspace',
+    'converter-html-md': 'pairWorkspace',
+    'converter-number-bases': 'numberWorkspace',
+    'converter-units': 'unitWorkspace',
+    'converter-timestamp': 'timestampWorkspace',
+    'converter-ipv4': 'ipv4Workspace',
+    'converter-diff': 'diffWorkspace',
+    'coder-encode': 'coderWorkspace',
+    'coder-decode': 'coderWorkspace',
+    'coder-hash': 'coderWorkspace',
+    'coder-url': 'pairWorkspace',
+    'coder-jwt': 'pairWorkspace',
+    'coder-kdf': 'kdfWorkspace',
+    'security-crypto': 'cryptoWorkspace',
+    'generator-uuid': 'uuidWorkspace',
+    'generator-useragent': 'userAgentWorkspace',
+    'generator-random': 'randomWorkspace',
+    'generator-ascii': 'asciiWorkspace',
+    'generator-qr': 'qrWorkspace',
+    'generator-qr-parse': 'qrParseWorkspace',
+    'generator-totp': 'totpWorkspace',
+    'generator-sql': 'dataWorkspace',
+    'generator-ssh': 'sshWorkspace',
+    'fingerprint-browser': 'fingerprintWorkspace',
+    'security-ssl': 'certWorkspace',
+};
+
+const imageTools = new Set(['converter-image']);
+const coderMainTools = new Set(['coder-encode', 'coder-decode', 'coder-hash']);
+const pairTools = new Set(['converter-html-md', 'coder-url', 'coder-jwt']);
+const kdfTools = new Set(['coder-kdf']);
+const numberTools = new Set(['converter-number-bases']);
+const unitTools = new Set(['converter-units']);
+const timestampTools = new Set(['converter-timestamp']);
+const ipv4Tools = new Set(['converter-ipv4']);
+const generatorTools = new Set([
+    'generator-uuid',
+    'generator-useragent',
+    'generator-random',
+    'generator-ascii',
+    'generator-qr',
+    'generator-qr-parse',
+    'generator-totp',
+    'generator-sql',
+    'generator-ssh',
+]);
+const fingerprintTools = new Set(['fingerprint-browser']);
+const certTools = new Set(['security-ssl']);
+const cryptoToolSet = new Set(['security-crypto']);
+const uuidToolSet = new Set(['generator-uuid']);
+const userAgentToolSet = new Set(['generator-useragent']);
+const randomToolSet = new Set(['generator-random']);
+const asciiToolSet = new Set(['generator-ascii']);
+const totpToolSet = new Set(['generator-totp']);
+const qrToolSet = new Set(['generator-qr', 'generator-qr-parse']);
+const dataToolSet = new Set(['generator-sql']);
+const sshToolSet = new Set(['generator-ssh']);
+const implementedTools = new Set([
+    'format',
+    'converter-image',
+    'converter-html-md',
+    'generator-uuid',
+    'generator-useragent',
+    'converter-number-bases',
+    'converter-units',
+    'converter-timestamp',
+    'converter-ipv4',
+    'converter-diff',
+    'coder-encode',
+    'coder-decode',
+    'coder-hash',
+    'coder-url',
+    'coder-jwt',
+    'coder-kdf',
+    'security-crypto',
+    'generator-ascii',
+    'generator-random',
+    'generator-qr',
+    'generator-qr-parse',
+    'generator-totp',
+    'generator-sql',
+    'fingerprint-browser',
+    'security-ssl',
+]);
+
+const toolInfo = {};
+toolGroups.forEach((group) => {
+    group.tools.forEach((tool) => {
+        toolInfo[tool.id] = {
+            ...tool,
+            workspace: workspaceByTool[tool.id] || 'converterWorkspace',
+        };
+    });
+});
+
+const elements = {};
+const workspaceIds = [
+    'converterWorkspace',
+    'imageWorkspace',
+    'coderWorkspace',
+    'pairWorkspace',
+    'numberWorkspace',
+    'unitWorkspace',
+    'timestampWorkspace',
+    'ipv4Workspace',
+    'diffWorkspace',
+    'kdfWorkspace',
+    'cryptoWorkspace',
+    'uuidWorkspace',
+    'userAgentWorkspace',
+    'randomWorkspace',
+    'asciiWorkspace',
+    'qrWorkspace',
+    'qrParseWorkspace',
+    'totpWorkspace',
+    'dataWorkspace',
+    'sshWorkspace',
+    'fingerprintWorkspace',
+    'certWorkspace',
+];
+
+const defaultDecoder = allEncodingVariants[0]?.key || '';
+const hashPrefix = '#/';
+let suppressHashUpdate = false;
+
+// Single source of truth for UI state/timers. Most handlers only mutate this
+// object, then re-render the relevant panel.
+const state = {
+    currentTool: 'format',
+    wasmReady: false,
+    uuidUppercase: false,
+    currentUUIDs: {},
+    currentBrowserFilter: '',
+    currentOSFilter: '',
+    currentUserAgents: [],
+    coderMode: 'encode',
+    selectedDecoder: defaultDecoder,
+    hashUppercase: false,
+    hashEncoding: 'base16',
+    hashUseHmac: false,
+    hashHmacSecret: '',
+    lastEncodeResults: null,
+    lastHashResults: null,
+    encodeCaseMap: { base16: true, base32: true },
+    coder: {
+        inputMode: 'text',
+        fileBytes: null,
+        fileName: '',
+        fileSize: 0,
+        decodedBytes: null,
+        decodedFileName: '',
+    },
+    currentPairTool: null,
+    pairSyncing: false,
+    pairLastSource: 'input',
+    urlQueryParams: [],
+    urlBase: '',
+    urlHash: '',
+    urlHadQuestionMark: false,
+    // Image converter keeps the selected file and last conversion handy for downloads.
+    image: {
+        files: [],
+        fileBytes: null,
+        fileName: '',
+        fileSize: 0,
+        detectedFormat: '',
+        targetFormat: 'webp',
+        previewUrl: '',
+        result: null,
+        batchResults: [],
+        progress: { completed: 0, total: 0 },
+        optionsByFormat: {
+            jpg: { quality: 85 },
+            png: { compression: 6 },
+            // Default WebP quality stays lossless unless the slider is moved.
+            webp: { quality: 100 },
+            avif: { quality: 80, speed: 4, lossless: false },
+        },
+        watermark: {
+            enabled: false,
+            text: 'Transform',
+            opacity: 35,
+            rotation: 30,
+            spacing: 32,
+            fontSize: 32,
+            color: '#ffffff',
+            direction: 'both',
+        },
+    },
+    numberSyncing: false,
+    unitSyncing: false,
+    randomIncludeDigits: true,
+    randomAllowLeadingZero: true,
+    randomLength: 24,
+    randomCount: 5,
+    randomIncludeLower: false,
+    randomIncludeUpper: false,
+    randomExclude: '',
+    randomDigitMin: '',
+    randomDigitMax: '',
+    randomMinDigits: 0,
+    randomMinLower: 0,
+    randomMinUpper: 0,
+    randomMinSymbols: 0,
+    randomSymbols: new Set(),
+    randomResults: [],
+    ascii: {
+        font: 'standard',
+        width: 80,
+        align: 'left',
+        fonts: [],
+        output: '',
+    },
+    // QR generator caches the last preview so downloads work when returning to the tab.
+    qr: {
+        mode: 'otp',
+        format: 'png',
+        ecc: 'Q',
+        otpAccount: '',
+        otpSecret: '',
+        otpIssuer: '',
+        otpAlgorithm: 'SHA1',
+        otpPeriod: 30,
+        otpDigits: 6,
+        wifiType: 'WPA',
+        wifiPass: '',
+        wifiSsid: '',
+        customString: '',
+        lastResult: null,
+    },
+    sshType: 'ed25519',
+    sshBits: 4096,
+    sshComment: '',
+    sshFormat: 'openssh',
+    sshKdf: 16,
+    sshResident: false,
+    sshVerify: false,
+    sshLastKey: null,
+    timestampUpdating: false,
+    timestampActiveField: null,
+    totpSecret: '',
+    totpAlgorithm: 'SHA256',
+    totpPeriod: 30,
+    totpDigits: 6,
+    totpTimer: null,
+    dataRows: 5,
+    diffTimer: null,
+    dataOverrides: {},
+    dataTables: [],
+    dataSchemaTimer: null,
+    dataDirty: false,
+    dataKind: 'sql',
+    formatKey: null,
+    tabular: {
+        files: [],
+        from: 'JSON',
+        to: 'Parquet',
+        results: [],
+        totalRows: 0,
+    },
+    qrParse: {
+        files: [],
+        results: [],
+    },
+    fingerprintFacts: [],
+    kdf: {
+        active: 'bcrypt',
+        bcryptCost: 10,
+        argonTime: 3,
+        argonMem: 65536,
+        argonParallelism: 1,
+        argonType: 'argon2id',
+        argonHashLen: 32,
+        salts: {},
+    },
+    certTimer: null,
+    certResults: [],
+    crypto: {
+        algorithm: 'aes-256-gcm',
+        inputMode: 'text',
+        fileBytes: null,
+        fileName: '',
+        fileSize: 0,
+        files: [],
+        results: [],
+    },
+};
+
+let coderTimer = null;
+let convertTimer = null;
+
+const uuidDisplayOrder = ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'guid', 'ulid'];
+const uuidDisplayLabels = {
+    guid: 'GUID',
+    ulid: 'ULID',
+};
+
+function toolIdFromHash(rawHash) {
+    const normalized = (rawHash || '').trim();
+    if (!normalized || normalized === '#') return null;
+    const withoutHash = normalized.startsWith(hashPrefix)
+        ? normalized.slice(hashPrefix.length)
+        : normalized.replace(/^#/, '');
+    return implementedTools.has(withoutHash) ? withoutHash : null;
+}
+
+function hashForTool(toolId) {
+    return `${hashPrefix}${toolId}`;
+}
+
+function updateHashForTool(toolId) {
+    if (suppressHashUpdate) return;
+    const next = hashForTool(toolId);
+    if (window.location.hash !== next) {
+        // Keep history tidy while reflecting the active tool in the URL.
+        history.replaceState(null, '', next);
+    }
+}
+
+function syncToolFromHash(initial = false) {
+    const toolId = toolIdFromHash(window.location.hash);
+    if (toolId && toolId !== state.currentTool) {
+        suppressHashUpdate = true;
+        selectTool(toolId);
+        suppressHashUpdate = false;
+    } else if (initial && !toolId) {
+        updateHashForTool(state.currentTool);
+    }
+}
+
+boot();
+
+async function boot() {
+    // Initialize modular components
+    initConverters();
+    initGenerators();
+    initCoders();
+
+    cacheElements();
+    initTabularControls();
+    renderSymbolButtons();
+    initCoderControls();
+    renderSidebar();
+    bindUI();
+    syncToolFromHash(true);
+    renderCoderEmpty();
+    updateCoderTexts();
+    selectTool(state.currentTool);
+    setStatus('Loading WebAssembly...', false);
+    try {
+        await initWasm();
+        state.wasmReady = true;
+        setStatus('Ready', false);
+        if (isUUIDTool(state.currentTool)) {
+            refreshUUIDs(true);
+        }
+        if (isUserAgentTool(state.currentTool)) {
+            refreshUserAgents(true);
+        }
+        if (
+            isPairTool(state.currentTool) &&
+            ((elements.pairInput && elements.pairInput.value.trim()) ||
+                (elements.pairOutput && elements.pairOutput.value.trim()))
+        ) {
+            runPairConversion(state.pairLastSource);
+        }
+        if (isNumberTool(state.currentTool)) {
+            const hasNumberValue = [
+                elements.numberBinary,
+                elements.numberOctal,
+                elements.numberDecimal,
+                elements.numberHex,
+            ].some((input) => input && input.value.trim());
+            if (hasNumberValue) {
+                runNumberConversion('decimal');
+            }
+        }
+        if (isIPv4Tool(state.currentTool) && elements.ipv4Input?.value.trim()) {
+            runIPv4Conversion();
+        }
+        if (isTimestampTool(state.currentTool) && elements.timestampInputs?.length) {
+            const filled = Array.from(elements.timestampInputs).find((input) =>
+                input?.value?.trim()
+            );
+            if (filled && filled.dataset.field) {
+                runTimestampConversion(filled.dataset.field, filled.value, true);
+            }
+        }
+        if (isQrTool(state.currentTool)) {
+            activateQrTool();
+        }
+        if (isTotpTool(state.currentTool)) {
+            activateTotpTool();
+        }
+        if (isDataTool(state.currentTool)) {
+            activateDataTool();
+        }
+    } catch (err) {
+        console.error(err);
+        setStatus(`Failed to load WebAssembly: ${err.message}`, true);
+    }
+}
+
+function cacheElements() {
+    elements.sidebar = document.getElementById('sidebar');
+    elements.sidebarToggle = document.getElementById('sidebarToggle');
+    elements.sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
+    elements.sidebarBackdrop = document.getElementById('sidebarBackdrop');
+    elements.toolGroups = document.getElementById('toolGroups');
+    elements.toolName = document.getElementById('toolName');
+    elements.toolDesc = document.getElementById('toolDesc');
+    elements.converterControls = document.getElementById('converterControls');
+    elements.from = document.getElementById('fromSelect');
+    elements.to = document.getElementById('toSelect');
+    elements.swap = document.getElementById('swap');
+    elements.input = document.getElementById('input');
+    elements.output = document.getElementById('output');
+    elements.copy = document.getElementById('copy');
+    elements.clear = document.getElementById('clear');
+    elements.formatInput = document.getElementById('formatInput');
+    elements.minifyInput = document.getElementById('minifyInput');
+    elements.formatOutput = document.getElementById('formatOutput');
+    elements.minifyOutput = document.getElementById('minifyOutput');
+    elements.status = document.getElementById('status');
+    elements.tabularSection = document.getElementById('tabularSection');
+    elements.tabularFile = document.getElementById('tabularFile');
+    elements.tabularFrom = document.getElementById('tabularFrom');
+    elements.tabularTo = document.getElementById('tabularTo');
+    elements.tabularConvert = document.getElementById('tabularConvert');
+    elements.tabularDownload = document.getElementById('tabularDownload');
+    elements.tabularProgress = document.getElementById('tabularProgress');
+    elements.tabularStatus = document.getElementById('tabularStatus');
+    elements.tabularFileName = document.getElementById('tabularFileName');
+    elements.tabularRowCount = document.getElementById('tabularRowCount');
+    elements.tabularOutputName = document.getElementById('tabularOutputName');
+
+    // Defensive fix for Cursor IDE extension compatibility
+    // Ensure form elements have expected properties to prevent extension errors
+    setTimeout(() => {
+        const formElements = document.querySelectorAll('input, select, textarea');
+        formElements.forEach((element) => {
+            if (!element.control) {
+                element.control = element; // Self-reference for compatibility
+            }
+            // Ensure proper form association
+            if (!element.form && element.closest('form')) {
+                element.form = element.closest('form');
+            }
+        });
+    }, 100);
+    elements.imageWorkspace = document.getElementById('imageWorkspace');
+    elements.imageFile = document.getElementById('imageFile');
+    elements.imageTargetFormat = document.getElementById('imageTargetFormat');
+    elements.imageConvert = document.getElementById('imageConvert');
+    elements.imageDownload = document.getElementById('imageDownload');
+    elements.imageInputMeta = document.getElementById('imageInputMeta');
+    elements.imageOriginalPreview = document.getElementById('imageOriginalPreview');
+    elements.imageOutputPreview = document.getElementById('imageOutputPreview');
+    elements.imageOutputMeta = document.getElementById('imageOutputMeta');
+    elements.imageError = document.getElementById('imageError');
+    elements.imageOptions = document.getElementById('imageOptions');
+    elements.imageBatchList = document.getElementById('imageBatchList');
+    elements.imageProgress = document.getElementById('imageProgress');
+    elements.imageProgressFill = document.getElementById('imageProgressFill');
+    elements.imageProgressLabel = document.getElementById('imageProgressLabel');
+    elements.watermarkText = document.getElementById('watermarkText');
+    elements.watermarkOpacity = document.getElementById('watermarkOpacity');
+    elements.watermarkRotation = document.getElementById('watermarkRotation');
+    elements.watermarkSpacing = document.getElementById('watermarkSpacing');
+    elements.watermarkFontSize = document.getElementById('watermarkFontSize');
+    elements.watermarkColor = document.getElementById('watermarkColor');
+    elements.watermarkToggle = document.getElementById('watermarkToggle');
+    elements.watermarkDirection = document.getElementsByName('watermarkDirection');
+    elements.watermarkOpacityValue = document.getElementById('watermarkOpacityValue');
+    elements.watermarkRotationValue = document.getElementById('watermarkRotationValue');
+    elements.watermarkSpacingValue = document.getElementById('watermarkSpacingValue');
+    elements.watermarkFontSizeValue = document.getElementById('watermarkFontSizeValue');
+    elements.qrParseWorkspace = document.getElementById('qrParseWorkspace');
+    elements.qrParseFile = document.getElementById('qrParseFile');
+    elements.qrParseDrop = document.getElementById('qrParseDrop');
+    elements.qrParseResults = document.getElementById('qrParseResults');
+    elements.qrEccLevel = document.getElementById('qrEccLevel');
+    elements.coderWorkspace = document.getElementById('coderWorkspace');
+    elements.coderInput = document.getElementById('coderInput');
+    elements.coderResults = document.getElementById('coderResults');
+    elements.coderWorkspaceTitle = document.getElementById('coderWorkspaceTitle');
+    elements.coderModeHint = document.getElementById('coderModeHint');
+    elements.coderInputControls = document.getElementById('coderInputControls');
+    elements.coderModeText = document.getElementById('coderModeText');
+    elements.coderModeFile = document.getElementById('coderModeFile');
+    elements.coderFile = document.getElementById('coderFile');
+    elements.coderFileMeta = document.getElementById('coderFileMeta');
+    elements.decodeVariantWrap = document.getElementById('decodeVariantWrap');
+    elements.decodeVariant = document.getElementById('decodeVariant');
+    elements.coderResultActions = document.getElementById('coderResultActions');
+    elements.coderDownloadDecoded = document.getElementById('coderDownloadDecoded');
+    elements.hashToggleCase = document.getElementById('hashToggleCase');
+    elements.hashEncoding = document.getElementById('hashEncoding');
+    elements.hashControls = document.getElementById('hashControls');
+    elements.hashUseHmac = document.getElementById('hashUseHmac');
+    elements.hashHmacSecret = document.getElementById('hashHmacSecret');
+    elements.coderResultHeading = document.getElementById('coderResultHeading');
+    elements.coderResultHint = document.getElementById('coderResultHint');
+    elements.coderDecodeMeta = document.getElementById('coderDecodeMeta');
+    elements.pairWorkspace = document.getElementById('pairWorkspace');
+    elements.pairInput = document.getElementById('pairInput');
+    elements.pairOutput = document.getElementById('pairOutput');
+    elements.pairInputLabel = document.getElementById('pairInputLabel');
+    elements.pairOutputLabel = document.getElementById('pairOutputLabel');
+    elements.pairInputHint = document.getElementById('pairInputHint');
+    elements.pairOutputHint = document.getElementById('pairOutputHint');
+    elements.jwtControls = document.getElementById('jwtControls');
+    elements.jwtAlgorithm = document.getElementById('jwtAlgorithm');
+    elements.jwtSecret = document.getElementById('jwtSecret');
+    elements.pairOutputMeta = document.getElementById('pairOutputMeta');
+    elements.urlQuerySection = document.getElementById('urlQuerySection');
+    elements.urlQueryTable = document.getElementById('urlQueryTable');
+    elements.urlQueryAdd = document.getElementById('urlQueryAdd');
+    elements.urlQueryEmpty = document.getElementById('urlQueryEmpty');
+    elements.kdfWorkspace = document.getElementById('kdfWorkspace');
+    elements.kdfAlgoSelect = document.getElementById('kdfAlgoSelect');
+    elements.kdfCards = document.querySelectorAll('.kdf-card');
+    elements.kdfRefreshSalts = document.getElementById('kdfRefreshSalts');
+    elements.bcryptPassword = document.getElementById('bcryptPassword');
+    elements.bcryptCost = document.getElementById('bcryptCost');
+    elements.bcryptSalt = document.getElementById('bcryptSalt');
+    elements.bcryptOutput = document.getElementById('bcryptOutput');
+    elements.bcryptVerifyHash = document.getElementById('bcryptVerifyHash');
+    elements.bcryptHashBtn = document.getElementById('bcryptHashBtn');
+    elements.bcryptVerifyBtn = document.getElementById('bcryptVerifyBtn');
+    elements.bcryptStatus = document.getElementById('bcryptStatus');
+    elements.argonPassword = document.getElementById('argonPassword');
+    elements.argonSalt = document.getElementById('argonSalt');
+    elements.argonTime = document.getElementById('argonTime');
+    elements.argonMem = document.getElementById('argonMem');
+    elements.argonParallelism = document.getElementById('argonParallelism');
+    elements.argonType = document.getElementById('argonType');
+    elements.argonHashLen = document.getElementById('argonHashLen');
+    elements.argonOutput = document.getElementById('argonOutput');
+    elements.argonVerifyHash = document.getElementById('argonVerifyHash');
+    elements.argonHashBtn = document.getElementById('argonHashBtn');
+    elements.argonVerifyBtn = document.getElementById('argonVerifyBtn');
+    elements.argonStatus = document.getElementById('argonStatus');
+    elements.numberWorkspace = document.getElementById('numberWorkspace');
+    elements.numberBinary = document.getElementById('numberBinary');
+    elements.numberOctal = document.getElementById('numberOctal');
+    elements.numberDecimal = document.getElementById('numberDecimal');
+    elements.numberHex = document.getElementById('numberHex');
+    elements.unitWorkspace = document.getElementById('unitWorkspace');
+    unitKeys.forEach((key) => {
+        const id = `unit${capitalize(key)}`;
+        elements[id] = document.getElementById(id);
+    });
+    elements.ipv4Workspace = document.getElementById('ipv4Workspace');
+    elements.ipv4Input = document.getElementById('ipv4Input');
+    elements.ipv4Results = document.getElementById('ipv4Results');
+    elements.uuidList = document.getElementById('uuidList');
+    elements.uuidToggleCase = document.getElementById('uuidToggleCase');
+    elements.uuidRegenerate = document.getElementById('uuidRegenerate');
+    elements.uaBrowser = document.getElementById('uaBrowser');
+    elements.uaOS = document.getElementById('uaOS');
+    elements.uaResults = document.getElementById('uaResults');
+    elements.uaCount = document.getElementById('uaCount');
+    elements.randomWorkspace = document.getElementById('randomWorkspace');
+    elements.randomIncludeDigits = document.getElementById('randomIncludeDigits');
+    elements.randomLength = document.getElementById('randomLength');
+    elements.randomCount = document.getElementById('randomCount');
+    elements.randomAllowZero = document.getElementById('randomAllowZero');
+    elements.randomAllowZeroRow = document.getElementById('randomAllowZeroRow');
+    elements.randomDigitRangeRow = document.getElementById('randomDigitRangeRow');
+    elements.randomDigitMin = document.getElementById('randomDigitMin');
+    elements.randomDigitMax = document.getElementById('randomDigitMax');
+    elements.randomIncludeLower = document.getElementById('randomIncludeLower');
+    elements.randomIncludeUpper = document.getElementById('randomIncludeUpper');
+    elements.randomExclude = document.getElementById('randomExclude');
+    elements.randomMinDigits = document.getElementById('randomMinDigits');
+    elements.randomMinLower = document.getElementById('randomMinLower');
+    elements.randomMinUpper = document.getElementById('randomMinUpper');
+    elements.randomMinDigitsRow = document.getElementById('randomMinDigitsRow');
+    elements.randomMinLowerRow = document.getElementById('randomMinLowerRow');
+    elements.randomMinUpperRow = document.getElementById('randomMinUpperRow');
+    elements.randomMinSymbols = document.getElementById('randomMinSymbols');
+    elements.randomSymbolToggles = document.getElementById('randomSymbolToggles');
+    elements.randomSymbolMinRow = document.getElementById('randomSymbolMinRow');
+    elements.randomGenerate = document.getElementById('randomGenerate');
+    elements.randomResults = document.getElementById('randomResults');
+    elements.randomCopyAll = document.getElementById('randomCopyAll');
+    elements.asciiWorkspace = document.getElementById('asciiWorkspace');
+    elements.asciiInput = document.getElementById('asciiInput');
+    elements.asciiFont = document.getElementById('asciiFont');
+    elements.asciiWidth = document.getElementById('asciiWidth');
+    elements.asciiAlignLeft = document.getElementById('asciiAlignLeft');
+    elements.asciiAlignCenter = document.getElementById('asciiAlignCenter');
+    elements.asciiAlignRight = document.getElementById('asciiAlignRight');
+    elements.asciiGenerate = document.getElementById('asciiGenerate');
+    elements.asciiOutput = document.getElementById('asciiOutput');
+    elements.asciiCopy = document.getElementById('asciiCopy');
+    elements.asciiDownload = document.getElementById('asciiDownload');
+    elements.asciiStatus = document.getElementById('asciiStatus');
+    // QR generator inputs are grouped by mode so we toggle rows on radio change.
+    elements.qrWorkspace = document.getElementById('qrWorkspace');
+    elements.qrModeOtp = document.getElementById('qrModeOtp');
+    elements.qrModeWifi = document.getElementById('qrModeWifi');
+    elements.qrModeCustom = document.getElementById('qrModeCustom');
+    elements.qrOtpAccount = document.getElementById('qrOtpAccount');
+    elements.qrOtpSecret = document.getElementById('qrOtpSecret');
+    elements.qrOtpIssuer = document.getElementById('qrOtpIssuer');
+    elements.qrOtpAlgorithm = document.getElementById('qrOtpAlgorithm');
+    elements.qrOtpPeriod = document.getElementById('qrOtpPeriod');
+    elements.qrOtpDigits = document.getElementById('qrOtpDigits');
+    elements.qrWifiType = document.getElementById('qrWifiType');
+    elements.qrWifiSsid = document.getElementById('qrWifiSsid');
+    elements.qrWifiPass = document.getElementById('qrWifiPass');
+    elements.qrCustomString = document.getElementById('qrCustomString');
+    elements.qrFormat = document.getElementById('qrFormat');
+    elements.qrGenerate = document.getElementById('qrGenerate');
+    elements.qrDownload = document.getElementById('qrDownload');
+    elements.qrPreview = document.getElementById('qrPreview');
+    elements.qrMeta = document.getElementById('qrMeta');
+    elements.qrError = document.getElementById('qrError');
+    elements.sshWorkspace = document.getElementById('sshWorkspace');
+    elements.sshType = document.getElementById('sshType');
+    elements.sshBits = document.getElementById('sshBits');
+    elements.sshBitsRow = document.querySelector('.ssh-bits-row');
+    elements.sshFormat = document.getElementById('sshFormat');
+    elements.sshKdf = document.getElementById('sshKdf');
+    elements.sshComment = document.getElementById('sshComment');
+    elements.sshGenerate = document.getElementById('sshGenerate');
+    elements.sshPublic = document.getElementById('sshPublic');
+    elements.sshPrivate = document.getElementById('sshPrivate');
+    elements.sshCopyPublic = document.getElementById('sshCopyPublic');
+    elements.sshCopyPrivate = document.getElementById('sshCopyPrivate');
+    elements.sshResident = document.getElementById('sshResident');
+    elements.sshVerify = document.getElementById('sshVerify');
+    elements.sshSkOptions = document.getElementById('sshSkOptions');
+    elements.timestampInputs = document.querySelectorAll('#timestampWorkspace input[data-field]');
+    elements.hashEncoding = document.getElementById('hashEncoding');
+    elements.hashControls = document.getElementById('hashControls');
+    elements.hashUseHmac = document.getElementById('hashUseHmac');
+    elements.hashHmacSecret = document.getElementById('hashHmacSecret');
+    elements.timestampPresets = document.getElementById('timestampPresets');
+    elements.totpSecret = document.getElementById('totpSecret');
+    elements.totpAlgorithm = document.getElementById('totpAlgorithm');
+    elements.totpPeriod = document.getElementById('totpPeriod');
+    elements.totpDigits = document.getElementById('totpDigits');
+    elements.totpCode = document.getElementById('totpCode');
+    elements.totpPeriodLabel = document.getElementById('totpPeriodLabel');
+    elements.totpRemainingLabel = document.getElementById('totpRemainingLabel');
+    elements.totpError = document.getElementById('totpError');
+    elements.dataSchema = document.getElementById('dataSchema');
+    elements.dataRows = document.getElementById('dataRows');
+    elements.dataGenerate = document.getElementById('dataGenerate');
+    elements.dataOutput = document.getElementById('dataOutput');
+    elements.dataCopy = document.getElementById('dataCopy');
+    elements.dataColumnEditor = document.getElementById('dataColumnEditor');
+    elements.diffLeftInput = document.getElementById('diffLeftInput');
+    elements.diffRightInput = document.getElementById('diffRightInput');
+    elements.diffLeftLineNumbers = document.getElementById('diffLeftLineNumbers');
+    elements.diffRightLineNumbers = document.getElementById('diffRightLineNumbers');
+    elements.diffLeftLabel = document.getElementById('diffLeftLabel');
+    elements.diffRightLabel = document.getElementById('diffRightLabel');
+    elements.diffOutput = document.getElementById('diffOutput');
+    elements.diffSummary = document.getElementById('diffSummary');
+    elements.diffClear = document.getElementById('diffClear');
+    elements.diffSwap = document.getElementById('diffSwap');
+    elements.diffCopyOutput = document.getElementById('diffCopyOutput');
+    elements.diffCopyLeft = document.getElementById('diffCopyLeft');
+    elements.diffCopyRight = document.getElementById('diffCopyRight');
+    elements.cryptoAlgorithm = document.getElementById('cryptoAlgorithm');
+    elements.cryptoKey = document.getElementById('cryptoKey');
+    elements.cryptoNonce = document.getElementById('cryptoNonce');
+    elements.cryptoPlaintext = document.getElementById('cryptoPlaintext');
+    elements.cryptoCiphertext = document.getElementById('cryptoCiphertext');
+    elements.cryptoDecryptInput = document.getElementById('cryptoDecryptInput');
+    elements.cryptoDecryptOutput = document.getElementById('cryptoDecryptOutput');
+    elements.cryptoEncrypt = document.getElementById('cryptoEncrypt');
+    elements.cryptoDecrypt = document.getElementById('cryptoDecrypt');
+    elements.cryptoCopyCiphertext = document.getElementById('cryptoCopyCiphertext');
+    elements.cryptoGenerateKey = document.getElementById('cryptoGenerateKey');
+    elements.cryptoGenerateNonce = document.getElementById('cryptoGenerateNonce');
+    elements.cryptoModeText = document.getElementById('cryptoModeText');
+    elements.cryptoModeFile = document.getElementById('cryptoModeFile');
+    elements.cryptoFile = document.getElementById('cryptoFile');
+    elements.cryptoFileMeta = document.getElementById('cryptoFileMeta');
+    elements.cryptoDownload = document.getElementById('cryptoDownload');
+    elements.appShell = document.querySelector('.app-shell');
+    elements.fingerprintGrid = document.getElementById('fingerprintGrid');
+    elements.fingerprintSummary = document.getElementById('fingerprintSummary');
+    elements.fingerprintRefresh = document.getElementById('fingerprintRefresh');
+    elements.fingerprintCopyAll = document.getElementById('fingerprintCopyAll');
+    elements.fingerprintSearch = document.getElementById('fingerprintSearch');
+    elements.fingerprintCount = document.getElementById('fingerprintCount');
+    elements.certInput = document.getElementById('certInput');
+    elements.certResults = document.getElementById('certResults');
+    elements.certSummary = document.getElementById('certSummary');
+    elements.certParse = document.getElementById('certParse');
+    elements.certSample = document.getElementById('certSample');
+}
+
+function renderSidebar() {
+    if (!elements.toolGroups) return;
+    elements.toolGroups.innerHTML = '';
+    toolGroups.forEach((group) => {
+        const details = document.createElement('details');
+        details.open = true;
+        const summary = document.createElement('summary');
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'group-icon';
+        iconSpan.textContent = group.icon;
+        const textSpan = document.createElement('span');
+        textSpan.className = 'group-text';
+        textSpan.textContent = group.name;
+        summary.appendChild(iconSpan);
+        summary.appendChild(textSpan);
+        details.appendChild(summary);
+        const wrapper = document.createElement('div');
+        wrapper.className = 'tool-buttons';
+        group.tools.forEach((tool) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.dataset.toolId = tool.id;
+            btn.textContent = tool.label;
+            btn.addEventListener('click', () => {
+                selectTool(tool.id);
+                closeSidebar();
+            });
+            wrapper.appendChild(btn);
+        });
+        details.appendChild(wrapper);
+        elements.toolGroups.appendChild(details);
+    });
+    updateToolButtons();
+}
+
+function initCoderControls() {
+    if (!elements.decodeVariant) return;
+    const options = allEncodingVariants
+        .map(
+            (variant) =>
+                `<option value="${variant.key}">${variant.group} · ${variant.label}</option>`
+        )
+        .join('');
+    elements.decodeVariant.innerHTML = options;
+    if (!state.selectedDecoder && allEncodingVariants.length > 0) {
+        state.selectedDecoder = allEncodingVariants[0].key;
+    }
+    if (state.selectedDecoder) {
+        elements.decodeVariant.value = state.selectedDecoder;
+    }
+}
+
+function bindUI() {
+    elements.sidebarToggle?.addEventListener('click', toggleSidebar);
+    elements.sidebarCollapseBtn?.addEventListener('click', toggleSidebarCollapse);
+    elements.sidebarBackdrop?.addEventListener('click', closeSidebar);
+    elements.swap?.addEventListener('click', () => {
+        if (state.currentTool !== 'format') return;
+        const from = elements.from?.value || '';
+        const to = elements.to?.value || '';
+        if (elements.from) elements.from.value = to;
+        if (elements.to) elements.to.value = from;
+        if (elements.input && elements.output) {
+            const previous = elements.input.value;
+            elements.input.value = elements.output.value;
+            elements.output.value = previous;
+        }
+        ensureConverterMode();
+        scheduleConvert(true);
+    });
+    elements.copy?.addEventListener('click', () => {
+        const value = elements.output?.value?.trim();
+        if (!value) {
+            setStatus('No output to copy', true);
+            return;
+        }
+        copyText(value, 'output');
+    });
+    elements.clear?.addEventListener('click', () => {
+        if (elements.input) elements.input.value = '';
+        if (elements.output) elements.output.value = '';
+        setStatus('Cleared input/output', false);
+    });
+    elements.from?.addEventListener('change', () => {
+        updateConverterLabels(elements.from?.value || '', elements.to?.value || '');
+        ensureConverterMode();
+        scheduleConvert(true);
+    });
+    elements.to?.addEventListener('change', () => {
+        updateConverterLabels(elements.from?.value || '', elements.to?.value || '');
+        ensureConverterMode();
+        scheduleConvert(true);
+    });
+    elements.input?.addEventListener('input', () => scheduleConvert());
+    elements.formatInput?.addEventListener('click', () =>
+        handleFormatField(elements.input, elements.from?.value, false)
+    );
+    elements.minifyInput?.addEventListener('click', () =>
+        handleFormatField(elements.input, elements.from?.value, true)
+    );
+    elements.formatOutput?.addEventListener('click', () =>
+        handleFormatField(elements.output, elements.to?.value, false)
+    );
+    elements.minifyOutput?.addEventListener('click', () =>
+        handleFormatField(elements.output, elements.to?.value, true)
+    );
+    elements.tabularFile?.addEventListener('change', handleTabularFileChange);
+    elements.tabularFrom?.addEventListener('change', (event) => {
+        state.tabular.from = event.target.value;
+    });
+    elements.tabularTo?.addEventListener('change', (event) => {
+        state.tabular.to = event.target.value;
+        if (state.tabular.files && state.tabular.files.length) {
+            setTabularOutputPreview(state.tabular.files, state.tabular.to);
+        }
+    });
+    elements.tabularConvert?.addEventListener('click', handleTabularConvert);
+    elements.tabularDownload?.addEventListener('click', handleTabularDownload);
+    elements.imageFile?.addEventListener('change', handleImageFileChange);
+    elements.imageTargetFormat?.addEventListener('change', (event) => {
+        state.image.targetFormat = (event.target.value || 'webp').trim().toLowerCase();
+        renderImageOptions(state.image.targetFormat);
+        renderWatermarkControls();
+    });
+    elements.imageConvert?.addEventListener('click', handleImageConvert);
+    elements.imageDownload?.addEventListener('click', handleImageDownload);
+    elements.imageBatchList?.addEventListener('click', handleImageBatchListClick);
+    elements.watermarkToggle?.addEventListener('change', handleWatermarkToggle);
+    elements.watermarkText?.addEventListener('input', handleWatermarkChange);
+    elements.watermarkOpacity?.addEventListener('input', handleWatermarkRangeChange);
+    elements.watermarkRotation?.addEventListener('input', handleWatermarkRangeChange);
+    elements.watermarkSpacing?.addEventListener('input', handleWatermarkRangeChange);
+    elements.watermarkFontSize?.addEventListener('input', handleWatermarkRangeChange);
+    elements.watermarkColor?.addEventListener('input', handleWatermarkChange);
+    elements.watermarkDirection?.forEach?.((input) =>
+        input.addEventListener('change', handleWatermarkChange)
+    );
+    elements.qrParseFile?.addEventListener('change', handleQrParseFileChange);
+    elements.qrParseDrop?.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        elements.qrParseDrop.classList.add('dragging');
+    });
+    elements.qrParseDrop?.addEventListener('dragleave', () => {
+        elements.qrParseDrop.classList.remove('dragging');
+    });
+    elements.qrParseDrop?.addEventListener('drop', (event) => {
+        event.preventDefault();
+        elements.qrParseDrop.classList.remove('dragging');
+        const files = Array.from(event.dataTransfer?.files || []);
+        if (files.length) {
+            handleQrParseSelectedFiles(files);
+        }
+    });
+    elements.qrParseDrop?.addEventListener('click', (event) => {
+        if (event.target?.id === 'qrParseFile') return;
+        elements.qrParseFile?.click();
+    });
+    elements.qrParseResults?.addEventListener('click', handleQrParseResultsClick);
+    elements.qrEccLevel?.addEventListener('change', handleQrFieldChange);
+    window.addEventListener('hashchange', () => syncToolFromHash(false));
+    elements.coderInput?.addEventListener('input', () => scheduleCoder());
+    elements.coderModeText?.addEventListener('change', () => setCoderInputMode('text'));
+    elements.coderModeFile?.addEventListener('change', () => setCoderInputMode('file'));
+    elements.coderFile?.addEventListener('change', handleCoderFileChange);
+    elements.decodeVariant?.addEventListener('change', (event) => {
+        state.selectedDecoder = event.target.value;
+        updateCoderTexts();
+        scheduleCoder(true);
+    });
+    elements.coderResults?.addEventListener('click', (event) => {
+        const toggle = event.target.closest('button[data-encode-group]');
+        if (toggle) {
+            const group = toggle.dataset.encodeGroup || '';
+            if (group) {
+                state.encodeCaseMap[group] = !state.encodeCaseMap[group];
+                if (state.lastEncodeResults) {
+                    renderEncodeResults(state.lastEncodeResults);
+                }
+            }
+            return;
+        }
+        const button = event.target.closest('button[data-value]');
+        if (button) {
+            const value = button.dataset.value || '';
+            if (value) {
+                copyText(value, button.dataset.label || 'Result');
+            }
+            return;
+        }
+        const entry = event.target.closest('.coder-entry[data-copy-value]');
+        if (entry) {
+            const value = entry.dataset.copyValue || '';
+            if (value) {
+                copyText(value, entry.dataset.copyLabel || 'Result');
+            }
+        }
+    });
+    elements.coderDownloadDecoded?.addEventListener('click', downloadDecodedFile);
+    elements.pairInput?.addEventListener('input', () => handlePairInput('input'));
+    elements.pairOutput?.addEventListener('input', () => handlePairInput('output'));
+    elements.urlQueryTable?.addEventListener('input', handleUrlQueryTableInput);
+    elements.urlQueryTable?.addEventListener('click', handleUrlQueryTableClick);
+    elements.urlQueryAdd?.addEventListener('click', () => addUrlQueryRow());
+    elements.hashToggleCase?.addEventListener('click', () => {
+        state.hashUppercase = !state.hashUppercase;
+        elements.hashToggleCase.dataset.upper = state.hashUppercase ? 'true' : 'false';
+        if (state.lastHashResults) {
+            renderHashResults(state.lastHashResults);
+        }
+    });
+    elements.hashEncoding?.addEventListener('change', handleHashEncodingChange);
+    elements.hashUseHmac?.addEventListener('change', handleHashModeToggle);
+    elements.hashHmacSecret?.addEventListener('input', handleHashSecretInput);
+    elements.jwtAlgorithm?.addEventListener('change', () => {
+        if (state.currentTool === 'coder-jwt') {
+            runPairConversion('input');
+        }
+    });
+    elements.jwtSecret?.addEventListener('input', () => {
+        if (
+            state.currentTool === 'coder-jwt' &&
+            state.pairLastSource === 'input' &&
+            elements.pairInput?.value.trim()
+        ) {
+            runPairConversion('input');
+        }
+    });
+    elements.numberBinary?.addEventListener('input', () => handleNumberInput('binary'));
+    elements.numberOctal?.addEventListener('input', () => handleNumberInput('octal'));
+    elements.numberDecimal?.addEventListener('input', () => handleNumberInput('decimal'));
+    elements.numberHex?.addEventListener('input', () => handleNumberInput('hex'));
+    unitKeys.forEach((key) => {
+        const id = `unit${capitalize(key)}`;
+        elements[id]?.addEventListener('input', () => handleUnitInput(key));
+    });
+    elements.ipv4Input?.addEventListener('input', () => runIPv4Conversion());
+    elements.ipv4Results?.addEventListener('click', (event) => {
+        const target = event.target.closest('[data-copy-value]');
+        if (target) {
+            const toCopy = target.dataset.copyValue || '';
+            if (toCopy) {
+                copyText(toCopy, 'IP value');
+                setStatus('Copied', false);
+            }
+        }
+    });
+    elements.uuidToggleCase?.addEventListener('click', () => {
+        state.uuidUppercase = !state.uuidUppercase;
+        if (elements.uuidToggleCase) {
+            elements.uuidToggleCase.dataset.upper = state.uuidUppercase ? 'true' : 'false';
+        }
+        renderUUIDs();
+    });
+    elements.uuidRegenerate?.addEventListener('click', () => refreshUUIDs(true));
+    elements.uaBrowser?.addEventListener('change', () => refreshUserAgents(true));
+    elements.uaOS?.addEventListener('change', () => refreshUserAgents(true));
+    elements.randomIncludeDigits?.addEventListener('change', handleRandomIncludeDigitsChange);
+    elements.randomLength?.addEventListener('input', handleRandomLengthChange);
+    elements.randomCount?.addEventListener('input', handleRandomCountChange);
+    elements.randomAllowZero?.addEventListener('change', handleRandomLeadingToggle);
+    elements.randomIncludeLower?.addEventListener('change', handleRandomIncludeLowerChange);
+    elements.randomIncludeUpper?.addEventListener('change', handleRandomIncludeUpperChange);
+    elements.randomExclude?.addEventListener('input', handleRandomExcludeInput);
+    elements.randomDigitMin?.addEventListener('input', handleRandomDigitRangeInput);
+    elements.randomDigitMax?.addEventListener('input', handleRandomDigitRangeInput);
+    elements.randomMinDigits?.addEventListener('input', () => handleRandomMinChange('digits'));
+    elements.randomMinLower?.addEventListener('input', () => handleRandomMinChange('lower'));
+    elements.randomMinUpper?.addEventListener('input', () => handleRandomMinChange('upper'));
+    elements.randomMinSymbols?.addEventListener('input', () => handleRandomMinChange('symbols'));
+    elements.randomSymbolToggles?.addEventListener('click', handleRandomSymbolToggle);
+    elements.randomGenerate?.addEventListener('click', () => runRandomGenerator());
+    elements.asciiGenerate?.addEventListener('click', () => runAsciiGenerator());
+    elements.asciiCopy?.addEventListener('click', () => handleAsciiCopy());
+    elements.asciiDownload?.addEventListener('click', () => handleAsciiDownload());
+    elements.asciiFont?.addEventListener('change', () => {
+        state.ascii.font = elements.asciiFont.value || 'standard';
+    });
+    elements.asciiWidth?.addEventListener('input', () => {
+        const val = Number.parseInt(elements.asciiWidth.value, 10);
+        if (Number.isFinite(val)) state.ascii.width = val;
+    });
+    [elements.asciiAlignLeft, elements.asciiAlignCenter, elements.asciiAlignRight].forEach(
+        (input) => {
+            input?.addEventListener('change', () => {
+                const checked = document.querySelector('input[name="asciiAlign"]:checked');
+                if (checked) {
+                    state.ascii.align = checked.value;
+                }
+            });
+        }
+    );
+    elements.qrModeOtp?.addEventListener('change', () => setQrMode('otp'));
+    elements.qrModeWifi?.addEventListener('change', () => setQrMode('wifi'));
+    elements.qrModeCustom?.addEventListener('change', () => setQrMode('custom'));
+    [
+        elements.qrOtpAccount,
+        elements.qrOtpSecret,
+        elements.qrOtpIssuer,
+        elements.qrOtpAlgorithm,
+        elements.qrOtpPeriod,
+        elements.qrOtpDigits,
+        elements.qrWifiType,
+        elements.qrWifiSsid,
+        elements.qrWifiPass,
+        elements.qrCustomString,
+    ].forEach((input) => input?.addEventListener('input', handleQrFieldChange));
+    elements.qrFormat?.addEventListener('change', (event) => {
+        state.qr.format = (event.target.value || 'png').toLowerCase();
+    });
+    elements.qrGenerate?.addEventListener('click', handleQrGenerate);
+    elements.qrDownload?.addEventListener('click', downloadQrImage);
+    elements.sshGenerate?.addEventListener('click', runSshGenerator);
+    elements.sshCopyPublic?.addEventListener('click', () => {
+        const val = elements.sshPublic?.value || '';
+        if (val.trim()) copyText(val, 'public key');
+    });
+    elements.sshCopyPrivate?.addEventListener('click', () => {
+        const val = elements.sshPrivate?.value || '';
+        if (val.trim()) copyText(val, 'private key');
+    });
+    elements.sshType?.addEventListener('change', handleSshTypeChange);
+    elements.sshBits?.addEventListener('input', handleSshBitsChange);
+    elements.sshComment?.addEventListener('input', handleSshCommentChange);
+    elements.sshFormat?.addEventListener('change', handleSshFormatChange);
+    elements.sshKdf?.addEventListener('input', handleSshKdfChange);
+    elements.sshResident?.addEventListener('change', handleSshResidentChange);
+    elements.sshVerify?.addEventListener('change', handleSshVerifyChange);
+    elements.randomResults?.addEventListener('click', handleRandomResultsClick);
+    elements.randomCopyAll?.addEventListener('click', handleRandomCopyAll);
+    // Fingerprint tool event listeners
+    elements.fingerprintRefresh?.addEventListener('click', () => refreshFingerprint(false));
+    elements.fingerprintCopyAll?.addEventListener('click', handleFingerprintCopyAll);
+    elements.fingerprintSearch?.addEventListener('input', handleFingerprintSearch);
+    elements.kdfAlgoSelect = document.getElementById('kdfAlgoSelect');
+    elements.kdfCards = document.querySelectorAll('.kdf-card');
+    elements.kdfAlgoSelect?.addEventListener('change', (ev) => {
+        setKdfAlgorithm(ev.target.value);
+    });
+    elements.kdfRefreshSalts?.addEventListener('click', refreshKdfSalts);
+    elements.bcryptHashBtn?.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        runBcryptHash();
+    });
+    elements.bcryptVerifyBtn?.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        verifyBcrypt();
+    });
+    elements.argonHashBtn?.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        runArgonHash();
+    });
+    elements.argonVerifyBtn?.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        verifyArgon();
+    });
+    elements.cryptoAlgorithm?.addEventListener('change', handleCryptoAlgorithmChange);
+    elements.cryptoGenerateKey?.addEventListener('click', seedCryptoKey);
+    elements.cryptoGenerateNonce?.addEventListener('click', seedCryptoNonce);
+    elements.cryptoEncrypt?.addEventListener('click', handleCryptoEncrypt);
+    elements.cryptoDecrypt?.addEventListener('click', handleCryptoDecrypt);
+    elements.cryptoCopyCiphertext?.addEventListener('click', copyCryptoCiphertext);
+    elements.cryptoDownload?.addEventListener('click', handleCryptoDownload);
+    elements.cryptoModeText?.addEventListener('change', () => setCryptoInputMode('text'));
+    elements.cryptoModeFile?.addEventListener('change', () => setCryptoInputMode('file'));
+    elements.cryptoFile?.addEventListener('change', handleCryptoFileChange);
+    elements.hashEncoding?.addEventListener('change', handleHashEncodingChange);
+    elements.hashUseHmac?.addEventListener('change', handleHashModeToggle);
+    elements.hashHmacSecret?.addEventListener('input', handleHashSecretInput);
+    elements.timestampInputs?.forEach((input) =>
+        input.addEventListener('input', handleTimestampInput)
+    );
+    elements.timestampPresets?.addEventListener('click', handleTimestampPreset);
+    elements.totpSecret?.addEventListener('input', handleTotpFieldChange);
+    elements.totpAlgorithm?.addEventListener('change', handleTotpFieldChange);
+    elements.totpPeriod?.addEventListener('input', handleTotpFieldChange);
+    elements.totpDigits?.addEventListener('input', handleTotpFieldChange);
+    elements.totpCode?.addEventListener('click', copyTotpCode);
+    elements.dataSchema?.addEventListener('input', handleDataSchemaInput);
+    elements.dataRows?.addEventListener('input', handleDataRowsChange);
+    elements.dataGenerate?.addEventListener('click', () => runDataGenerator());
+    elements.dataCopy?.addEventListener('click', copyDataOutput);
+    elements.dataColumnEditor?.addEventListener('input', handleDataOverrideInput);
+
+    // Diff tool event listeners
+    // Diff is automatically generated on input via handleDiffInput
+    elements.diffLeftInput?.addEventListener('input', handleDiffInput);
+    elements.diffRightInput?.addEventListener('input', handleDiffInput);
+    elements.diffClear?.addEventListener('click', handleDiffClear);
+    elements.diffSwap?.addEventListener('click', handleDiffSwap);
+    elements.diffCopyOutput?.addEventListener('click', handleDiffCopyOutput);
+    elements.diffCopyLeft?.addEventListener('click', () => handleDiffCopy('left'));
+    elements.diffCopyRight?.addEventListener('click', () => handleDiffCopy('right'));
+
+    elements.certInput?.addEventListener('input', () => scheduleCertInspector());
+    elements.certParse?.addEventListener('click', () => runCertInspector(true));
+    elements.certSample?.addEventListener('click', () => {
+        if (!elements.certInput) return;
+        elements.certInput.value = sampleCertificateChain.trim();
+        runCertInspector(true);
+    });
+}
+
+function toggleSidebar() {
+    document.body.classList.toggle('sidebar-open');
+}
+
+function closeSidebar() {
+    document.body.classList.remove('sidebar-open');
+}
+
+function toggleSidebarCollapse() {
+    document.body.classList.toggle('sidebar-collapsed');
+    const isCollapsed = document.body.classList.contains('sidebar-collapsed');
+    if (elements.sidebarCollapseBtn) {
+        elements.sidebarCollapseBtn.setAttribute(
+            'aria-label',
+            isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+        );
+        elements.sidebarCollapseBtn.setAttribute(
+            'title',
+            isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+        );
+    }
+}
+
+function closeSidebarOnMobile() {
+    if (window.matchMedia('(max-width: 900px)').matches) {
+        closeSidebar();
+    }
+}
+
+window.addEventListener('resize', () => {
+    if (window.innerWidth > 900) {
+        closeSidebar();
+    }
+});
+
+function ensureConverterMode() {
+    if (state.currentTool !== 'format') return false;
+    const from = elements.from?.value || '';
+    const to = elements.to?.value || '';
+    if (!supportedFormats.has(from) || !supportedFormats.has(to)) {
+        setStatus('Unsupported format', true);
+        return false;
+    }
+    updateConverterLabels(from, to);
+    state.formatKey = `${from}|${to}`;
+    return true;
+}
+
+function updateConverterLabels(from, to) {
+    if (elements.inputLabel) elements.inputLabel.textContent = from || 'Input';
+    if (elements.outputLabel) elements.outputLabel.textContent = to || 'Output';
+    if (elements.input) {
+        elements.input.placeholder = samples[from] || elements.input.placeholder;
+    }
+}
+
+function initTabularControls() {
+    if (!elements.tabularFrom || !elements.tabularTo) return;
+    const options = tabularFormats.map((fmt) => `<option value="${fmt}">${fmt}</option>`).join('');
+    elements.tabularFrom.innerHTML = options;
+    elements.tabularTo.innerHTML = options;
+    elements.tabularFrom.value = state.tabular.from;
+    elements.tabularTo.value = state.tabular.to;
+    setTabularProgress(0, false);
+    setTabularStatus('No files selected');
+}
+
+function scheduleConvert(immediate = false) {
+    if (state.currentTool !== 'format') return;
+    if (!ensureConverterMode()) return;
+    if (immediate) {
+        convert();
+        return;
+    }
+    clearTimeout(convertTimer);
+    convertTimer = setTimeout(() => convert(), 250);
+}
+
+function convert() {
+    if (state.currentTool !== 'format') return;
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    const from = elements.from?.value || '';
+    const to = elements.to?.value || '';
+    const text = elements.input?.value || '';
+    if (!text.trim()) {
+        if (elements.output) elements.output.value = '';
+        setStatus('Input is empty');
+        return;
+    }
+    try {
+        const result = transform_format(from, to, text);
+        if (elements.output) {
+            elements.output.value = result || '';
+        }
+        setStatus('Done', false);
+    } catch (err) {
+        if (elements.output) elements.output.value = '';
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function guessTabularFormat(fileName) {
+    if (!fileName) return null;
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith('.parquet')) return 'Parquet';
+    if (lower.endsWith('.avro')) return 'Avro';
+    if (lower.endsWith('.arrow') || lower.endsWith('.ipc') || lower.endsWith('.feather')) {
+        return 'Arrow IPC';
+    }
+    if (lower.endsWith('.tsv')) return 'TSV';
+    if (lower.endsWith('.csv')) return 'CSV';
+    if (lower.endsWith('.json') || lower.endsWith('.ndjson')) return 'JSON';
+    return null;
+}
+
+function readFileAsBytes(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(new Uint8Array(reader.result || new ArrayBuffer(0)));
+        reader.onerror = () => reject(reader.error || new Error('Failed to read file'));
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+async function handleTabularFileChange(event) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) {
+        state.tabular.files = [];
+        state.tabular.results = [];
+        state.tabular.totalRows = 0;
+        setTabularProgress(0, false);
+        setTabularStatus('No files selected');
+        if (elements.tabularDownload) elements.tabularDownload.disabled = true;
+        if (elements.tabularFileName) elements.tabularFileName.textContent = '(none)';
+        if (elements.tabularRowCount) elements.tabularRowCount.textContent = '0';
+        setTabularOutputLabel([]);
+        return;
+    }
+    try {
+        setTabularStatus(`Loading ${files.length} file(s)...`);
+        const buffers = await Promise.all(files.map((file) => readFileAsBytes(file)));
+        state.tabular.files = files.map((file, idx) => ({
+            name: file.name,
+            bytes: buffers[idx],
+        }));
+        state.tabular.results = [];
+        state.tabular.totalRows = 0;
+        const label =
+            files.length === 1 ? files[0].name : `${files.length} files selected for batch`;
+        if (elements.tabularFileName) elements.tabularFileName.textContent = label;
+        const guess = guessTabularFormat(files[0]?.name || '');
+        if (guess && elements.tabularFrom) {
+            elements.tabularFrom.value = guess;
+            state.tabular.from = guess;
+        }
+        setTabularStatus('Files loaded, choose a target format and convert');
+        const targetFormat = elements.tabularTo?.value || state.tabular.to;
+        setTabularOutputPreview(state.tabular.files, targetFormat);
+        if (elements.tabularDownload) elements.tabularDownload.disabled = true;
+    } catch (err) {
+        console.error(err);
+        state.tabular.files = [];
+        state.tabular.results = [];
+        state.tabular.totalRows = 0;
+        setTabularProgress(0, false, true);
+        setTabularStatus(`Failed to read files: ${err?.message || err}`, true);
+        if (elements.tabularDownload) elements.tabularDownload.disabled = true;
+    }
+}
+
+function setTabularProgress(percent, animated = false, isError = false) {
+    const bar =
+        elements.tabularProgress?.querySelector('.progress-bar') || elements.tabularProgress;
+    if (!bar) return;
+    bar.style.setProperty('--progress', `${Math.min(Math.max(percent, 0), 100)}%`);
+    bar.dataset.animated = animated ? 'true' : 'false';
+    bar.classList.toggle('error', Boolean(isError));
+}
+
+function setTabularStatus(message, isError = false) {
+    if (elements.tabularStatus) {
+        elements.tabularStatus.textContent = message;
+        elements.tabularStatus.classList.toggle('error', Boolean(isError));
+    }
+}
+
+function normalizeRowCount(value) {
+    if (typeof value === 'bigint') {
+        return Number(value);
+    }
+    const num = Number(value || 0);
+    return Number.isFinite(num) ? num : 0;
+}
+
+function deriveOutputName(inputName, targetFormat) {
+    const ext = (targetFormat || 'bin').toLowerCase();
+    const base = inputName ? inputName.replace(/\.[^.]+$/, '') : 'converted';
+    return `${base}.${ext}`;
+}
+
+function setTabularOutputPreview(files, targetFormat) {
+    if (!files || !files.length) {
+        setTabularOutputLabel([]);
+        return;
+    }
+    const preview = files.map((file) => ({ name: deriveOutputName(file.name, targetFormat) }));
+    setTabularOutputLabel(preview);
+}
+
+function setTabularOutputLabel(results) {
+    if (!elements.tabularOutputName) return;
+    if (!results || !results.length) {
+        elements.tabularOutputName.textContent = 'converted';
+        return;
+    }
+    if (results.length === 1) {
+        elements.tabularOutputName.textContent = results[0].name || 'converted';
+        return;
+    }
+    const first = results[0].name || 'converted';
+    elements.tabularOutputName.textContent = `${first} (+${results.length - 1} more)`;
+}
+
+function handleTabularConvert() {
+    if (!state.wasmReady) {
+        setTabularStatus('WebAssembly is not ready yet', true);
+        return;
+    }
+    const files = state.tabular.files || [];
+    if (!files.length) {
+        setTabularStatus('Select file(s) first', true);
+        return;
+    }
+    const from = elements.tabularFrom?.value || state.tabular.from;
+    const to = elements.tabularTo?.value || state.tabular.to;
+    // Stage the pseudo-progress bar so users see responsive feedback even on large files.
+    setTabularProgress(15, true, false);
+    setTabularStatus(`Converting ${files.length} file(s)...`);
+    state.tabular.results = [];
+    state.tabular.totalRows = 0;
+    try {
+        const results = [];
+        files.forEach((file, idx) => {
+            const progress = Math.min(90, 15 + Math.round(((idx + 1) / files.length) * 70));
+            setTabularStatus(`Converting ${file.name} (${idx + 1}/${files.length})...`);
+            const result = convert_tabular_format(from, to, file.bytes);
+            const bytes = result?.bytes ? new Uint8Array(result.bytes) : new Uint8Array();
+            const mime = result?.mime_type || result?.mimeType || 'application/octet-stream';
+            const outName = deriveOutputName(file.name, to);
+            const rowCount = normalizeRowCount(result?.row_count ?? result?.rowCount ?? 0);
+            results.push({
+                blob: new Blob([bytes], { type: mime }),
+                name: outName,
+                rowCount,
+            });
+            state.tabular.totalRows += rowCount;
+            setTabularProgress(progress, true, false);
+        });
+        state.tabular.results = results;
+        setTabularOutputLabel(results);
+        if (elements.tabularRowCount)
+            elements.tabularRowCount.textContent = String(state.tabular.totalRows);
+        if (elements.tabularDownload) elements.tabularDownload.disabled = false;
+        setTabularProgress(100, false, false);
+        setTabularStatus('Conversion complete');
+    } catch (err) {
+        setTabularProgress(0, false, true);
+        setTabularStatus(`Error: ${err?.message || err}`, true);
+        if (elements.tabularDownload) elements.tabularDownload.disabled = true;
+        state.tabular.results = [];
+        state.tabular.totalRows = 0;
+    }
+}
+
+function handleTabularDownload() {
+    if (!state.tabular.results || !state.tabular.results.length) return;
+    const results = state.tabular.results;
+    if (results.length === 1) {
+        const single = results[0];
+        const url = URL.createObjectURL(single.blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = single.name || 'converted';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+        return;
+    }
+    results.forEach((result, idx) => {
+        const url = URL.createObjectURL(result.blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = result.name || `converted-${idx + 1}`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+    });
+    setTabularStatus(`Started downloads for ${results.length} files`);
+}
+
+function handleFormatField(target, formatName, minify) {
+    if (!target || state.currentTool !== 'format') return;
+    if (!formatName || !supportedFormats.has(formatName)) {
+        setStatus('Unsupported format', true);
+        return;
+    }
+    if (!target.value.trim()) {
+        setStatus('Nothing to process', true);
+        return;
+    }
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    try {
+        const updated = format_content_text(formatName, target.value, Boolean(minify));
+        target.value = updated || '';
+        setStatus(minify ? 'Minified' : 'Formatted', false);
+    } catch (err) {
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function selectTool(toolId) {
+    const meta = toolInfo[toolId];
+    if (!meta) return;
+    const previousTool = state.currentTool;
+    state.currentTool = toolId;
+
+    // Stop timestamp updates when switching away from timestamp tool
+    if (previousTool === 'converter-timestamp' && toolId !== 'converter-timestamp') {
+        stopTimestampUpdates();
+    }
+
+    elements.toolName && (elements.toolName.textContent = meta.label);
+    elements.toolDesc && (elements.toolDesc.textContent = meta.description || '');
+    updateBodyClasses(toolId);
+    const workspaceId = meta.workspace;
+    showWorkspace(workspaceId);
+    toggleConverterControls(toolId === 'format');
+    updateToolButtons();
+    closeSidebarOnMobile();
+    if (previousTool && isTotpTool(previousTool) && !isTotpTool(toolId)) {
+        stopTotpTimer();
+    }
+    if (!implementedTools.has(toolId)) {
+        setStatus("This tool isn't wired up in this build.", true);
+    } else {
+        setStatus('Ready', false);
+    }
+    updateHashForTool(toolId);
+    if (toolId === 'format') {
+        ensureConverterMode();
+        scheduleConvert(true);
+        return;
+    }
+    if (isImageTool(toolId)) {
+        activateImageTool();
+        return;
+    }
+    if (coderMainTools.has(toolId)) {
+        const nextMode = coderToolModes[toolId] || 'encode';
+        const changed = state.coderMode !== nextMode;
+        state.coderMode = nextMode;
+        updateCoderTexts();
+        if (changed) {
+            renderCoderEmpty();
+        }
+        scheduleCoder(true);
+        return;
+    }
+    if (isPairTool(toolId)) {
+        activatePairTool(toolId);
+        return;
+    }
+    if (isKdfTool(toolId)) {
+        activateKdfTool();
+        return;
+    }
+    if (isNumberTool(toolId)) {
+        activateNumberTool();
+        return;
+    }
+    if (isUnitTool(toolId)) {
+        activateUnitTool();
+        return;
+    }
+    if (isTimestampTool(toolId)) {
+        activateTimestampTool();
+        return;
+    }
+    if (isIPv4Tool(toolId)) {
+        activateIPv4Tool();
+        return;
+    }
+    if (isUUIDTool(toolId)) {
+        activateUUIDTool();
+    } else if (isUserAgentTool(toolId)) {
+        activateUserAgentTool();
+    } else if (isRandomTool(toolId)) {
+        activateRandomTool();
+    } else if (isAsciiTool(toolId)) {
+        activateAsciiTool();
+    } else if (isQrTool(toolId)) {
+        activateQrTool();
+    } else if (isTotpTool(toolId)) {
+        activateTotpTool();
+    } else if (isSshTool(toolId)) {
+        activateSshTool();
+    } else if (isDataTool(toolId)) {
+        activateDataTool();
+    } else if (isFingerprintTool(toolId)) {
+        activateFingerprintTool();
+    } else if (isCryptoTool(toolId)) {
+        activateCryptoTool();
+    } else if (isCertTool(toolId)) {
+        activateCertTool();
+    } else if (isDiffTool(toolId)) {
+        activateDiffTool();
+    }
+}
+
+function updateBodyClasses(toolId) {
+    document.body.classList.toggle('tool-format', toolId === 'format');
+    document.body.classList.toggle('tool-image', isImageTool(toolId));
+    document.body.classList.toggle('tool-coder', coderMainTools.has(toolId));
+    document.body.classList.toggle('tool-pair', pairTools.has(toolId));
+    document.body.classList.toggle('tool-kdf', isKdfTool(toolId));
+    document.body.classList.toggle('tool-number', numberTools.has(toolId));
+    document.body.classList.toggle('tool-unit', unitTools.has(toolId));
+    document.body.classList.toggle('tool-ipv4', ipv4Tools.has(toolId));
+    document.body.classList.toggle('tool-generator', generatorTools.has(toolId));
+    document.body.classList.toggle('tool-fingerprint', isFingerprintTool(toolId));
+    document.body.classList.toggle('tool-uuid', isUUIDTool(toolId));
+    document.body.classList.toggle('tool-useragent', isUserAgentTool(toolId));
+    document.body.classList.toggle('tool-random', isRandomTool(toolId));
+    document.body.classList.toggle('tool-ascii', isAsciiTool(toolId));
+    document.body.classList.toggle('tool-qr', isQrTool(toolId));
+    document.body.classList.toggle('tool-cert', isCertTool(toolId));
+    document.body.classList.toggle('tool-crypto', isCryptoTool(toolId));
+    document.body.classList.toggle('tool-diff', isDiffTool(toolId));
+}
+
+function toggleConverterControls(show) {
+    if (elements.converterControls) {
+        elements.converterControls.classList.toggle('hidden', !show);
+    }
+}
+
+function showWorkspace(workspaceId) {
+    workspaceIds.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.toggle('hidden', id !== workspaceId);
+        }
+    });
+}
+
+function updateToolButtons() {
+    document
+        .querySelectorAll('#toolGroups button')
+        .forEach((btn) => btn.classList.toggle('active', btn.dataset.toolId === state.currentTool));
+}
+
+function setStatus(message, isError) {
+    if (!elements.status) return;
+    elements.status.textContent = message || 'Ready';
+    elements.status.classList.toggle('error', Boolean(isError));
+}
+
+function scheduleCoder(immediate = false) {
+    if (!coderMainTools.has(state.currentTool)) return;
+    if (immediate) {
+        runCoder();
+        return;
+    }
+    clearTimeout(coderTimer);
+    coderTimer = setTimeout(() => runCoder(), 200);
+}
+
+function setCoderInputMode(mode) {
+    const useFile = mode === 'file';
+    state.coder.inputMode = useFile ? 'file' : 'text';
+    if (elements.coderModeText) elements.coderModeText.checked = !useFile;
+    if (elements.coderModeFile) elements.coderModeFile.checked = useFile;
+    if (elements.coderFile) elements.coderFile.classList.toggle('hidden', !useFile);
+    if (elements.coderFileMeta) elements.coderFileMeta.classList.toggle('hidden', !useFile);
+    if (!useFile) {
+        state.coder.fileBytes = null;
+        state.coder.fileName = '';
+        state.coder.fileSize = 0;
+    }
+    renderCoderFileMeta();
+    if (state.coderMode !== 'decode') {
+        scheduleCoder(true);
+    }
+}
+
+async function handleCoderFileChange(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) {
+        state.coder.fileBytes = null;
+        state.coder.fileName = '';
+        state.coder.fileSize = 0;
+        renderCoderFileMeta();
+        renderCoderEmpty();
+        return;
+    }
+    try {
+        const buffer = await file.arrayBuffer();
+        state.coder.fileBytes = new Uint8Array(buffer);
+        state.coder.fileName = file.name;
+        state.coder.fileSize = file.size;
+        renderCoderFileMeta();
+        scheduleCoder(true);
+    } catch (err) {
+        console.error(err);
+        setStatus(`⚠️ Failed to read file: ${err?.message || err}`, true);
+    }
+}
+
+function renderCoderFileMeta() {
+    if (!elements.coderFileMeta) return;
+    if (state.coder.inputMode !== 'file') {
+        elements.coderFileMeta.textContent = 'File mode hidden';
+        elements.coderFileMeta.classList.add('hidden');
+        return;
+    }
+    elements.coderFileMeta.classList.remove('hidden');
+    if (state.coder.fileBytes?.length) {
+        const name = state.coder.fileName || 'selected file';
+        const size = state.coder.fileBytes.length;
+        elements.coderFileMeta.textContent = `${name} (${size} bytes)`;
+    } else {
+        elements.coderFileMeta.textContent = 'No file selected';
+    }
+}
+
+function clearDecodedFileState() {
+    state.coder.decodedBytes = null;
+    state.coder.decodedFileName = '';
+    if (elements.coderDecodeMeta) {
+        elements.coderDecodeMeta.classList.add('hidden');
+        elements.coderDecodeMeta.textContent = '';
+    }
+}
+
+function runCoder() {
+    if (!coderMainTools.has(state.currentTool)) return;
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    const text = elements.coderInput?.value || '';
+    const trimmed = text.trim();
+    const usingFile = state.coderMode !== 'decode' && state.coder.inputMode === 'file';
+    const fileBytes = state.coder.fileBytes;
+    if (state.coderMode !== 'hash') {
+        clearDecodedFileState();
+    }
+    if (!trimmed && state.coderMode !== 'hash' && !usingFile) {
+        renderCoderEmpty();
+        return;
+    }
+    try {
+        if (state.coderMode === 'encode') {
+            if (usingFile && !(fileBytes && fileBytes.length)) {
+                renderCoderEmpty();
+                setStatus('Select a file to encode', true);
+                return;
+            }
+            const result = usingFile
+                ? encode_content_bytes(fileBytes || new Uint8Array())
+                : encode_content(text);
+            const map = normalizeMapResult(result);
+            state.lastEncodeResults = map;
+            renderEncodeResults(map);
+            setStatus(usingFile ? 'Encoded file' : 'Done', false);
+            return;
+        }
+        if (state.coderMode === 'decode') {
+            const decoderKey = state.selectedDecoder || elements.decodeVariant?.value || '';
+            if (!decoderKey) {
+                setStatus('Select an encoding to decode', true);
+                return;
+            }
+            if (!trimmed) {
+                renderCoderEmpty();
+                return;
+            }
+            const decodeInput = decoderKey === 'hex_upper' ? text.toUpperCase() : text;
+            const bytes = decode_content_bytes(decoderKey, decodeInput);
+            const preview = bytesToUtf8Strict(bytes);
+            const displayValue = preview ?? toBase64(bytes, false);
+            const info = encodingVariantMap.get(decoderKey);
+            const displayLabel = info ? `${info.group} · ${info.label}` : 'Decoded';
+            state.coder.decodedBytes = bytes;
+            state.coder.decodedFileName = state.coder.fileName || 'decoded.bin';
+            renderDecodeResult({
+                label: displayLabel,
+                value: displayValue,
+                byteLength: bytes.length,
+                note: preview ? '' : 'Binary output shown as Base64',
+            });
+            setStatus(preview ? 'Done' : 'Decoded (binary previewed as Base64)', false);
+            updateCoderActionsVisibility();
+            return;
+        }
+        if (usingFile && !(fileBytes && fileBytes.length)) {
+            renderCoderEmpty();
+            setStatus('Select a file to hash', true);
+            return;
+        }
+        const hashes = state.hashUseHmac
+            ? state.coder.inputMode === 'file'
+                ? hash_content_hmac_bytes(
+                      fileBytes || new Uint8Array(),
+                      utf8ToBytes(state.hashHmacSecret || '')
+                  )
+                : hash_content_hmac(text, state.hashHmacSecret || '')
+            : state.coder.inputMode === 'file'
+              ? hash_content_bytes(fileBytes || new Uint8Array())
+              : hash_content(text);
+        const map = normalizeMapResult(hashes);
+        state.lastHashResults = map;
+        renderHashResults(map);
+        setStatus(usingFile ? 'Hashed file' : 'Done', false);
+    } catch (err) {
+        renderCoderEmpty();
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function updateCoderTexts() {
+    if (elements.coderWorkspaceTitle) {
+        elements.coderWorkspaceTitle.textContent =
+            coderModeTitles[state.coderMode] || state.coderMode;
+    }
+    if (elements.coderModeHint) {
+        elements.coderModeHint.textContent = coderModeDescriptions[state.coderMode] || '';
+    }
+    if (elements.coderResultHeading) {
+        const heading =
+            state.coderMode === 'hash'
+                ? 'Hash Digests'
+                : state.coderMode === 'decode'
+                  ? 'Decode'
+                  : 'Encodings';
+        elements.coderResultHeading.textContent = heading;
+    }
+    if (elements.coderResultHint) {
+        if (state.coderMode === 'decode') {
+            const info = encodingVariantMap.get(state.selectedDecoder);
+            elements.coderResultHint.textContent = info
+                ? `${info.group} · ${info.label}`
+                : coderResultHints.decode;
+        } else {
+            elements.coderResultHint.textContent = coderResultHints[state.coderMode] || '';
+        }
+    }
+    if (elements.decodeVariantWrap) {
+        elements.decodeVariantWrap.classList.toggle('hidden', state.coderMode !== 'decode');
+    }
+    if (elements.coderInputControls) {
+        const showFileControls = state.coderMode !== 'decode';
+        elements.coderInputControls.classList.toggle('hidden', !showFileControls);
+        if (!showFileControls) {
+            state.coder.inputMode = 'text';
+            state.coder.fileBytes = null;
+            state.coder.fileName = '';
+            state.coder.fileSize = 0;
+            if (elements.coderModeText) elements.coderModeText.checked = true;
+            renderCoderFileMeta();
+        } else {
+            setCoderInputMode(state.coder.inputMode || 'text');
+        }
+    }
+    if (elements.decodeVariant && state.selectedDecoder) {
+        elements.decodeVariant.value = state.selectedDecoder;
+    }
+    if (elements.hashToggleCase) {
+        const showToggle = state.coderMode === 'hash' && state.hashEncoding === 'base16';
+        elements.hashToggleCase.classList.toggle('hidden', !showToggle);
+        if (showToggle) {
+            elements.hashToggleCase.dataset.upper = state.hashUppercase ? 'true' : 'false';
+        }
+    }
+    if (elements.hashControls) {
+        const show = state.coderMode === 'hash';
+        elements.hashControls.classList.toggle('hidden', !show);
+        if (show) {
+            if (elements.hashEncoding) elements.hashEncoding.value = state.hashEncoding;
+            if (elements.hashUseHmac) elements.hashUseHmac.checked = state.hashUseHmac;
+            if (elements.hashHmacSecret) {
+                elements.hashHmacSecret.classList.toggle('hidden', !state.hashUseHmac);
+                elements.hashHmacSecret.value = state.hashHmacSecret;
+            }
+        }
+    }
+    if (elements.coderInput) {
+        elements.coderInput.placeholder =
+            coderPlaceholders[state.coderMode] || coderPlaceholders.encode;
+    }
+    updateCoderActionsVisibility();
+}
+
+function renderCoderEmpty() {
+    if (!elements.coderResults) return;
+    if (state.coderMode === 'hash') {
+        state.lastHashResults = null;
+    }
+    if (state.coderMode === 'encode') {
+        state.lastEncodeResults = null;
+    }
+    if (state.coderMode !== 'hash') {
+        clearDecodedFileState();
+    }
+    const message =
+        state.coderMode === 'decode'
+            ? 'Paste encoded text to decode'
+            : state.coder.inputMode === 'file'
+              ? 'Select a file to process'
+              : 'Enter content to see results';
+    elements.coderResults.innerHTML = `<div class="muted">${message}</div>`;
+    updateCoderActionsVisibility();
+}
+
+function updateCoderActionsVisibility() {
+    if (!elements.coderResultActions) return;
+    const showHash = state.coderMode === 'hash' && state.hashEncoding === 'base16';
+    const showDownload = state.coderMode === 'decode' && Boolean(state.coder.decodedBytes?.length);
+    const showAny = showHash || showDownload;
+    elements.coderResultActions.classList.toggle('hidden', !showAny);
+    if (elements.hashToggleCase) {
+        elements.hashToggleCase.classList.toggle('hidden', !showHash);
+    }
+    if (elements.coderDownloadDecoded) {
+        elements.coderDownloadDecoded.classList.toggle('hidden', !showDownload);
+    }
+}
+
+function encodeDigest(hexValue) {
+    const lower = state.hashUppercase ? hexValue.toUpperCase() : hexValue.toLowerCase();
+    if (state.hashEncoding === 'base16') return lower;
+    const bytes = hexToUint8(lower);
+    if (!bytes) return lower;
+    if (state.hashEncoding === 'base64') {
+        return toBase64(bytes, false);
+    }
+    if (state.hashEncoding === 'base64_raw') {
+        return toBase64(bytes, true);
+    }
+    if (state.hashEncoding === 'base64_url') {
+        return toBase64(bytes, false).replace(/\+/g, '-').replace(/\//g, '_');
+    }
+    if (state.hashEncoding === 'base64_url_raw') {
+        return toBase64(bytes, true).replace(/\+/g, '-').replace(/\//g, '_');
+    }
+    return lower;
+}
+
+function hexToUint8(hex) {
+    if (!hex || hex.length % 2 !== 0) return null;
+    const arr = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < arr.length; i++) {
+        const byte = Number.parseInt(hex.substr(i * 2, 2), 16);
+        if (Number.isNaN(byte)) return null;
+        arr[i] = byte;
+    }
+    return arr;
+}
+
+function toBase64(bytes, stripPadding) {
+    let binary = '';
+    bytes.forEach((b) => {
+        binary += String.fromCharCode(b);
+    });
+    const encoded = btoa(binary);
+    return stripPadding ? encoded.replace(/=+$/, '') : encoded;
+}
+
+function renderEncodeResults(map) {
+    if (!elements.coderResults) return;
+    const blocks = encodingGroups
+        .map((group) => {
+            let toggleInjected = false;
+            const entries = group.variants
+                .map((variant) => {
+                    const raw = map?.[variant.key];
+                    if (typeof raw !== 'string') {
+                        return null;
+                    }
+                    let displayValue = raw;
+                    let toggleGroup = null;
+                    if (group.id === 'base16') {
+                        const upper = state.encodeCaseMap.base16 !== false;
+                        displayValue = upper ? raw.toUpperCase() : raw.toLowerCase();
+                        if (!toggleInjected) {
+                            toggleGroup = 'base16';
+                            toggleInjected = true;
+                        }
+                    } else if (group.id === 'base32') {
+                        const upper = state.encodeCaseMap.base32 !== false;
+                        displayValue = upper ? raw.toUpperCase() : raw.toLowerCase();
+                        if (!toggleInjected) {
+                            toggleGroup = 'base32';
+                            toggleInjected = true;
+                        }
+                    }
+                    return {
+                        label: variant.label,
+                        value: displayValue,
+                        copyLabel: `${group.label} · ${variant.label}`,
+                        clickCopy: true,
+                        toggleGroup,
+                    };
+                })
+                .filter(Boolean);
+            if (!entries.length) {
+                return '';
+            }
+            return renderGroupBlock(group.label, entries);
+        })
+        .filter(Boolean);
+    if (!blocks.length) {
+        renderCoderEmpty();
+        return;
+    }
+    elements.coderResults.innerHTML = `
+    <div class="coder-groups">
+      <div class="coder-output-grid">${blocks.join('')}</div>
+    </div>
+  `;
+}
+
+function renderDecodeResult(result) {
+    if (!elements.coderResults) return;
+    const label = result?.label || 'Decoded';
+    const note = result?.note || '';
+    const block = renderGroupBlock(label, [
+        {
+            label,
+            value: result?.value || '',
+            copyLabel: label,
+            clickCopy: true,
+        },
+    ]);
+    const metaParts = [];
+    if (result?.byteLength !== undefined) {
+        metaParts.push(`${result.byteLength} bytes`);
+    }
+    if (note) metaParts.push(note);
+    if (elements.coderDecodeMeta) {
+        if (metaParts.length) {
+            elements.coderDecodeMeta.textContent = metaParts.join(' · ');
+            elements.coderDecodeMeta.classList.remove('hidden');
+        } else {
+            elements.coderDecodeMeta.textContent = '';
+            elements.coderDecodeMeta.classList.add('hidden');
+        }
+    }
+    elements.coderResults.innerHTML = `
+    <div class="coder-groups">
+      <div class="coder-output-grid">${block}</div>
+    </div>
+  `;
+}
+
+// Exposes decoded bytes as a download so binary payloads can be recovered.
+function downloadDecodedFile() {
+    const bytes = state.coder.decodedBytes;
+    if (!bytes?.length) {
+        setStatus('No decoded file available', true);
+        return;
+    }
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = state.coder.decodedFileName || 'decoded.bin';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setStatus('Saved decoded file', false);
+}
+
+function renderHashResults(map) {
+    if (!elements.coderResults) return;
+    const blocks = hashGroups
+        .map((group) => {
+            const entries = group.keys
+                .map((key) => {
+                    const raw = map?.[key];
+                    if (typeof raw !== 'string') {
+                        return null;
+                    }
+                    const label = hashLabels[key] || key;
+                    const value = encodeDigest(raw);
+                    return {
+                        label,
+                        value,
+                        copyLabel: label,
+                        clickCopy: true,
+                    };
+                })
+                .filter(Boolean);
+            if (!entries.length) return '';
+            return renderGroupBlock(group.label, entries);
+        })
+        .filter(Boolean);
+    if (!blocks.length) {
+        renderCoderEmpty();
+        return;
+    }
+    elements.coderResults.innerHTML = `
+    <div class="coder-groups">
+      <div class="coder-output-grid">${blocks.join('')}</div>
+    </div>
+  `;
+}
+
+function renderGroupBlock(title, entries) {
+    if (!entries.length) return '';
+    const rows = entries.map((entry) => renderEntryRow(entry)).join('');
+    const safeTitle = escapeHTML(title || 'Result');
+    return `
+    <section class="coder-output-block">
+      <header>${safeTitle}</header>
+      <div class="coder-output-entries">
+        ${rows}
+      </div>
+    </section>
+  `;
+}
+
+function renderEntryRow(entry) {
+    const clickable = !!entry.clickCopy;
+    const safeLabel = escapeHTML(entry.label || 'Result');
+    const safeValue = escapeHTML(entry.value || '');
+    const attrValue = escapeAttr(entry.value || '');
+    const buttonLabel = escapeAttr(entry.copyLabel || entry.label || 'Result');
+    const entryAttrs = clickable
+        ? `class="coder-entry click-copy" data-copy-value="${attrValue}" data-copy-label="${buttonLabel}"`
+        : `class="coder-entry"`;
+    const toggleGroup = entry.toggleGroup || null;
+    let actionMarkup = '';
+    if (toggleGroup) {
+        const upperActive = state.encodeCaseMap[toggleGroup] !== false;
+        actionMarkup = `<button type="button" data-encode-group="${toggleGroup}" data-upper="${
+            upperActive ? 'true' : 'false'
+        }">Toggle Case</button>`;
+    } else if (clickable) {
+        actionMarkup = '<span class="copy-icon" title="Click to copy">📋</span>';
+    } else {
+        actionMarkup = `<button type="button" class="copy-btn" data-label="${buttonLabel}" data-value="${attrValue}">📋 Copy</button>`;
+    }
+    return `
+    <div ${entryAttrs}>
+      <div class="coder-entry-meta">
+        <span>${safeLabel}</span>
+        ${actionMarkup}
+      </div>
+      <textarea readonly spellcheck="false">${safeValue}</textarea>
+    </div>
+  `;
+}
+
+function isUUIDTool(toolId) {
+    return uuidToolSet.has(toolId);
+}
+
+function isUserAgentTool(toolId) {
+    return userAgentToolSet.has(toolId);
+}
+
+function isPairTool(toolId) {
+    return pairTools.has(toolId);
+}
+
+function isKdfTool(toolId) {
+    return kdfTools.has(toolId);
+}
+
+function isNumberTool(toolId) {
+    return numberTools.has(toolId);
+}
+
+function isUnitTool(toolId) {
+    return unitTools.has(toolId);
+}
+
+function isUrlTool(toolId) {
+    return toolId === 'coder-url';
+}
+
+function isTimestampTool(toolId) {
+    return timestampTools.has(toolId);
+}
+
+function isImageTool(toolId) {
+    return imageTools.has(toolId);
+}
+
+function isIPv4Tool(toolId) {
+    return ipv4Tools.has(toolId);
+}
+
+function isRandomTool(toolId) {
+    return randomToolSet.has(toolId);
+}
+
+function isAsciiTool(toolId) {
+    return asciiToolSet.has(toolId);
+}
+
+function isQrTool(toolId) {
+    return qrToolSet.has(toolId);
+}
+
+function isTotpTool(toolId) {
+    return totpToolSet.has(toolId);
+}
+
+function isDataTool(toolId) {
+    return dataToolSet.has(toolId);
+}
+
+function isSshTool(toolId) {
+    return sshToolSet.has(toolId);
+}
+
+function isFingerprintTool(toolId) {
+    return fingerprintTools.has(toolId);
+}
+
+function isCertTool(toolId) {
+    return certTools.has(toolId);
+}
+
+function isCryptoTool(toolId) {
+    return cryptoToolSet.has(toolId);
+}
+
+function isDiffTool(toolId) {
+    return toolId === 'converter-diff';
+}
+
+function activatePairTool(toolId) {
+    state.currentPairTool = toolId;
+    state.pairLastSource = 'input';
+    const config = pairToolConfigs[toolId];
+    if (!config) {
+        setStatus("This tool isn't wired up in this build.", true);
+        return;
+    }
+    if (elements.pairInputLabel) {
+        elements.pairInputLabel.textContent = config.inputLabel || 'Encode';
+    }
+    if (elements.pairOutputLabel) {
+        elements.pairOutputLabel.textContent = config.outputLabel || 'Decode';
+    }
+    if (elements.pairInputHint) {
+        elements.pairInputHint.textContent = config.inputHint || '';
+    }
+    if (elements.pairOutputHint) {
+        elements.pairOutputHint.textContent = config.outputHint || '';
+    }
+    if (elements.pairInput) {
+        elements.pairInput.placeholder = config.inputPlaceholder || '';
+        elements.pairInput.value = '';
+    }
+    if (elements.pairOutput) {
+        elements.pairOutput.placeholder = config.outputPlaceholder || '';
+        elements.pairOutput.value = '';
+    }
+    const showJWT = config.type === 'jwt';
+    elements.jwtControls?.classList.toggle('hidden', !showJWT);
+    if (!showJWT) {
+        if (elements.jwtSecret) {
+            elements.jwtSecret.value = '';
+        }
+        updatePairMeta(null);
+    } else if (elements.jwtAlgorithm && !elements.jwtAlgorithm.value) {
+        elements.jwtAlgorithm.value = 'HS256';
+    }
+    const showQueryEditor = config.type === 'url';
+    elements.urlQuerySection?.classList.toggle('hidden', !showQueryEditor);
+    if (showQueryEditor) {
+        syncUrlParamsFromInput(elements.pairInput?.value || '', true);
+    } else {
+        resetUrlQueryState();
+    }
+    updatePairMeta(null);
+    setStatus('Ready', false);
+}
+
+function handlePairInput(source) {
+    if (!isPairTool(state.currentTool) || state.pairSyncing) return;
+    runPairConversion(source);
+}
+
+function runPairConversion(source) {
+    if (!isPairTool(state.currentTool)) return;
+    const config = pairToolConfigs[state.currentTool];
+    if (!config) {
+        setStatus("This tool isn't wired up in this build.", true);
+        return;
+    }
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    state.pairLastSource = source;
+    const inputValue = elements.pairInput?.value || '';
+    const outputValue = elements.pairOutput?.value || '';
+    if (config.type === 'url') {
+        if (source === 'input') {
+            syncUrlParamsFromInput(inputValue, true);
+            renderUrlEncodeOutput(inputValue);
+            return;
+        }
+        if (!outputValue) {
+            setPairField(elements.pairInput, '');
+            resetUrlQueryState();
+            setStatus('Cleared');
+            return;
+        }
+        try {
+            const decoded = url_decode(outputValue);
+            setPairField(elements.pairInput, decoded);
+            syncUrlParamsFromInput(decoded, true);
+            setStatus('Done', false);
+        } catch (err) {
+            setStatus(`⚠️ ${err?.message || err}`, true);
+        }
+        return;
+    }
+    if (config.type === 'jwt') {
+        if (source === 'input') {
+            if (!inputValue.trim()) {
+                setPairField(elements.pairOutput, '');
+                updatePairMeta(null);
+                setStatus('Cleared');
+                return;
+            }
+            const secret = elements.jwtSecret?.value || '';
+            if (!secret.trim()) {
+                setStatus('Secret is required', true);
+                return;
+            }
+            const algorithm = elements.jwtAlgorithm?.value || 'HS256';
+            try {
+                const token = jwt_encode(inputValue, secret, algorithm);
+                setPairField(elements.pairOutput, token);
+                updatePairMeta(null);
+                setStatus('Done', false);
+            } catch (err) {
+                setStatus(`⚠️ ${err?.message || err}`, true);
+            }
+            return;
+        }
+        if (!outputValue.trim()) {
+            setPairField(elements.pairInput, '');
+            updatePairMeta(null);
+            setStatus('Cleared');
+            return;
+        }
+        try {
+            const info = jwt_decode(outputValue) || {};
+            if (info.payload && elements.pairInput) {
+                setPairField(elements.pairInput, info.payload);
+            }
+            if (info.algorithm && elements.jwtAlgorithm) {
+                elements.jwtAlgorithm.value = info.algorithm;
+            }
+            updatePairMeta(info);
+            setStatus('Done', false);
+        } catch (err) {
+            setStatus(`⚠️ ${err?.message || err}`, true);
+        }
+        return;
+    }
+    if (config.type === 'markdown') {
+        if (source === 'input') {
+            if (!inputValue.trim()) {
+                setPairField(elements.pairOutput, '');
+                setStatus('Cleared');
+                return;
+            }
+            try {
+                const html = markdown_to_html_text(inputValue);
+                setPairField(elements.pairOutput, html || '');
+                setStatus('Done', false);
+            } catch (err) {
+                setStatus(`⚠️ ${err?.message || err}`, true);
+            }
+            return;
+        }
+        if (!outputValue.trim()) {
+            setPairField(elements.pairInput, '');
+            setStatus('Cleared');
+            return;
+        }
+        try {
+            const markdown = html_to_markdown_text(outputValue);
+            setPairField(elements.pairInput, markdown || '');
+            setStatus('Done', false);
+        } catch (err) {
+            setStatus(`⚠️ ${err?.message || err}`, true);
+        }
+        return;
+    }
+    setStatus("This tool isn't wired up in this build.", true);
+}
+
+// Query editor helpers keep the URL Encode textarea, table, and encoded output aligned.
+function syncUrlParamsFromInput(rawInput, renderTable = false) {
+    if (!isUrlTool(state.currentTool)) return;
+    const parts = splitUrlParts(rawInput || '');
+    state.urlBase = parts.base;
+    state.urlHash = parts.hash;
+    state.urlHadQuestionMark = parts.hadQuestionMark;
+    state.urlQueryParams = parseQueryParams(parts.queryString);
+    if (renderTable) {
+        renderUrlQueryTable();
+    }
+}
+
+function resetUrlQueryState() {
+    state.urlQueryParams = [];
+    state.urlBase = '';
+    state.urlHash = '';
+    state.urlHadQuestionMark = false;
+    if (isUrlTool(state.currentTool)) {
+        renderUrlQueryTable();
+    }
+}
+
+function splitUrlParts(raw) {
+    const text = raw || '';
+    const hashIndex = text.indexOf('#');
+    const beforeHash = hashIndex >= 0 ? text.slice(0, hashIndex) : text;
+    const hash = hashIndex >= 0 ? text.slice(hashIndex + 1) : '';
+    const qmIndex = beforeHash.indexOf('?');
+    const base = qmIndex >= 0 ? beforeHash.slice(0, qmIndex) : beforeHash;
+    const queryString = qmIndex >= 0 ? beforeHash.slice(qmIndex + 1) : '';
+    return {
+        base,
+        queryString,
+        hash,
+        hadQuestionMark: qmIndex >= 0,
+    };
+}
+
+function parseQueryParams(queryString) {
+    if (!queryString) return [];
+    return queryString
+        .split('&')
+        .filter((entry) => entry.length > 0)
+        .map((entry) => {
+            const [rawKey, ...rest] = entry.split('=');
+            const rawValue = rest.length ? rest.join('=') : '';
+            return {
+                key: decodeQueryPiece(rawKey),
+                value: decodeQueryPiece(rawValue),
+            };
+        });
+}
+
+function decodeQueryPiece(text) {
+    if (!text) return '';
+    const normalized = text.replace(/\+/g, ' ');
+    try {
+        return decodeURIComponent(normalized);
+    } catch (_err) {
+        return normalized;
+    }
+}
+
+function serializeQueryParams(params) {
+    if (!params?.length) return '';
+    const filtered = params.filter((entry) => (entry?.key || entry?.value || '').length > 0);
+    if (!filtered.length) return '';
+    return filtered.map(({ key, value }) => `${key || ''}=${value || ''}`).join('&');
+}
+
+function buildUrlFromState() {
+    const query = serializeQueryParams(state.urlQueryParams);
+    const hasParams = Boolean(query);
+    const hasHash = Boolean(state.urlHash);
+    let url = state.urlBase || '';
+    if (hasParams || state.urlHadQuestionMark) {
+        url += '?' + query;
+    }
+    if (hasHash) {
+        url += '#' + state.urlHash;
+    }
+    return url;
+}
+
+function renderUrlEncodeOutput(rawInput) {
+    state.pairLastSource = 'input';
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    if (!rawInput) {
+        setPairField(elements.pairOutput, '');
+        setStatus('Cleared');
+        return;
+    }
+    try {
+        const encoded = url_encode(rawInput);
+        setPairField(elements.pairOutput, encoded);
+        setStatus('Done', false);
+    } catch (err) {
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function applyUrlQueryStateChange({ renderTable = false } = {}) {
+    const rebuilt = buildUrlFromState();
+    setPairField(elements.pairInput, rebuilt);
+    renderUrlEncodeOutput(rebuilt);
+    if (renderTable) {
+        renderUrlQueryTable();
+    }
+}
+
+function renderUrlQueryTable() {
+    if (!elements.urlQueryTable) return;
+    const params = state.urlQueryParams || [];
+    elements.urlQueryTable.innerHTML = '';
+    if (!params.length) {
+        if (elements.urlQueryEmpty) elements.urlQueryEmpty.classList.remove('hidden');
+        return;
+    }
+    if (elements.urlQueryEmpty) elements.urlQueryEmpty.classList.add('hidden');
+    params.forEach((param, index) => {
+        const row = document.createElement('div');
+        row.className = 'query-row';
+        row.dataset.index = String(index);
+
+        const handle = document.createElement('span');
+        handle.className = 'query-handle';
+        handle.title = 'Reorder';
+        handle.textContent = '≡';
+        row.appendChild(handle);
+
+        const keyInput = document.createElement('input');
+        keyInput.placeholder = 'key';
+        keyInput.value = param?.key || '';
+        keyInput.dataset.field = 'key';
+        row.appendChild(keyInput);
+
+        const equals = document.createElement('span');
+        equals.className = 'query-equals';
+        equals.textContent = '=';
+        row.appendChild(equals);
+
+        const valueInput = document.createElement('input');
+        valueInput.placeholder = 'value';
+        valueInput.value = param?.value || '';
+        valueInput.dataset.field = 'value';
+        row.appendChild(valueInput);
+
+        const actions = document.createElement('div');
+        actions.className = 'query-row-actions';
+
+        const upBtn = document.createElement('button');
+        upBtn.type = 'button';
+        upBtn.dataset.action = 'up';
+        upBtn.title = 'Move up';
+        upBtn.textContent = '↑';
+        upBtn.disabled = index === 0;
+        actions.appendChild(upBtn);
+
+        const downBtn = document.createElement('button');
+        downBtn.type = 'button';
+        downBtn.dataset.action = 'down';
+        downBtn.title = 'Move down';
+        downBtn.textContent = '↓';
+        downBtn.disabled = index === params.length - 1;
+        actions.appendChild(downBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.dataset.action = 'delete';
+        deleteBtn.classList.add('danger');
+        deleteBtn.title = 'Remove';
+        deleteBtn.textContent = '✕';
+        actions.appendChild(deleteBtn);
+
+        row.appendChild(actions);
+        elements.urlQueryTable.appendChild(row);
+    });
+}
+
+function addUrlQueryRow() {
+    if (!isUrlTool(state.currentTool)) return;
+    const next = [...(state.urlQueryParams || []), { key: '', value: '' }];
+    state.urlQueryParams = next;
+    applyUrlQueryStateChange({ renderTable: true });
+}
+
+function handleUrlQueryTableInput(event) {
+    if (!isUrlTool(state.currentTool)) return;
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    const row = target.closest('.query-row');
+    const field = target.dataset.field;
+    if (!row || !field) return;
+    const index = Number(row.dataset.index);
+    if (Number.isNaN(index) || !state.urlQueryParams[index]) return;
+    const next = [...state.urlQueryParams];
+    const updated = { ...next[index], [field]: target.value };
+    next[index] = updated;
+    state.urlQueryParams = next;
+    applyUrlQueryStateChange();
+}
+
+function handleUrlQueryTableClick(event) {
+    if (!isUrlTool(state.currentTool)) return;
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    const row = button.closest('.query-row');
+    if (!row) return;
+    const index = Number(row.dataset.index);
+    if (Number.isNaN(index)) return;
+    const action = button.dataset.action;
+    if (action === 'delete') {
+        removeUrlQueryRow(index);
+        return;
+    }
+    if (action === 'up') {
+        moveUrlQueryRow(index, -1);
+        return;
+    }
+    if (action === 'down') {
+        moveUrlQueryRow(index, 1);
+    }
+}
+
+function moveUrlQueryRow(index, delta) {
+    const params = [...(state.urlQueryParams || [])];
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= params.length) return;
+    const [item] = params.splice(index, 1);
+    params.splice(targetIndex, 0, item);
+    state.urlQueryParams = params;
+    applyUrlQueryStateChange({ renderTable: true });
+}
+
+function removeUrlQueryRow(index) {
+    const params = [...(state.urlQueryParams || [])];
+    if (index < 0 || index >= params.length) return;
+    params.splice(index, 1);
+    state.urlQueryParams = params;
+    applyUrlQueryStateChange({ renderTable: true });
+}
+
+function setPairField(target, value) {
+    if (!target) return;
+    state.pairSyncing = true;
+    target.value = value || '';
+    state.pairSyncing = false;
+}
+
+function updatePairMeta(info) {
+    if (!elements.pairOutputMeta) return;
+    if (!info || state.currentTool !== 'coder-jwt') {
+        elements.pairOutputMeta.classList.add('hidden');
+        elements.pairOutputMeta.textContent = '';
+        return;
+    }
+    const sections = [];
+    if (info.header) {
+        sections.push(`Header:\n${info.header}`);
+    }
+    if (info.signature) {
+        sections.push(`Signature:\n${info.signature}`);
+    }
+    elements.pairOutputMeta.textContent = sections.join('\n\n');
+    elements.pairOutputMeta.classList.toggle('hidden', sections.length === 0);
+}
+
+function activateNumberTool() {
+    state.numberSyncing = true;
+    [
+        elements.numberBinary,
+        elements.numberOctal,
+        elements.numberDecimal,
+        elements.numberHex,
+    ].forEach((field) => {
+        if (field) field.value = '';
+    });
+    state.numberSyncing = false;
+    setStatus('Ready', false);
+}
+
+function handleNumberInput(base) {
+    if (!isNumberTool(state.currentTool) || state.numberSyncing) return;
+    runNumberConversion(base);
+}
+
+function runNumberConversion(base) {
+    const fieldName = `number${capitalize(base)}`;
+    const field = elements[fieldName];
+    if (!field) return;
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    const value = field.value;
+    if (!value.trim()) {
+        state.numberSyncing = true;
+        [
+            elements.numberBinary,
+            elements.numberOctal,
+            elements.numberDecimal,
+            elements.numberHex,
+        ].forEach((input) => {
+            if (input) input.value = '';
+        });
+        state.numberSyncing = false;
+        setStatus('Cleared');
+        return;
+    }
+    try {
+        const result = convert_number_base(base, value) || {};
+        state.numberSyncing = true;
+        if (typeof result.binary === 'string' && elements.numberBinary) {
+            elements.numberBinary.value = result.binary;
+        }
+        if (typeof result.octal === 'string' && elements.numberOctal) {
+            elements.numberOctal.value = result.octal;
+        }
+        if (typeof result.decimal === 'string' && elements.numberDecimal) {
+            elements.numberDecimal.value = result.decimal;
+        }
+        if (typeof result.hex === 'string' && elements.numberHex) {
+            elements.numberHex.value = result.hex;
+        }
+        state.numberSyncing = false;
+        setStatus('Done', false);
+    } catch (err) {
+        state.numberSyncing = false;
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function activateUnitTool() {
+    clearUnitFields();
+    setStatus('Ready', false);
+}
+
+function handleUnitInput(unitKey) {
+    if (!isUnitTool(state.currentTool) || state.unitSyncing) return;
+    runUnitConversion(unitKey);
+}
+
+function runUnitConversion(unitKey) {
+    const fieldId = `unit${capitalize(unitKey)}`;
+    const field = elements[fieldId];
+    if (!field) return;
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    const value = field.value;
+    if (!value.trim()) {
+        clearUnitFields();
+        setStatus('Cleared');
+        return;
+    }
+    try {
+        const result = convert_units(unitKey, value);
+        const normalized = normalizeMapResult(result);
+        state.unitSyncing = true;
+        unitKeys.forEach((key) => {
+            const target = elements[`unit${capitalize(key)}`];
+            if (target && typeof normalized[key] === 'string') {
+                target.value = normalized[key];
+            }
+        });
+        state.unitSyncing = false;
+        setStatus('Done', false);
+    } catch (err) {
+        state.unitSyncing = false;
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function clearUnitFields() {
+    state.unitSyncing = true;
+    unitKeys.forEach((key) => {
+        const target = elements[`unit${capitalize(key)}`];
+        if (target) target.value = '';
+    });
+    state.unitSyncing = false;
+}
+
+function activateIPv4Tool() {
+    if (elements.ipv4Results) {
+        elements.ipv4Results.innerHTML =
+            '<div class="muted">Enter an IP address (IPv4/IPv6), CIDR block, or range to see details</div>';
+    }
+    if (elements.ipv4Input) {
+        elements.ipv4Input.value = '';
+    }
+    setStatus('Ready', false);
+}
+
+function runIPv4Conversion() {
+    if (!isIPv4Tool(state.currentTool)) return;
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    const value = elements.ipv4Input?.value.trim() || '';
+    if (!value) {
+        if (elements.ipv4Results) {
+            elements.ipv4Results.innerHTML =
+                '<div class="muted">Enter an IP address (IPv4/IPv6), CIDR block, or range to see details</div>';
+        }
+        setStatus('Cleared');
+        return;
+    }
+    try {
+        const data = ipv4_info(value) || {};
+        renderIPv4Results(data);
+        setStatus('Done', false);
+    } catch (err) {
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function renderIPv4Results(data) {
+    if (!elements.ipv4Results) return;
+    const stats = [];
+    const addRow = (label, value) => {
+        if (!value) return;
+        stats.push(renderIPv4Row(label, value));
+    };
+    addRow('Version', data.version);
+    addRow('Type', data.type);
+    addRow('Standard', data.standard);
+    addRow('CIDR', data.cidr);
+    addRow('Mask', data.mask);
+    addRow('Mask (binary)', data.maskBinary);
+    addRow('IPv6 mapped', data.ipv6Mapped);
+    if (data.rangeStart || data.rangeEnd) {
+        addRow('Range', `${data.rangeStart || '?'} → ${data.rangeEnd || '?'}`);
+    }
+    addRow('Network', data.network);
+    addRow('Broadcast', data.broadcast);
+    addRow('Total IPs', data.total);
+    addRow('3-part', data.threePart);
+    addRow('2-part', data.twoPart);
+    addRow('Integer', data.integer);
+    addRow('Expanded', data.expanded);
+    addRow('Compressed', data.compressed);
+    addRow('Binary', data.binary);
+    addRow('Host bits', data.hostBits);
+    if (!stats.length) {
+        elements.ipv4Results.innerHTML = '<div class="muted">Unable to parse input</div>';
+        return;
+    }
+    elements.ipv4Results.innerHTML = `<div class="ipv4-stats">${stats.join('')}</div>`;
+}
+
+function renderIPv4Row(label, value) {
+    const safeLabel = escapeHTML(label || '');
+    const safeValue = escapeHTML(value || '');
+    const attrValue = escapeAttr(value || '');
+    return `
+    <div class="stat">
+      <span>${safeLabel}</span>
+      <span class="click-copy" data-copy-value="${attrValue}">${safeValue}</span>
+    </div>
+  `;
+}
+
+function renderWatermarkControls() {
+    if (!isImageTool(state.currentTool)) return;
+    if (elements.watermarkToggle) {
+        elements.watermarkToggle.checked = Boolean(state.image.watermark.enabled);
+    }
+    const panel = document.getElementById('imageWatermarkControls');
+    if (panel) {
+        if (state.image.watermark.enabled) {
+            panel.classList.remove('hidden');
+        } else {
+            panel.classList.add('hidden');
+        }
+    }
+    if (!state.image.watermark.enabled) {
+        return;
+    }
+    if (elements.watermarkText) {
+        elements.watermarkText.value = state.image.watermark.text || '';
+    }
+    const syncRange = (input, valueEl, value) => {
+        if (input) input.value = String(value);
+        if (valueEl) valueEl.textContent = String(value);
+    };
+    syncRange(
+        elements.watermarkOpacity,
+        elements.watermarkOpacityValue,
+        state.image.watermark.opacity
+    );
+    syncRange(
+        elements.watermarkRotation,
+        elements.watermarkRotationValue,
+        state.image.watermark.rotation
+    );
+    syncRange(
+        elements.watermarkSpacing,
+        elements.watermarkSpacingValue,
+        state.image.watermark.spacing
+    );
+    syncRange(
+        elements.watermarkFontSize,
+        elements.watermarkFontSizeValue,
+        state.image.watermark.fontSize
+    );
+    if (elements.watermarkColor) {
+        elements.watermarkColor.value = state.image.watermark.color || '#ffffff';
+    }
+    if (elements.watermarkDirection && elements.watermarkDirection.forEach) {
+        elements.watermarkDirection.forEach((input) => {
+            input.checked = input.value === state.image.watermark.direction;
+        });
+    }
+}
+
+function handleWatermarkToggle(event) {
+    const enabled = Boolean(event?.target?.checked);
+    state.image.watermark.enabled = enabled;
+    renderWatermarkControls();
+}
+
+function handleWatermarkChange() {
+    if (!state.image.watermark.enabled) return;
+    state.image.watermark.text = elements.watermarkText?.value || state.image.watermark.text;
+    state.image.watermark.color = elements.watermarkColor?.value || state.image.watermark.color;
+    if (elements.watermarkDirection && elements.watermarkDirection.forEach) {
+        elements.watermarkDirection.forEach((input) => {
+            if (input.checked) {
+                state.image.watermark.direction = input.value || state.image.watermark.direction;
+            }
+        });
+    }
+}
+
+function handleWatermarkRangeChange(event) {
+    const target = event.target;
+    if (!target) return;
+    if (!state.image.watermark.enabled) return;
+    const raw = Number(target.value);
+    const value = Number.isFinite(raw) ? raw : 0;
+    switch (target.id) {
+        case 'watermarkOpacity':
+            state.image.watermark.opacity = Math.min(100, Math.max(0, value));
+            if (elements.watermarkOpacityValue) {
+                elements.watermarkOpacityValue.textContent = String(state.image.watermark.opacity);
+            }
+            break;
+        case 'watermarkRotation':
+            state.image.watermark.rotation = Math.min(90, Math.max(-90, value));
+            if (elements.watermarkRotationValue) {
+                elements.watermarkRotationValue.textContent = String(
+                    state.image.watermark.rotation
+                );
+            }
+            break;
+        case 'watermarkSpacing':
+            state.image.watermark.spacing = Math.min(200, Math.max(10, value));
+            if (elements.watermarkSpacingValue) {
+                elements.watermarkSpacingValue.textContent = String(state.image.watermark.spacing);
+            }
+            break;
+        case 'watermarkFontSize':
+            state.image.watermark.fontSize = Math.min(96, Math.max(8, value));
+            if (elements.watermarkFontSizeValue) {
+                elements.watermarkFontSizeValue.textContent = String(
+                    state.image.watermark.fontSize
+                );
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+function buildWatermarkPayload() {
+    if (!state.image.watermark.enabled) {
+        return null;
+    }
+    const text = (elements.watermarkText?.value || state.image.watermark.text || '').trim();
+    if (!text) {
+        throw new Error('Enter watermark text first');
+    }
+    const direction =
+        Array.from(elements.watermarkDirection || []).find((el) => el.checked)?.value ||
+        state.image.watermark.direction ||
+        'both';
+    return {
+        text,
+        opacity: (state.image.watermark.opacity || 0) / 100,
+        rotationDeg: state.image.watermark.rotation || 0,
+        spacing: state.image.watermark.spacing || 32,
+        fontSize: state.image.watermark.fontSize || 32,
+        color: elements.watermarkColor?.value || state.image.watermark.color || '#ffffff',
+        direction,
+    };
+}
+
+// Image converter: reads uploads, calls wasm for transcoding, and keeps preview/download in sync.
+function activateImageTool() {
+    renderImageFormatSelect();
+    renderImageOptions(state.image.targetFormat || 'webp');
+    renderWatermarkControls();
+    renderImageInputMeta();
+    renderImageOriginalPreview();
+    renderImageOutput(state.image.result);
+    renderImageError('');
+    renderImageBatchList();
+    renderImageProgress();
+    setStatus('Ready', false);
+}
+
+async function handleImageFileChange(event) {
+    const files = Array.from(event?.target?.files || []);
+    if (!files.length) {
+        resetImageState();
+        renderImageInputMeta();
+        renderImageOriginalPreview();
+        renderImageOutput(null);
+        renderImageBatchList();
+        renderImageProgress();
+        return;
+    }
+    try {
+        const loaded = await Promise.all(
+            files.map(async (file) => {
+                const buffer = await file.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                return {
+                    name: file.name,
+                    size: file.size,
+                    bytes,
+                    detectedFormat: detectImageFormat(bytes, file.name),
+                    result: null,
+                    error: '',
+                };
+            })
+        );
+        state.image.files = loaded;
+        const first = loaded[0];
+        state.image.fileBytes = first.bytes;
+        state.image.fileName = first.name;
+        state.image.fileSize = first.size;
+        state.image.detectedFormat = first.detectedFormat || state.image.detectedFormat;
+        state.image.result = null;
+        state.image.batchResults = [];
+        state.image.progress = { completed: 0, total: loaded.length };
+        renderImageInputMeta();
+        renderImageOriginalPreview();
+        renderImageOptions(state.image.targetFormat || elements.imageTargetFormat?.value || 'webp');
+        renderImageOutput(null);
+        renderImageBatchList();
+        renderImageProgress();
+        setStatus('Images loaded', false);
+    } catch (err) {
+        console.error(err);
+        renderImageError(err?.message || String(err));
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function renderImageFormatSelect() {
+    if (!elements.imageTargetFormat) return;
+    if (!elements.imageTargetFormat.options.length) {
+        elements.imageTargetFormat.innerHTML = imageFormats
+            .map(
+                (fmt) =>
+                    `<option value="${fmt}">${imageFormatLabels[fmt] || fmt.toUpperCase()}</option>`
+            )
+            .join('');
+    }
+    const next = state.image.targetFormat || elements.imageTargetFormat.value || 'webp';
+    elements.imageTargetFormat.value = next;
+    renderImageOptions(next);
+}
+
+function renderImageInputMeta() {
+    if (!elements.imageInputMeta) return;
+    if (!(state.image.files && state.image.files.length)) {
+        elements.imageInputMeta.textContent = 'No image selected';
+        if (elements.imageConvert) elements.imageConvert.setAttribute('disabled', 'disabled');
+        if (elements.imageDownload) elements.imageDownload.setAttribute('disabled', 'disabled');
+        return;
+    }
+    if (state.image.files.length === 1) {
+        const format = (state.image.detectedFormat || '').toUpperCase() || 'UNKNOWN';
+        const sizeLabel = formatByteSize(state.image.fileSize || state.image.fileBytes.length);
+        const name = state.image.fileName || 'Image';
+        elements.imageInputMeta.textContent = `${name} • ${sizeLabel} • ${format}`;
+    } else {
+        const totalSize = state.image.files.reduce((sum, f) => sum + (f.size || 0), 0);
+        elements.imageInputMeta.textContent = `${state.image.files.length} files • ${formatByteSize(
+            totalSize
+        )}`;
+    }
+    if (elements.imageConvert) elements.imageConvert.removeAttribute('disabled');
+}
+
+function renderImageOriginalPreview() {
+    if (!elements.imageOriginalPreview) return;
+    if (state.image.previewUrl) {
+        URL.revokeObjectURL(state.image.previewUrl);
+        state.image.previewUrl = '';
+    }
+    if (!(state.image.fileBytes && state.image.fileBytes.length)) {
+        elements.imageOriginalPreview.innerHTML =
+            '<div class="muted">Select an image to preview</div>';
+        return;
+    }
+    const blob = new Blob([state.image.fileBytes], {
+        type: imageMimeFromFormat(state.image.detectedFormat) || 'application/octet-stream',
+    });
+    const url = URL.createObjectURL(blob);
+    state.image.previewUrl = url;
+    elements.imageOriginalPreview.innerHTML = `<img src="${escapeAttr(
+        url
+    )}" alt="Selected image preview" loading="lazy" />`;
+}
+
+function renderImageOutput(result) {
+    const target =
+        result ||
+        state.image.result ||
+        (state.image.batchResults || []).find((item) => item?.result)?.result;
+    if (!elements.imageOutputPreview) return;
+    if (!target || !target.dataUrl) {
+        elements.imageOutputPreview.innerHTML =
+            '<div class="muted">Run a conversion to see the result</div>';
+        if (elements.imageOutputMeta) elements.imageOutputMeta.textContent = '';
+        if (elements.imageDownload) elements.imageDownload.setAttribute('disabled', 'disabled');
+        return;
+    }
+    elements.imageOutputPreview.innerHTML = `<img src="${escapeAttr(
+        target.dataUrl
+    )}" alt="Converted preview" loading="lazy" />`;
+    if (elements.imageOutputMeta) {
+        const bits = [];
+        if (target.width && target.height) {
+            bits.push(`${target.width} × ${target.height}`);
+        }
+        if (target.mime) bits.push(target.mime);
+        if (target.downloadName) bits.push(target.downloadName);
+        elements.imageOutputMeta.textContent = bits.join(' · ');
+    }
+    if (elements.imageDownload) elements.imageDownload.removeAttribute('disabled');
+    if (elements.imageError) elements.imageError.textContent = '';
+}
+
+function renderImageError(message) {
+    if (elements.imageError) {
+        elements.imageError.textContent = message || '';
+    }
+}
+
+// Renders the per-file batch queue so users can download individual outputs.
+function renderImageBatchList() {
+    if (!elements.imageBatchList) return;
+    const items = state.image.batchResults || [];
+    if (!state.image.files.length) {
+        elements.imageBatchList.innerHTML =
+            '<div class="muted">Select images to build a conversion queue.</div>';
+        return;
+    }
+    if (!items.length) {
+        elements.imageBatchList.innerHTML =
+            '<div class="muted">Ready to convert. Click Convert to start the batch.</div>';
+        return;
+    }
+    elements.imageBatchList.innerHTML = items
+        .map((item, idx) => {
+            const name = escapeHTML(item.fileName || `File #${idx + 1}`);
+            if (item.error) {
+                return `<div class="image-batch-item">
+  <div>
+    <div>${name}</div>
+    <div class="image-batch-meta">Error</div>
+  </div>
+  <div class="image-batch-actions"></div>
+  <div class="image-batch-error">⚠️ ${escapeHTML(item.error)}</div>
+</div>`;
+            }
+            const res = item.result || {};
+            const metaBits = [];
+            if (res.format) metaBits.push(res.format.toUpperCase());
+            if (res.mime) metaBits.push(res.mime);
+            return `<div class="image-batch-item">
+  <div>
+    <div>${name}</div>
+    <div class="image-batch-meta">${metaBits.join(' · ') || 'Converted'}</div>
+  </div>
+  <div class="image-batch-actions">
+    <button class="ghost-btn" data-image-download="${idx}" ${
+        res.dataUrl ? '' : 'disabled'
+    }>Download</button>
+  </div>
+</div>`;
+        })
+        .join('');
+}
+
+function renderImageProgress() {
+    if (!elements.imageProgressFill || !elements.imageProgressLabel) return;
+    const { completed = 0, total = 0 } = state.image.progress || {};
+    const percent = total ? Math.min(100, Math.round((completed / total) * 100)) : 0;
+    elements.imageProgressFill.style.width = `${percent}%`;
+    elements.imageProgressLabel.textContent = `${completed} / ${total}`;
+}
+
+function resetImageState() {
+    if (state.image.previewUrl) {
+        URL.revokeObjectURL(state.image.previewUrl);
+    }
+    state.image.previewUrl = '';
+    state.image.files = [];
+    state.image.fileBytes = null;
+    state.image.fileName = '';
+    state.image.fileSize = 0;
+    state.image.detectedFormat = '';
+    state.image.result = null;
+    state.image.batchResults = [];
+    state.image.progress = { completed: 0, total: 0 };
+}
+
+function renderImageOptions(format) {
+    if (!elements.imageOptions) return;
+    const normalizedFormat = (format || elements.imageTargetFormat?.value || 'webp')
+        .toString()
+        .trim()
+        .toLowerCase();
+    const detectedSource =
+        normalizeImageExt(state.image.detectedFormat) ||
+        normalizeImageExt(state.image.files?.[0]?.detectedFormat || '');
+    const effectiveFormat =
+        normalizedFormat === 'original' ? detectedSource || 'png' : normalizedFormat;
+    const specs = imageFormatOptions[effectiveFormat] || [];
+    const existing = state.image.optionsByFormat[effectiveFormat] || {};
+    const opts = { ...existing };
+    specs.forEach((spec) => {
+        if (spec.type === 'note') return;
+        if (opts[spec.key] === undefined && spec.defaultValue !== undefined) {
+            opts[spec.key] = spec.defaultValue;
+        }
+    });
+    state.image.optionsByFormat[effectiveFormat] = opts;
+    if (!specs.length) {
+        elements.imageOptions.innerHTML =
+            '<div class="image-option-note">No adjustable options for this format.</div>';
+        return;
+    }
+    elements.imageOptions.innerHTML = specs
+        .map((spec) => {
+            if (spec.type === 'note') {
+                return `<div class="image-option-note">${escapeHTML(spec.text || '')}</div>`;
+            }
+            const value = opts[spec.key] ?? spec.defaultValue ?? '';
+            if (spec.type === 'checkbox') {
+                const checked = value ? 'checked' : '';
+                return `<label>
+                    <span>${escapeHTML(spec.label || spec.key)}</span>
+                    <input type="checkbox" data-image-opt="${spec.key}" ${checked} />
+                </label>`;
+            }
+            // For range inputs, add a wrapper with value display
+            if (spec.type === 'range') {
+                return `<label>
+                    <span>${escapeHTML(spec.label || spec.key)}${spec.hint ? ` — ${escapeHTML(spec.hint)}` : ''}</span>
+                    <div class="range-input-wrapper">
+                        <input type="range" data-image-opt="${spec.key}" min="${spec.min ?? ''}" max="${spec.max ?? ''}" value="${escapeAttr(value)}" />
+                        <span class="range-value">${escapeAttr(value)}</span>
+                    </div>
+                </label>`;
+            }
+            return `<label>
+                <span>${escapeHTML(spec.label || spec.key)}${spec.hint ? ` — ${escapeHTML(spec.hint)}` : ''}</span>
+                <input type="${spec.type}" data-image-opt="${spec.key}" min="${spec.min ?? ''}" max="${spec.max ?? ''}" value="${escapeAttr(value)}" />
+            </label>`;
+        })
+        .join('');
+    elements.imageOptions.querySelectorAll('[data-image-opt]').forEach((input) => {
+        input.addEventListener('input', handleImageOptionChange);
+        input.addEventListener('change', handleImageOptionChange);
+    });
+}
+
+function handleImageOptionChange(event) {
+    const key = event.target?.dataset?.imageOpt;
+    if (!key) return;
+    const format = (state.image.targetFormat || elements.imageTargetFormat?.value || 'webp')
+        .toString()
+        .trim()
+        .toLowerCase();
+    const detectedSource =
+        normalizeImageExt(state.image.detectedFormat) ||
+        normalizeImageExt(state.image.files?.[0]?.detectedFormat || '');
+    const effectiveFormat = format === 'original' ? detectedSource || 'png' : format;
+    const current = { ...(state.image.optionsByFormat[effectiveFormat] || {}) };
+    if (event.target.type === 'checkbox') {
+        current[key] = Boolean(event.target.checked);
+    } else {
+        const num = Number(event.target.value);
+        current[key] = Number.isFinite(num) ? num : event.target.value;
+        // Update the range value display if this is a range input
+        if (event.target.type === 'range') {
+            const valueDisplay = event.target.parentElement?.querySelector('.range-value');
+            if (valueDisplay) {
+                valueDisplay.textContent = event.target.value;
+            }
+        }
+    }
+    state.image.optionsByFormat[effectiveFormat] = current;
+}
+
+function handleImageConvert() {
+    if (!isImageTool(state.currentTool)) {
+        setStatus('Select the Image Converter tool', true);
+        return;
+    }
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    const files = state.image.files && state.image.files.length ? state.image.files : [];
+    if (!files.length) {
+        setStatus('Select an image before converting', true);
+        return;
+    }
+    const target = elements.imageTargetFormat?.value || state.image.targetFormat || 'webp';
+    state.image.targetFormat = (target || '').toString().trim().toLowerCase();
+    const applyWatermark = Boolean(state.image.watermark.enabled);
+    let watermark = null;
+    if (applyWatermark) {
+        try {
+            watermark = buildWatermarkPayload();
+        } catch (err) {
+            setStatus(err?.message || 'Watermark configuration invalid', true);
+            return;
+        }
+    }
+    try {
+        state.image.progress = { completed: 0, total: files.length };
+        renderImageProgress();
+        setStatus(applyWatermark ? 'Applying watermark...' : 'Converting images...', false);
+        // Build batch payload so the wasm helper can process files in one call.
+        const payload = files.map((file) => {
+            const detected =
+                detectImageFormat(file.bytes, file.name) || file.detectedFormat || 'png';
+            const to =
+                state.image.targetFormat === 'original' ? 'original' : state.image.targetFormat;
+            const formatForOptions = to === 'original' ? detected : to;
+            const options = state.image.optionsByFormat[formatForOptions] || {};
+            const base = {
+                from: detected,
+                to,
+                bytes: file.bytes,
+                fileName: file.name,
+                options,
+            };
+            return applyWatermark ? { ...base, watermark } : base;
+        });
+        const raw = applyWatermark
+            ? apply_image_watermark_batch(payload)
+            : convert_image_format_batch(payload);
+        const items = Array.isArray(raw) ? raw : [];
+        const normalized = items.map(normalizeBatchImageResult);
+        state.image.batchResults = normalized;
+        state.image.progress = { completed: normalized.length, total: files.length };
+        // Keep single-file preview behavior by caching the first successful result.
+        const firstResult = normalized.find((item) => item.result)?.result;
+        if (firstResult) {
+            state.image.result = firstResult;
+            renderImageOutput(firstResult);
+        }
+        renderImageBatchList();
+        renderImageProgress();
+        const failures = normalized.filter((item) => item.error).length;
+        const success = normalized.length - failures;
+        setStatus(
+            failures
+                ? `Converted ${success}/${normalized.length} (some errors)`
+                : 'Batch converted',
+            Boolean(failures)
+        );
+    } catch (err) {
+        console.error(err);
+        renderImageError(err?.message || String(err));
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function handleImageDownload() {
+    if (!isImageTool(state.currentTool)) {
+        setStatus('Select the Image Converter tool', true);
+        return;
+    }
+    const result = state.image.result;
+    if (!result || !result.dataUrl) {
+        setStatus('No converted image to download', true);
+        return;
+    }
+    const link = document.createElement('a');
+    link.href = result.dataUrl;
+    link.download = result.downloadName || `converted.${result.format || 'png'}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setStatus('Download ready', false);
+}
+
+// Allows downloading individual items from the batch queue.
+function handleImageBatchListClick(event) {
+    const button = event.target.closest('[data-image-download]');
+    if (!button) return;
+    const idx = Number(button.dataset.imageDownload);
+    const item = (state.image.batchResults || [])[idx];
+    if (!item || !item.result || !item.result.dataUrl) {
+        setStatus('No converted image to download', true);
+        return;
+    }
+    const res = item.result;
+    const link = document.createElement('a');
+    link.href = res.dataUrl;
+    link.download = res.downloadName || `converted.${res.format || 'png'}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setStatus(`Downloaded ${res.downloadName || 'image'}`, false);
+}
+
+function normalizeImageResult(result) {
+    const base = normalizeMapResult(result);
+    const source = Object.keys(base).length ? base : result || {};
+    const format = (source.format || source.Format || '').toString() || 'png';
+    return {
+        format,
+        mime: source.mime || source.Mime || '',
+        width: Number(source.width ?? source.Width ?? 0) || 0,
+        height: Number(source.height ?? source.Height ?? 0) || 0,
+        dataBase64: source.data_base64 || source.dataBase64 || '',
+        dataUrl: source.data_url || source.dataUrl || '',
+        downloadName: source.download_name || source.downloadName || `converted.${format}`,
+    };
+}
+
+function normalizeBatchImageResult(entry) {
+    const fileName = entry?.file_name || entry?.fileName || '';
+    const error = entry?.error || null;
+    const result = entry?.result ? normalizeImageResult(entry.result) : null;
+    return { fileName, error, result };
+}
+
+function detectImageFormat(bytes, filename = '') {
+    const ext = normalizeImageExt(filename.split('.').pop() || '');
+    const magic = detectImageMagic(bytes);
+    return magic || ext;
+}
+
+function normalizeImageExt(ext) {
+    const lower = (ext || '').toLowerCase();
+    switch (lower) {
+        case 'jpg':
+        case 'jpeg':
+            return 'jpg';
+        case 'png':
+            return 'png';
+        case 'webp':
+            return 'webp';
+        case 'avif':
+            return 'avif';
+        default:
+            return '';
+    }
+}
+
+function detectImageMagic(bytes) {
+    if (!(bytes && bytes.length)) return '';
+    // PNG signature: 89 50 4E 47 0D 0A 1A 0A
+    if (
+        bytes[0] === 0x89 &&
+        bytes[1] === 0x50 &&
+        bytes[2] === 0x4e &&
+        bytes[3] === 0x47 &&
+        bytes[4] === 0x0d &&
+        bytes[5] === 0x0a &&
+        bytes[6] === 0x1a &&
+        bytes[7] === 0x0a
+    ) {
+        return 'png';
+    }
+    // JPEG starts with FF D8.
+    if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+        return 'jpg';
+    }
+    if (bytes.length > 12) {
+        const riff = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+        const webp = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+        if (riff === 'RIFF' && webp === 'WEBP') {
+            return 'webp';
+        }
+        const box = String.fromCharCode(bytes[4], bytes[5], bytes[6], bytes[7]);
+        const brand = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+        if (box === 'ftyp') {
+            if (['avif', 'avis', 'mif1', 'mvif'].includes(brand)) {
+                return 'avif';
+            }
+        }
+    }
+    return '';
+}
+
+function imageMimeFromFormat(format) {
+    switch ((format || '').toLowerCase()) {
+        case 'png':
+            return 'image/png';
+        case 'jpg':
+        case 'jpeg':
+            return 'image/jpeg';
+        case 'webp':
+            return 'image/webp';
+        case 'avif':
+            return 'image/avif';
+        default:
+            return '';
+    }
+}
+
+function formatByteSize(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let value = bytes;
+    let idx = 0;
+    while (value >= 1024 && idx < units.length - 1) {
+        value /= 1024;
+        idx += 1;
+    }
+    const rounded = value >= 10 || value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
+    return `${rounded} ${units[idx]}`;
+}
+
+function activateUUIDTool() {
+    state.uuidUppercase = false;
+    if (elements.uuidToggleCase) {
+        elements.uuidToggleCase.dataset.upper = 'false';
+    }
+    if (!state.wasmReady) {
+        if (elements.uuidList) {
+            elements.uuidList.innerHTML = '<div class="muted">Waiting for WebAssembly...</div>';
+        }
+        return;
+    }
+    refreshUUIDs(true);
+}
+
+function refreshUUIDs(force = false) {
+    if (!isUUIDTool(state.currentTool) || !state.wasmReady) return;
+    if (!force && Object.keys(state.currentUUIDs).length) {
+        renderUUIDs();
+        return;
+    }
+    try {
+        const result = generate_uuids();
+        state.currentUUIDs = normalizeUuidResult(result);
+        renderUUIDs();
+        setStatus('Generated new UUIDs', false);
+    } catch (err) {
+        console.error(err);
+        setStatus(`⚠️ ${err.message}`, true);
+    }
+}
+
+/**
+ * Renders the UUID list with click-to-copy functionality for entire rows.
+ * Each UUID row is clickable to copy the UUID value to clipboard.
+ */
+function renderUUIDs() {
+    if (!elements.uuidList) return;
+    const entries = [];
+    const seen = new Set();
+    uuidDisplayOrder.forEach((key) => {
+        if (state.currentUUIDs[key]) {
+            entries.push([key, state.currentUUIDs[key]]);
+            seen.add(key);
+        }
+    });
+    Object.keys(state.currentUUIDs).forEach((key) => {
+        if (!seen.has(key)) {
+            entries.push([key, state.currentUUIDs[key]]);
+        }
+    });
+    if (!entries.length) {
+        elements.uuidList.innerHTML = '<div class="muted">No UUIDs generated yet</div>';
+        return;
+    }
+    // Generate HTML rows without copy buttons - entire row is clickable
+    const rows = entries
+        .map(([version, value]) => {
+            const display = state.uuidUppercase ? value.toUpperCase() : value.toLowerCase();
+            const label = uuidDisplayLabels[version] || version.toUpperCase();
+            return `
+        <div class="uuid-row" data-value="${escapeAttr(display)}" data-label="${escapeAttr(label)}">
+          <span>${label}</span>
+          <code>${escapeHTML(display)}</code>
+        </div>
+      `;
+        })
+        .join('');
+    elements.uuidList.innerHTML = rows;
+    // Attach click event to entire row for copy functionality
+    elements.uuidList.querySelectorAll('.uuid-row').forEach((row) => {
+        row.addEventListener('click', () => {
+            const value = row.dataset.value || '';
+            const label = row.dataset.label || 'UUID';
+            if (!value) return;
+            copyText(value, label);
+        });
+        // Add cursor pointer to indicate clickable
+        row.style.cursor = 'pointer';
+    });
+}
+
+function activateUserAgentTool() {
+    state.currentBrowserFilter = elements.uaBrowser?.value || '';
+    state.currentOSFilter = elements.uaOS?.value || '';
+    if (!state.wasmReady) {
+        if (elements.uaResults) {
+            elements.uaResults.innerHTML =
+                '<div class="ua-placeholder">Waiting for WebAssembly...</div>';
+        }
+        return;
+    }
+    refreshUserAgents(true);
+}
+
+function refreshUserAgents(force = false) {
+    if (!isUserAgentTool(state.currentTool) || !state.wasmReady) return;
+    const browser = elements.uaBrowser?.value || '';
+    const os = elements.uaOS?.value || '';
+    const sameFilters = browser === state.currentBrowserFilter && os === state.currentOSFilter;
+    if (!force && sameFilters && state.currentUserAgents.length) {
+        renderUserAgents(state.currentUserAgents);
+        return;
+    }
+    state.currentBrowserFilter = browser;
+    state.currentOSFilter = os;
+    try {
+        const list = generate_user_agents(browser, os);
+        state.currentUserAgents = Array.isArray(list) ? list : [];
+        renderUserAgents(state.currentUserAgents);
+        setStatus('Generated user agents', false);
+    } catch (err) {
+        console.error(err);
+        setStatus(`⚠️ ${err.message}`, true);
+    }
+}
+
+/**
+ * Renders user agent list with improved UI structure and click-to-copy functionality.
+ */
+function renderUserAgents(list) {
+    if (!elements.uaResults) return;
+
+    const count = list.length || 0;
+
+    // Update count badge
+    if (elements.uaCount) {
+        if (count > 0) {
+            elements.uaCount.textContent = `${count} ${count === 1 ? 'agent' : 'agents'}`;
+        } else {
+            elements.uaCount.textContent = '';
+        }
+    }
+
+    if (!list.length) {
+        elements.uaResults.innerHTML =
+            '<div class="ua-placeholder">No user agents found for the selected filters</div>';
+        return;
+    }
+
+    const cards = list
+        .map((entry) => {
+            const browserName = entry.browserName || 'Unknown';
+            const browserVersion = entry.browserVersion || '';
+            const osName = entry.osName || 'Unknown';
+            const osVersion = entry.osVersion || '';
+            const engineName = entry.engineName || 'Unknown';
+            const engineVersion = entry.engineVersion || '';
+            const browserText = browserVersion ? `${browserName} ${browserVersion}` : browserName;
+            const osText = osVersion ? `${osName} ${osVersion}` : osName;
+            const engineText = engineVersion ? `${engineName} ${engineVersion}` : engineName;
+            const ua = entry.userAgent || '';
+            return `
+        <div class="ua-card" data-ua="${escapeAttr(ua)}" title="Click to copy">
+          <code>${escapeHTML(ua)}</code>
+          <div class="ua-meta">
+            <span><strong>Browser:</strong> ${escapeHTML(browserText)}</span>
+            <span><strong>OS:</strong> ${escapeHTML(osText)}</span>
+            <span><strong>Engine:</strong> ${escapeHTML(engineText)}</span>
+          </div>
+        </div>
+      `;
+        })
+        .join('');
+    elements.uaResults.innerHTML = cards;
+
+    // Add click handlers for copying user agents
+    elements.uaResults.querySelectorAll('.ua-card').forEach((card) => {
+        card.addEventListener('click', () => {
+            const value = card.dataset.ua || '';
+            if (!value) return;
+            copyText(value, 'user agent');
+        });
+    });
+}
+
+// Fingerprint workspace: collect passive browser/device signals (no external calls or permissions).
+function activateFingerprintTool() {
+    refreshFingerprint(true);
+}
+
+function refreshFingerprint(silent = false) {
+    if (!isFingerprintTool(state.currentTool)) return;
+    const facts = collectFingerprintFacts();
+    state.fingerprintFacts = facts;
+    renderFingerprintFacts(facts);
+    runFingerprintAsyncEnrichments();
+    if (!silent) setStatus('Fingerprint refreshed', false);
+}
+
+function collectFingerprintFacts() {
+    const facts = [];
+    const add = (group, label, value) => {
+        if (value === undefined || value === null || value === '') return;
+        facts.push({ group, label, value: String(value) });
+    };
+    // Categories roughly mirror how the UI nests the list for readability.
+    const nav = typeof navigator !== 'undefined' ? navigator : {};
+    const uaData = nav.userAgentData;
+    // Identity & Browser
+    add('Identity', 'User-Agent', nav.userAgent || '');
+    add(
+        'Identity',
+        'UA-CH Brands',
+        uaData?.brands?.map((b) => `${b.brand} ${b.version}`).join(', ')
+    );
+    add('Identity', 'UA-CH Mobile', uaData?.mobile);
+    add('Identity', 'UA-CH Platform', uaData?.platform || '');
+    add('Identity', 'Platform', nav.platform || '');
+    add('Identity', 'Vendor', nav.vendor || '');
+    add('Identity', 'Product', nav.product || '');
+    add('Identity', 'App Version', nav.appVersion || '');
+    add('Identity', 'WebDriver', nav.webdriver === true ? 'Yes' : 'No');
+    add('Identity', 'On Line', nav.onLine === false ? 'No' : 'Yes');
+    add(
+        'Identity',
+        'Window Properties',
+        typeof window !== 'undefined' ? Object.getOwnPropertyNames(window).length : ''
+    );
+    const stackProbe = (() => {
+        try {
+            throw new Error('fp-stack-probe');
+        } catch (err) {
+            const msg = typeof err?.stack === 'string' ? err.stack.split('\n')[1]?.trim() : '';
+            return msg || err?.message || '';
+        }
+    })();
+    add('Identity', 'Error Stack Sig', stackProbe);
+    add('Identity', 'WebDriver', nav.webdriver === true ? 'Yes' : 'No');
+    add('Identity', 'On Line', nav.onLine === false ? 'No' : 'Yes');
+
+    // Locale / Time
+    const langList = Array.isArray(nav.languages) ? nav.languages : [];
+    add('Locale & Time', 'Primary Language', nav.language || '');
+    add('Locale & Time', 'Languages', langList.join(', '));
+    const tz = Intl?.DateTimeFormat?.().resolvedOptions?.().timeZone;
+    if (tz) add('Locale & Time', 'Time Zone', tz);
+    const offset = formatTimezoneOffset(new Date().getTimezoneOffset());
+    add('Locale & Time', 'UTC Offset', offset);
+    add('Locale & Time', 'Calendar', Intl?.DateTimeFormat?.().resolvedOptions?.().calendar || '');
+    add(
+        'Locale & Time',
+        'Numbering System',
+        Intl?.DateTimeFormat?.().resolvedOptions?.().numberingSystem || ''
+    );
+    add('Locale & Time', 'Calendar', Intl?.DateTimeFormat?.().resolvedOptions?.().calendar || '');
+    add(
+        'Locale & Time',
+        'Numbering System',
+        Intl?.DateTimeFormat?.().resolvedOptions?.().numberingSystem || ''
+    );
+
+    // Hardware
+    if (typeof nav.hardwareConcurrency === 'number') {
+        add('Hardware', 'Logical CPUs', nav.hardwareConcurrency);
+    }
+    if (typeof nav.deviceMemory === 'number') {
+        add('Hardware', 'Device Memory', `${nav.deviceMemory} GB`);
+    }
+    add('Hardware', 'Max Touch Points', nav.maxTouchPoints ?? '');
+    if (typeof window !== 'undefined') {
+        add('Hardware', 'Device Pixel Ratio', window.devicePixelRatio || '');
+    }
+    add('Hardware', 'WebDriver', nav.webdriver === true ? 'Yes' : 'No');
+
+    // Screen
+    const screenObj = typeof window !== 'undefined' ? window.screen : null;
+    if (screenObj) {
+        add('Screen', 'Size', `${screenObj.width} × ${screenObj.height}`);
+        add('Screen', 'Available', `${screenObj.availWidth} × ${screenObj.availHeight}`);
+        add('Screen', 'Color Depth', `${screenObj.colorDepth}-bit`);
+        if (screenObj.orientation?.type) {
+            add('Screen', 'Orientation', screenObj.orientation.type);
+            if (typeof screenObj.orientation.angle === 'number') {
+                add('Screen', 'Orientation Angle', `${screenObj.orientation.angle}°`);
+            }
+        }
+        if (typeof screenObj.pixelDepth === 'number') {
+            add('Screen', 'Pixel Depth', `${screenObj.pixelDepth}-bit`);
+        }
+    }
+    if (typeof window !== 'undefined') {
+        add('Screen', 'Inner Size', `${window.innerWidth} × ${window.innerHeight}`);
+        add('Screen', 'Outer Size', `${window.outerWidth} × ${window.outerHeight}`);
+        const scrollbar =
+            window.innerWidth && document?.documentElement?.clientWidth
+                ? window.innerWidth - document.documentElement.clientWidth
+                : '';
+        if (scrollbar !== '') add('Screen', 'Scrollbar Width', `${scrollbar}px`);
+    }
+
+    // Storage / Capabilities
+    add('Capabilities', 'Cookies Enabled', nav.cookieEnabled ? 'Yes' : 'No');
+    add('Capabilities', 'LocalStorage', storageAvailable('localStorage') ? 'Yes' : 'No');
+    add('Capabilities', 'SessionStorage', storageAvailable('sessionStorage') ? 'Yes' : 'No');
+    add('Capabilities', 'IndexedDB', 'indexedDB' in window ? 'Yes' : 'No');
+    add('Capabilities', 'Service Worker', 'serviceWorker' in navigator ? 'Yes' : 'No');
+    add(
+        'Capabilities',
+        'Notifications',
+        typeof Notification !== 'undefined' ? Notification.permission : 'Unavailable'
+    );
+    add(
+        'Capabilities',
+        'PDF Viewer Plugins',
+        typeof nav.plugins?.length === 'number' ? nav.plugins.length : ''
+    );
+    add('Capabilities', 'Save-Data', nav.connection?.saveData ? 'Yes' : 'No');
+    add('Capabilities', 'Clipboard API', 'clipboard' in navigator ? 'Yes' : 'No');
+    add('Capabilities', 'Gamepad API', navigator.getGamepads ? 'Yes' : 'No');
+    add('Capabilities', 'MediaDevices', navigator.mediaDevices ? 'Yes' : 'No');
+    add('Capabilities', 'share()', typeof navigator.share === 'function' ? 'Yes' : 'No');
+    add('Capabilities', 'canShare()', typeof navigator.canShare === 'function' ? 'Yes' : 'No');
+    add(
+        'Capabilities',
+        'Protocol Handler',
+        typeof navigator.registerProtocolHandler === 'function' ? 'Yes' : 'No'
+    );
+    add(
+        'Capabilities',
+        'Content Handler',
+        typeof navigator.registerContentHandler === 'function' ? 'Yes' : 'No'
+    );
+    add(
+        'Capabilities',
+        'Storage Access API',
+        typeof document?.hasStorageAccess === 'function' ? 'Yes' : 'No'
+    );
+    add('Capabilities', 'Cache API', typeof caches !== 'undefined' ? 'Yes' : 'No');
+    add(
+        'Capabilities',
+        'Secure Context',
+        typeof window !== 'undefined' && window.isSecureContext ? 'Yes' : 'No'
+    );
+
+    // Network
+    const connection = nav.connection || nav.mozConnection || nav.webkitConnection || null;
+    if (connection) {
+        add('Network', 'Effective Type', connection.effectiveType || '');
+        if (typeof connection.downlink === 'number') {
+            add('Network', 'Downlink', `${connection.downlink} Mb/s`);
+        }
+        if (typeof connection.rtt === 'number') {
+            add('Network', 'RTT', `${connection.rtt} ms`);
+        }
+        if (typeof connection.downlinkMax === 'number') {
+            add('Network', 'Downlink Max', `${connection.downlinkMax} Mb/s`);
+        }
+    }
+
+    // Graphics
+    const webgl = getWebGLInfo();
+    add('Graphics', 'WebGL Vendor', webgl.vendor || '');
+    add('Graphics', 'WebGL Renderer', webgl.renderer || '');
+    add('Graphics', 'WebGL Version', webgl.version || '');
+    if (webgl.extensions) {
+        add(
+            'Graphics',
+            'WebGL Extensions',
+            webgl.extensions.slice(0, 6).join(', ') + (webgl.extensions.length > 6 ? ' …' : '')
+        );
+    }
+    if (webgl.limits) {
+        add('Graphics', 'Max Texture Size', webgl.limits.maxTextureSize);
+        add('Graphics', 'Max Vertex Attribs', webgl.limits.maxVertexAttribs);
+    }
+    const canvasHash = generateCanvasHash();
+    if (canvasHash) add('Graphics', 'Canvas Fingerprint', canvasHash);
+    const audioInfo = getAudioContextInfo();
+    add('Graphics', 'AudioContext', audioInfo.context);
+    add('Graphics', 'Audio Hash', audioInfo.hash);
+    add(
+        'Graphics',
+        'PointerEvent Support',
+        typeof window !== 'undefined' && 'PointerEvent' in window ? 'Yes' : 'No'
+    );
+
+    // Performance
+    const perf = typeof performance !== 'undefined' ? performance : null;
+    if (perf?.memory) {
+        add('Performance', 'JS Heap Limit', formatBytes(perf.memory.jsHeapSizeLimit));
+        add('Performance', 'JS Heap Used', formatBytes(perf.memory.usedJSHeapSize));
+    }
+    const resolution = measureTimeResolution();
+    if (resolution) add('Performance', 'Timer Resolution', resolution);
+
+    const media = detectMediaFeatures();
+    Object.entries(media).forEach(([key, value]) => add('Media Queries', key, value));
+
+    const feature = detectFeatureSupport();
+    Object.entries(feature).forEach(([key, value]) => add('Feature Support', key, value));
+
+    // Authentication / Security
+    add(
+        'Auth',
+        'WebAuthn',
+        typeof window !== 'undefined' && 'PublicKeyCredential' in window ? 'Yes' : 'No'
+    );
+
+    // XR placeholder; async probe will refine.
+    add('XR', 'WebXR', typeof navigator !== 'undefined' && 'xr' in navigator ? 'Probing…' : 'No');
+
+    // WebGPU placeholder; async probe will refine.
+    add(
+        'Graphics',
+        'WebGPU',
+        typeof navigator !== 'undefined' && navigator.gpu ? 'Probing…' : 'No'
+    );
+
+    return dedupeFacts(facts);
+}
+
+/**
+ * Renders fingerprint facts with improved UI structure including group counts and click-to-copy.
+ */
+function renderFingerprintFacts(facts = []) {
+    const total = facts.length || 0;
+
+    // Update summary
+    if (elements.fingerprintSummary) {
+        const summaryText = elements.fingerprintSummary.querySelector('.fingerprint-summary-text');
+        if (summaryText) {
+            summaryText.textContent = total ? 'Fingerprint data collected' : 'No data available';
+        }
+    }
+
+    // Update count badge
+    if (elements.fingerprintCount) {
+        elements.fingerprintCount.textContent = total ? `${total} signals` : '';
+    }
+
+    // Show/hide Copy All button
+    if (elements.fingerprintCopyAll) {
+        elements.fingerprintCopyAll.style.display = total > 0 ? 'inline-flex' : 'none';
+    }
+
+    if (!elements.fingerprintGrid) return;
+    if (!facts.length) {
+        elements.fingerprintGrid.innerHTML = '<div class="muted">No data detected.</div>';
+        return;
+    }
+
+    // Store facts for search functionality
+    state.fingerprintFacts = facts;
+
+    // Group facts by category
+    const groups = facts.reduce((acc, fact) => {
+        const key = fact.group || 'Other';
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(fact);
+        return acc;
+    }, {});
+
+    // Render sections with improved structure
+    const sections = Object.keys(groups)
+        .sort()
+        .map((group) => {
+            const items = groups[group]
+                .map((entry) => {
+                    const label = escapeHTML(entry.label || '');
+                    const value = escapeHTML(entry.value || '');
+                    const searchableText = `${label} ${value}`.toLowerCase();
+                    return `<li data-search-text="${escapeAttr(searchableText)}" data-value="${escapeAttr(value)}">
+                        <span class="fp-label">${label}</span>
+                        <code>${value}</code>
+                    </li>`;
+                })
+                .join('');
+            const count = groups[group].length;
+            return `<div class="fingerprint-group" data-group="${escapeAttr(group)}">
+                <div class="fingerprint-group-header">
+                    <h3>${escapeHTML(group)}</h3>
+                    <span class="fingerprint-group-count">${count}</span>
+                </div>
+                <ul class="fingerprint-list">${items}</ul>
+            </div>`;
+        })
+        .join('');
+    elements.fingerprintGrid.innerHTML = sections;
+
+    // Add click handlers for copying individual values
+    elements.fingerprintGrid.querySelectorAll('.fingerprint-list li').forEach((li) => {
+        li.addEventListener('click', () => {
+            const value = li.dataset.value || '';
+            if (value) {
+                copyText(value, 'Fingerprint value');
+            }
+        });
+    });
+
+    // Apply current search filter if any
+    if (elements.fingerprintSearch?.value) {
+        handleFingerprintSearch({ target: elements.fingerprintSearch });
+    }
+}
+
+/**
+ * Handles search input to filter fingerprint data.
+ */
+function handleFingerprintSearch(event) {
+    const query = (event?.target?.value || '').toLowerCase().trim();
+    if (!elements.fingerprintGrid) return;
+
+    const groups = elements.fingerprintGrid.querySelectorAll('.fingerprint-group');
+    let visibleCount = 0;
+
+    groups.forEach((group) => {
+        const items = group.querySelectorAll('.fingerprint-list li');
+        let groupVisibleCount = 0;
+
+        items.forEach((item) => {
+            const searchText = item.dataset.searchText || '';
+            const matches = !query || searchText.includes(query);
+
+            if (matches) {
+                item.classList.remove('hidden');
+                groupVisibleCount++;
+            } else {
+                item.classList.add('hidden');
+            }
+        });
+
+        // Hide group if no items visible
+        if (groupVisibleCount === 0) {
+            group.classList.add('hidden');
+        } else {
+            group.classList.remove('hidden');
+            visibleCount += groupVisibleCount;
+        }
+    });
+
+    // Update count badge
+    if (elements.fingerprintCount) {
+        const total = state.fingerprintFacts?.length || 0;
+        if (query && visibleCount !== total) {
+            elements.fingerprintCount.textContent = `${visibleCount} of ${total} signals`;
+        } else {
+            elements.fingerprintCount.textContent = total ? `${total} signals` : '';
+        }
+    }
+}
+
+/**
+ * Copies all fingerprint data to clipboard in a formatted way.
+ */
+function handleFingerprintCopyAll() {
+    if (!state.fingerprintFacts || state.fingerprintFacts.length === 0) {
+        setStatus('No fingerprint data to copy', true);
+        return;
+    }
+
+    // Format as grouped text
+    const groups = state.fingerprintFacts.reduce((acc, fact) => {
+        const key = fact.group || 'Other';
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(fact);
+        return acc;
+    }, {});
+
+    const lines = Object.keys(groups)
+        .sort()
+        .flatMap((group) => {
+            const header = `\n=== ${group} ===\n`;
+            const items = groups[group].map((fact) => `${fact.label}: ${fact.value}`);
+            return [header, ...items];
+        });
+
+    const allText = lines.join('\n');
+    copyText(allText, 'All fingerprint data');
+}
+
+function storageAvailable(type) {
+    try {
+        const storage = window[type];
+        const test = '__transform_fp__';
+        storage.setItem(test, '1');
+        storage.removeItem(test);
+        return true;
+    } catch (_err) {
+        return false;
+    }
+}
+
+function formatTimezoneOffset(offsetMinutes) {
+    if (!Number.isFinite(offsetMinutes)) return '';
+    const total = Math.abs(offsetMinutes);
+    const hours = String(Math.floor(total / 60)).padStart(2, '0');
+    const minutes = String(total % 60).padStart(2, '0');
+    const sign = offsetMinutes <= 0 ? '+' : '-';
+    return `${sign}${hours}:${minutes}`;
+}
+
+function formatBytes(bytes) {
+    if (!Number.isFinite(bytes)) return '';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = bytes;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit += 1;
+    }
+    return `${value.toFixed(1)} ${units[unit]}`;
+}
+
+function measureTimeResolution() {
+    if (typeof performance === 'undefined' || typeof performance.now !== 'function') return '';
+    let min = Infinity;
+    let last = performance.now();
+    for (let i = 0; i < 40; i++) {
+        const now = performance.now();
+        const delta = now - last;
+        if (delta > 0 && delta < min) {
+            min = delta;
+        }
+        last = now;
+    }
+    if (!Number.isFinite(min) || min === Infinity) return '';
+    return `${min.toFixed(3)} ms (min delta)`;
+}
+
+function detectMediaFeatures() {
+    const query = (q) =>
+        typeof window !== 'undefined' && window.matchMedia
+            ? window.matchMedia(q).matches
+            : 'Unknown';
+    return {
+        'prefers-color-scheme: dark': query('(prefers-color-scheme: dark)') ? 'Yes' : 'No',
+        'prefers-reduced-motion': query('(prefers-reduced-motion: reduce)') ? 'Reduce' : 'No',
+        'pointer: fine': query('(pointer: fine)') ? 'Yes' : 'No',
+        'hover: hover': query('(hover: hover)') ? 'Yes' : 'No',
+    };
+}
+
+function detectFeatureSupport() {
+    if (typeof document === 'undefined') return {};
+    const supports = (prop, value) =>
+        typeof CSS !== 'undefined' && CSS.supports ? CSS.supports(prop, value) : false;
+    return {
+        'CSS Backdrop Filter': supports('backdrop-filter', 'blur(4px)') ? 'Yes' : 'No',
+        'CSS Subgrid': supports('display', 'subgrid') ? 'Yes' : 'No',
+        IntersectionObserver: 'IntersectionObserver' in window ? 'Yes' : 'No',
+        'Clipboard API': 'clipboard' in navigator ? 'Yes' : 'No',
+        'Gamepad API': 'getGamepads' in navigator ? 'Yes' : 'No',
+    };
+}
+
+function generateCanvasHash() {
+    try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return '';
+        canvas.width = 240;
+        canvas.height = 60;
+        ctx.textBaseline = 'top';
+        ctx.font = "16px 'Arial'";
+        ctx.fillStyle = '#f60';
+        ctx.fillRect(125, 1, 62, 20);
+        ctx.fillStyle = '#069';
+        ctx.fillText('transform-fp', 2, 10);
+        ctx.strokeStyle = '#fff';
+        ctx.strokeText('transform-fp', 2, 10);
+        const data = canvas.toDataURL();
+        return hashString(data).slice(0, 16);
+    } catch (_err) {
+        return '';
+    }
+}
+
+function getWebGLInfo() {
+    try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        if (!gl) return {};
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        const vendor = debugInfo
+            ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)
+            : gl.getParameter(gl.VENDOR);
+        const renderer = debugInfo
+            ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+            : gl.getParameter(gl.RENDERER);
+        const version = gl.getParameter(gl.VERSION);
+        const extensions = gl.getSupportedExtensions() || [];
+        const limits = {
+            maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+            maxVertexAttribs: gl.getParameter(gl.MAX_VERTEX_ATTRIBS),
+        };
+        return {
+            vendor,
+            renderer,
+            version,
+            extensions,
+            limits,
+        };
+    } catch (_err) {
+        return {};
+    }
+}
+
+function getAudioContextInfo() {
+    try {
+        const AudioCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        if (!AudioCtx) {
+            return { context: 'Unavailable', hash: '' };
+        }
+        const context = new AudioCtx(1, 512, 44100);
+        const osc = context.createOscillator();
+        const compressor = context.createDynamicsCompressor();
+        osc.type = 'triangle';
+        osc.frequency.value = 1000;
+        compressor.threshold.value = -50;
+        compressor.knee.value = 40;
+        compressor.ratio.value = 12;
+        compressor.attack.value = 0;
+        compressor.release.value = 0.25;
+        osc.connect(compressor);
+        compressor.connect(context.destination);
+        osc.start(0);
+        const bufferPromise = context.startRendering();
+        // OfflineAudioContext renders async; we expose a stable hash string when ready.
+        bufferPromise.then((buffer) => {
+            const channel = buffer.getChannelData(0) || new Float32Array(0);
+            const hash = hashArray(channel);
+            state.fingerprintFacts = state.fingerprintFacts.map((entry) =>
+                entry.label === 'Audio Hash' ? { ...entry, value: hash } : entry
+            );
+            renderFingerprintFacts(state.fingerprintFacts);
+        });
+        return { context: 'OfflineAudioContext', hash: 'Rendering…' };
+    } catch (_err) {
+        return { context: 'Error', hash: '' };
+    }
+}
+
+function runFingerprintAsyncEnrichments() {
+    probeUAHighEntropy();
+    probeWebGPU();
+    probeWebXR();
+    probeWebAuthn();
+}
+
+async function probeUAHighEntropy() {
+    try {
+        const nav = typeof navigator !== 'undefined' ? navigator : {};
+        if (!nav.userAgentData?.getHighEntropyValues) return;
+        const fields = [
+            'architecture',
+            'model',
+            'platformVersion',
+            'uaFullVersion',
+            'bitness',
+            'wow64',
+            'formFactor',
+        ];
+        const info = await nav.userAgentData.getHighEntropyValues(fields);
+        fields.forEach((key) => {
+            if (info[key]) {
+                upsertFact('Identity', `UA-CH ${capitalize(key)}`, info[key]);
+            }
+        });
+        renderFingerprintFacts(state.fingerprintFacts);
+    } catch (_err) {
+        // ignore; some browsers deny access
+    }
+}
+
+async function probeWebGPU() {
+    try {
+        if (typeof navigator === 'undefined' || !navigator.gpu) return;
+        upsertFact('Graphics', 'WebGPU', 'Supported (probing adapter)');
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) {
+            upsertFact('Graphics', 'WebGPU', 'No adapter');
+            renderFingerprintFacts(state.fingerprintFacts);
+            return;
+        }
+        upsertFact('Graphics', 'WebGPU Adapter', adapter.name || '');
+        const features = adapter.features ? Array.from(adapter.features) : [];
+        if (features.length) {
+            upsertFact(
+                'Graphics',
+                'WebGPU Features',
+                features.slice(0, 6).join(', ') + (features.length > 6 ? ' …' : '')
+            );
+        }
+        const limits = adapter.limits || {};
+        if (limits.maxTextureDimension2D) {
+            upsertFact('Graphics', 'WebGPU MaxTexture2D', limits.maxTextureDimension2D);
+        }
+        renderFingerprintFacts(state.fingerprintFacts);
+    } catch (_err) {
+        // ignore
+    }
+}
+
+async function probeWebXR() {
+    try {
+        if (typeof navigator === 'undefined' || !navigator.xr) return;
+        upsertFact('XR', 'WebXR', 'Supported (probing)');
+        const modes = ['immersive-vr', 'immersive-ar', 'inline'];
+        for (const mode of modes) {
+            try {
+                const supported = await navigator.xr.isSessionSupported(mode);
+                upsertFact('XR', `${mode} supported`, supported ? 'Yes' : 'No');
+            } catch (_err) {
+                // continue
+            }
+        }
+        renderFingerprintFacts(state.fingerprintFacts);
+    } catch (_err) {
+        // ignore
+    }
+}
+
+async function probeWebAuthn() {
+    try {
+        if (typeof window === 'undefined' || !('PublicKeyCredential' in window)) return;
+        if (typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable !== 'function')
+            return;
+        const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        upsertFact('Auth', 'Platform Authenticator', available ? 'Yes' : 'No');
+        renderFingerprintFacts(state.fingerprintFacts);
+    } catch (_err) {
+        // ignore
+    }
+}
+
+function upsertFact(group, label, value, targetFacts = state.fingerprintFacts) {
+    if (value === undefined || value === null || value === '') return;
+    const idx = targetFacts.findIndex((entry) => entry.group === group && entry.label === label);
+    const payload = { group, label, value: String(value) };
+    if (idx >= 0) {
+        targetFacts[idx] = payload;
+    } else {
+        targetFacts.push(payload);
+    }
+}
+
+function dedupeFacts(list = []) {
+    const seen = new Set();
+    return list.filter((entry) => {
+        const key = `${entry.group}::${entry.label}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+function hashArray(arr) {
+    let hash = 0;
+    for (let i = 0; i < arr.length; i += 16) {
+        hash = (hash << 5) - hash + Math.floor(arr[i] * 1e6);
+        hash |= 0;
+    }
+    return `a${Math.abs(hash).toString(16)}`;
+}
+
+function hashString(input) {
+    let hash = 0;
+    if (!input) return '';
+    for (let i = 0; i < input.length; i++) {
+        hash = (hash << 5) - hash + input.charCodeAt(i);
+        hash |= 0;
+    }
+    return `h${Math.abs(hash).toString(16)}`;
+}
+
+// SSL Inspector: parse PEM certificates and render friendly metadata cards.
+function activateCertTool() {
+    if (!elements.certInput) return;
+    if (elements.certInput.value.trim()) {
+        runCertInspector(true);
+    } else {
+        renderCertResults([]);
+    }
+}
+
+function scheduleCertInspector(immediate = false) {
+    if (!isCertTool(state.currentTool)) return;
+    if (immediate) {
+        runCertInspector(true);
+        return;
+    }
+    clearTimeout(state.certTimer);
+    state.certTimer = setTimeout(() => runCertInspector(), 240);
+}
+
+function runCertInspector(force = false) {
+    if (!isCertTool(state.currentTool)) return;
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    const text = elements.certInput?.value || '';
+    const trimmed = text.trim();
+    if (!trimmed) {
+        renderCertResults([]);
+        if (force) setStatus('Paste a certificate to inspect', true);
+        return;
+    }
+    try {
+        const results = inspect_certificates(trimmed);
+        const list = Array.isArray(results) ? results : [];
+        state.certResults = list;
+        renderCertResults(list);
+        const noun = list.length === 1 ? 'certificate' : 'certificates';
+        setStatus(`Parsed ${list.length} ${noun}`, false);
+    } catch (err) {
+        console.error(err);
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function renderCertResults(list = []) {
+    if (elements.certSummary) {
+        elements.certSummary.textContent = list.length
+            ? `${list.length} certificate${list.length === 1 ? '' : 's'} parsed`
+            : 'No certificates parsed yet.';
+    }
+    if (!elements.certResults) return;
+    if (!list.length) {
+        elements.certResults.innerHTML =
+            '<div class="muted">Paste a PEM certificate or full chain to inspect fields.</div>';
+        return;
+    }
+    const cards = list.map((entry) => renderCertCard(entry, list)).join('');
+    elements.certResults.innerHTML = cards;
+}
+
+function renderCertCard(entry, list) {
+    const subject = escapeHTML(entry.subjectCommonName || entry.subject || 'Unknown subject');
+    const issuer = escapeHTML(entry.issuer || '');
+    const role = describeCertRole(entry, list);
+    const validity = formatValiditySummary(entry);
+    const san = formatBadgeList(entry.subjectAltNames || [], 'Subject Alt Names');
+    const ku = formatBadgeList(entry.keyUsage || [], 'Key Usage');
+    const eku = formatBadgeList(entry.extendedKeyUsage || [], 'Extended Key Usage');
+    const basic = entry.basicConstraints
+        ? `<div class="cert-block"><span>Basic Constraints</span><code>${
+              entry.basicConstraints.ca ? 'CA' : 'End-entity'
+          }${
+              entry.basicConstraints.pathLen !== null &&
+              entry.basicConstraints.pathLen !== undefined
+                  ? ` · pathLen=${entry.basicConstraints.pathLen}`
+                  : ''
+          }</code></div>`
+        : '';
+    const issuerHint =
+        entry.issuerPosition && entry.issuerPosition !== entry.position
+            ? `Chain issuer: #${entry.issuerPosition}`
+            : role === 'Root'
+              ? 'Self-signed'
+              : '';
+    const akid = entry.authorityKeyId
+        ? `<div class="cert-block"><span>Authority Key ID</span><code>${escapeHTML(
+              entry.authorityKeyId
+          )}</code></div>`
+        : '';
+    const skid = entry.subjectKeyId
+        ? `<div class="cert-block"><span>Subject Key ID</span><code>${escapeHTML(
+              entry.subjectKeyId
+          )}</code></div>`
+        : '';
+    const fingerprints = entry.fingerprints || {};
+    return `
+    <div class="cert-card">
+      <div class="cert-card-head">
+        <div>
+          <p class="cert-chip">${escapeHTML(role)} · #${entry.position || 0}</p>
+          <h3>${subject}</h3>
+          <p class="muted">${issuerHint ? `${escapeHTML(issuerHint)} · ` : ''}Issuer: ${issuer}</p>
+        </div>
+        <div class="cert-valid ${validity.expired ? 'expired' : ''}">
+          <span>${escapeHTML(validity.label)}</span>
+          <code>${escapeHTML(entry.notAfter || '')}</code>
+        </div>
+      </div>
+      <div class="cert-meta-grid">
+        <div class="cert-block">
+          <span>Serial</span>
+          <code>${escapeHTML(entry.serialHex || '')}</code>
+        </div>
+        <div class="cert-block">
+          <span>Signature</span>
+          <code>${escapeHTML(entry.signatureAlgorithm || '')}</code>
+        </div>
+        <div class="cert-block">
+          <span>Public Key</span>
+          <code>${escapeHTML(
+              `${entry.publicKeyAlgorithm || ''} · ${entry.publicKeyBits || 0} bits`
+          )}</code>
+        </div>
+        <div class="cert-block">
+          <span>Valid From</span>
+          <code>${escapeHTML(entry.notBefore || '')}</code>
+        </div>
+      </div>
+      <div class="cert-block">
+        <span>Fingerprints</span>
+        <div class="cert-fingerprints">
+          <div><label>SHA-256</label><code>${escapeHTML(fingerprints.sha256 || '')}</code></div>
+          <div><label>SHA-1</label><code>${escapeHTML(fingerprints.sha1 || '')}</code></div>
+          <div><label>SPKI SHA-256</label><code>${escapeHTML(
+              fingerprints.spkiSha256 || ''
+          )}</code></div>
+        </div>
+      </div>
+      ${san || ''}
+      ${ku || ''}
+      ${eku || ''}
+      ${basic || ''}
+      ${akid || ''}
+      ${skid || ''}
+    </div>
+  `;
+}
+
+function formatBadgeList(values, label) {
+    if (!Array.isArray(values) || !values.length) return '';
+    const chips = values
+        .map((val) => `<span class="cert-badge">${escapeHTML(val)}</span>`)
+        .join('');
+    return `<div class="cert-block"><span>${escapeHTML(
+        label
+    )}</span><div class="cert-badges">${chips}</div></div>`;
+}
+
+function describeCertRole(entry, list) {
+    const isIssuer = list?.some?.((item) => item.issuerPosition === entry.position);
+    if (entry.isSelfSigned) return 'Root';
+    if (!isIssuer) return 'Leaf';
+    return 'Intermediate';
+}
+
+function formatValiditySummary(entry) {
+    const expired = Boolean(entry.isExpired);
+    if (expired) {
+        return { label: 'Expired', expired: true };
+    }
+    if (typeof entry.daysValidFromNow === 'number') {
+        const days = entry.daysValidFromNow;
+        return { label: `Expires in ${days}d`, expired: false };
+    }
+    return { label: 'Active', expired: false };
+}
+
+function renderSymbolButtons() {
+    if (!elements.randomSymbolToggles) return;
+    const buttons = specialCharacters
+        .map((symbol) => {
+            const isActive = state.randomSymbols?.has(symbol);
+            return `<button type="button" data-symbol="${escapeAttr(
+                symbol
+            )}" data-active="${isActive ? 'true' : 'false'}">${escapeHTML(symbol)}</button>`;
+        })
+        .join('');
+    elements.randomSymbolToggles.innerHTML = buttons;
+    syncSymbolButtons();
+    updateSymbolMinState();
+}
+
+function syncSymbolButtons() {
+    if (!elements.randomSymbolToggles) return;
+    elements.randomSymbolToggles.querySelectorAll('button[data-symbol]').forEach((button) => {
+        const symbol = button.dataset.symbol || '';
+        const isActive = state.randomSymbols?.has(symbol);
+        button.dataset.active = isActive ? 'true' : 'false';
+    });
+}
+
+function handleRandomSymbolToggle(event) {
+    const button = event.target.closest('button[data-symbol]');
+    if (!button) return;
+    const symbol = button.dataset.symbol || '';
+    if (!state.randomSymbols) {
+        state.randomSymbols = new Set();
+    }
+    const active = button.dataset.active !== 'false';
+    if (active) {
+        state.randomSymbols.delete(symbol);
+        button.dataset.active = 'false';
+    } else {
+        state.randomSymbols.add(symbol);
+        button.dataset.active = 'true';
+    }
+    updateMinInputStates();
+    updateRandomZeroControl();
+    validateMinimumTotals(true);
+}
+
+function activateRandomTool() {
+    if (elements.randomIncludeDigits) {
+        elements.randomIncludeDigits.checked = state.randomIncludeDigits;
+    }
+    if (elements.randomLength) {
+        elements.randomLength.value = state.randomLength;
+    }
+    if (elements.randomCount) {
+        elements.randomCount.value = state.randomCount;
+    }
+    if (elements.randomAllowZero) {
+        elements.randomAllowZero.checked = state.randomAllowLeadingZero;
+    }
+    if (elements.randomIncludeLower) {
+        elements.randomIncludeLower.checked = state.randomIncludeLower;
+    }
+    if (elements.randomIncludeUpper) {
+        elements.randomIncludeUpper.checked = state.randomIncludeUpper;
+    }
+    if (elements.randomExclude) {
+        elements.randomExclude.value = state.randomExclude;
+    }
+    if (elements.randomDigitMin) {
+        elements.randomDigitMin.value = state.randomDigitMin;
+    }
+    if (elements.randomDigitMax) {
+        elements.randomDigitMax.value = state.randomDigitMax;
+    }
+    updateMinInputStates();
+    syncSymbolButtons();
+    updateRandomZeroControl();
+    updateRandomResults(state.randomResults);
+    setStatus('Ready', false);
+}
+
+function characterSetSummary() {
+    if (!state.randomSymbols) {
+        state.randomSymbols = new Set();
+    }
+    const hasSymbols = state.randomSymbols.size > 0;
+    const hasDigits = Boolean(state.randomIncludeDigits);
+    const hasLower = Boolean(state.randomIncludeLower);
+    const hasUpper = Boolean(state.randomIncludeUpper);
+    const activeCount = [hasDigits, hasLower, hasUpper, hasSymbols].filter(Boolean).length;
+    return { hasDigits, hasLower, hasUpper, hasSymbols, activeCount };
+}
+
+function isDigitsOnlySelection() {
+    const summary = characterSetSummary();
+    return summary.hasDigits && !summary.hasLower && !summary.hasUpper && !summary.hasSymbols;
+}
+
+function shouldShowMinimumInputs() {
+    return characterSetSummary().activeCount >= 2;
+}
+
+function activateSshTool() {
+    if (elements.sshType) elements.sshType.value = state.sshType;
+    if (elements.sshBits) {
+        elements.sshBits.value = state.sshBits;
+    }
+    if (elements.sshComment) elements.sshComment.value = state.sshComment;
+    if (elements.sshFormat) elements.sshFormat.value = state.sshFormat;
+    if (elements.sshKdf) elements.sshKdf.value = state.sshKdf;
+    if (elements.sshResident) elements.sshResident.checked = state.sshResident;
+    if (elements.sshVerify) elements.sshVerify.checked = state.sshVerify;
+    updateSshVisibility();
+    renderSshOutputs();
+    setStatus('Ready', false);
+}
+
+function updateRandomZeroControl() {
+    if (!elements.randomAllowZero) return;
+    const digitsOnly = isDigitsOnlySelection();
+    if (elements.randomAllowZeroRow) {
+        elements.randomAllowZeroRow.classList.toggle('hidden', !digitsOnly);
+    }
+    elements.randomAllowZero.disabled = !digitsOnly;
+    if (digitsOnly) {
+        elements.randomAllowZero.checked = state.randomAllowLeadingZero;
+    }
+    updateDigitRangeVisibility();
+}
+
+function updateDigitRangeVisibility() {
+    if (!elements.randomDigitRangeRow || !elements.randomDigitMin || !elements.randomDigitMax) {
+        return;
+    }
+    const digitsOnly = isDigitsOnlySelection();
+    const showRange = digitsOnly && !state.randomAllowLeadingZero;
+    elements.randomDigitRangeRow.classList.toggle('hidden', !showRange);
+    elements.randomDigitMin.disabled = !showRange;
+    elements.randomDigitMax.disabled = !showRange;
+    if (showRange) {
+        elements.randomDigitMin.value = state.randomDigitMin || '';
+        elements.randomDigitMax.value = state.randomDigitMax || '';
+    }
+}
+
+function handleRandomMinChange(kind) {
+    const config = minCountConfig[kind];
+    if (!config) return;
+    const el = elements[config.elementKey];
+    if (!el) return;
+    let value = parseInt(el.value, 10);
+    if (!Number.isFinite(value) || value < 0) {
+        value = 0;
+    }
+    const max = Math.max(0, Number(state.randomLength) || 0);
+    if (value > max) {
+        value = max;
+    }
+    state[config.stateKey] = value;
+    el.value = value;
+    validateMinimumTotals(true);
+}
+
+function updateMinInputStates() {
+    const showMinimums = shouldShowMinimumInputs();
+    setMinInputState('digits', state.randomIncludeDigits && showMinimums);
+    setMinInputState('lower', state.randomIncludeLower && showMinimums);
+    setMinInputState('upper', state.randomIncludeUpper && showMinimums);
+    updateSymbolMinState(showMinimums);
+}
+
+function setMinInputState(kind, enabled) {
+    const config = minCountConfig[kind];
+    if (!config) return;
+    const el = elements[config.elementKey];
+    if (!el) return;
+    const wrapper = config.rowKey ? elements[config.rowKey] : null;
+    el.disabled = !enabled;
+    if (wrapper) {
+        wrapper.classList.toggle('hidden', !enabled);
+    } else {
+        el.classList.toggle('hidden', !enabled);
+    }
+    if (!enabled) {
+        state[config.stateKey] = 0;
+        el.value = 0;
+    } else {
+        el.value = state[config.stateKey] || 0;
+    }
+    if (enabled) {
+        handleRandomMinChange(kind);
+    } else {
+        validateMinimumTotals(false);
+    }
+}
+
+function updateSymbolMinState(showMinimums = shouldShowMinimumInputs()) {
+    const el = elements.randomMinSymbols;
+    if (!el) return;
+    const hasSymbols = state.randomSymbols && state.randomSymbols.size > 0;
+    const showRow = hasSymbols && showMinimums;
+    if (elements.randomSymbolMinRow) {
+        elements.randomSymbolMinRow.classList.toggle('hidden', !showRow);
+    }
+    el.disabled = !showRow;
+    if (!showRow) {
+        state.randomMinSymbols = 0;
+        el.value = 0;
+    } else {
+        el.value = state.randomMinSymbols || 0;
+    }
+    validateMinimumTotals(false);
+}
+
+function validateMinimumTotals(showWarning = false) {
+    const { minDigits, minLower, minUpper, minSymbols } = getMinimumCounts();
+    const total = minDigits + minLower + minUpper + minSymbols;
+    if (total > state.randomLength) {
+        if (showWarning) {
+            setStatus('Minimum counts exceed length', true);
+        }
+        return false;
+    }
+    return true;
+}
+
+function getMinimumCounts() {
+    if (!state.randomSymbols) {
+        state.randomSymbols = new Set();
+    }
+    const symbolSet = state.randomSymbols;
+    const hasSymbols = symbolSet.size > 0;
+    return {
+        minDigits: state.randomIncludeDigits ? state.randomMinDigits || 0 : 0,
+        minLower: state.randomIncludeLower ? state.randomMinLower || 0 : 0,
+        minUpper: state.randomIncludeUpper ? state.randomMinUpper || 0 : 0,
+        minSymbols: hasSymbols ? state.randomMinSymbols || 0 : 0,
+        hasSymbols,
+    };
+}
+
+function handleRandomLengthChange() {
+    if (!elements.randomLength) return;
+    let value = parseInt(elements.randomLength.value, 10);
+    if (!Number.isFinite(value)) {
+        value = 1;
+    }
+    value = Math.min(Math.max(value, 1), 2048);
+    state.randomLength = value;
+    elements.randomLength.value = value;
+    validateMinimumTotals(true);
+}
+
+function handleRandomCountChange() {
+    if (!elements.randomCount) return;
+    let value = parseInt(elements.randomCount.value, 10);
+    if (!Number.isFinite(value)) {
+        value = 1;
+    }
+    value = Math.min(Math.max(value, 1), 256);
+    state.randomCount = value;
+    elements.randomCount.value = value;
+}
+
+function handleRandomIncludeDigitsChange(event) {
+    state.randomIncludeDigits = Boolean(event?.target?.checked);
+    updateRandomZeroControl();
+    if (!state.randomIncludeDigits) {
+        state.randomMinDigits = 0;
+        if (elements.randomMinDigits) elements.randomMinDigits.value = 0;
+    }
+    updateMinInputStates();
+    validateMinimumTotals(true);
+}
+
+function handleRandomLeadingToggle(event) {
+    state.randomAllowLeadingZero = Boolean(event?.target?.checked);
+    updateRandomZeroControl();
+}
+
+function handleRandomIncludeLowerChange(event) {
+    state.randomIncludeLower = Boolean(event?.target?.checked);
+    if (!state.randomIncludeLower) {
+        state.randomMinLower = 0;
+        if (elements.randomMinLower) elements.randomMinLower.value = 0;
+    }
+    updateMinInputStates();
+    updateRandomZeroControl();
+    validateMinimumTotals(true);
+}
+
+function handleRandomIncludeUpperChange(event) {
+    state.randomIncludeUpper = Boolean(event?.target?.checked);
+    if (!state.randomIncludeUpper) {
+        state.randomMinUpper = 0;
+        if (elements.randomMinUpper) elements.randomMinUpper.value = 0;
+    }
+    updateMinInputStates();
+    updateRandomZeroControl();
+    validateMinimumTotals(true);
+}
+
+function handleRandomExcludeInput() {
+    if (!elements.randomExclude) return;
+    const sanitized = sanitizeRandomExclude(elements.randomExclude.value || '');
+    state.randomExclude = sanitized;
+    elements.randomExclude.value = sanitized;
+}
+
+function handleRandomDigitRangeInput(event) {
+    const targetId = event?.target?.id || '';
+    const value = (event?.target?.value || '').trim();
+    if (targetId === 'randomDigitMin') {
+        state.randomDigitMin = value;
+    } else if (targetId === 'randomDigitMax') {
+        state.randomDigitMax = value;
+    }
+}
+
+function isDigitRangeRequested() {
+    if (state.randomAllowLeadingZero) return false;
+    if (!isDigitsOnlySelection()) return false;
+    const hasMin = Boolean((state.randomDigitMin || '').trim());
+    const hasMax = Boolean((state.randomDigitMax || '').trim());
+    return hasMin || hasMax;
+}
+
+function runRandomGenerator() {
+    if (!isRandomTool(state.currentTool)) {
+        setStatus('Select the Random tool', true);
+        return;
+    }
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    handleRandomLengthChange();
+    handleRandomCountChange();
+    handleRandomExcludeInput();
+    if (!validateMinimumTotals(true)) {
+        return;
+    }
+    if (!state.randomSymbols) {
+        state.randomSymbols = new Set();
+    }
+    const symbolSet = state.randomSymbols;
+    const { minDigits, minLower, minUpper, minSymbols, hasSymbols } = getMinimumCounts();
+    if (
+        !state.randomIncludeDigits &&
+        !state.randomIncludeLower &&
+        !state.randomIncludeUpper &&
+        !hasSymbols
+    ) {
+        setStatus('Select at least one character set', true);
+        return;
+    }
+    const rangeRequested = isDigitRangeRequested();
+    // When restricted to digits without leading zeros, allow ranged integer output.
+    if (rangeRequested) {
+        const minValue = (state.randomDigitMin || '').trim();
+        const maxValue = (state.randomDigitMax || '').trim();
+        if (!minValue || !maxValue) {
+            setStatus('Enter both min and max to generate ranged digits', true);
+            return;
+        }
+        try {
+            const ranged = random_numeric_range_sequences(
+                state.randomCount,
+                minValue,
+                maxValue,
+                state.randomLength
+            );
+            const list = Array.isArray(ranged) ? ranged.map((item) => String(item || '')) : [];
+            updateRandomResults(list);
+            setStatus('Done', false);
+        } catch (err) {
+            updateRandomResults([]);
+            setStatus(`⚠️ ${err?.message || err}`, true);
+        }
+        return;
+    }
+    const digits = state.randomIncludeDigits ? digitCharacters : '';
+    const symbols = hasSymbols ? Array.from(symbolSet).join('') : '';
+    try {
+        const result = random_number_sequences(
+            state.randomLength,
+            state.randomCount,
+            state.randomAllowLeadingZero,
+            digits,
+            state.randomIncludeLower,
+            state.randomIncludeUpper,
+            symbols,
+            state.randomExclude,
+            minDigits,
+            minLower,
+            minUpper,
+            minSymbols
+        );
+        const list = Array.isArray(result) ? result.map((item) => String(item || '')) : [];
+        updateRandomResults(list);
+        setStatus('Done', false);
+    } catch (err) {
+        updateRandomResults([]);
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+async function ensureAsciiFontsLoaded() {
+    if (state.ascii.fonts && state.ascii.fonts.length) return;
+    if (!state.wasmReady) return;
+    try {
+        const fonts = list_ascii_fonts();
+        if (Array.isArray(fonts)) {
+            state.ascii.fonts = fonts;
+            renderAsciiFonts();
+        }
+    } catch (err) {
+        console.error(err);
+        setStatus('Unable to load ASCII fonts', true);
+    }
+}
+
+function renderAsciiFonts() {
+    if (!elements.asciiFont) return;
+    const current = state.ascii.font || 'standard';
+    elements.asciiFont.innerHTML = '';
+    const fonts = state.ascii.fonts && state.ascii.fonts.length ? state.ascii.fonts : ['standard'];
+    fonts.forEach((name) => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        if (name === current) opt.selected = true;
+        elements.asciiFont.appendChild(opt);
+    });
+}
+
+function currentAsciiAlign() {
+    const checked = document.querySelector('input[name="asciiAlign"]:checked');
+    return checked?.value || state.ascii.align || 'left';
+}
+
+function setAsciiOutput(text, status, isError = false) {
+    if (elements.asciiOutput) {
+        elements.asciiOutput.textContent = text || '';
+    }
+    if (elements.asciiStatus) {
+        elements.asciiStatus.textContent =
+            status || (text ? 'Preview ready' : 'Enter text to render');
+    }
+    const hasText = Boolean(text && text.trim());
+    if (elements.asciiCopy) elements.asciiCopy.disabled = !hasText;
+    if (elements.asciiDownload) elements.asciiDownload.disabled = !hasText;
+    if (status) {
+        setStatus(status, isError);
+    }
+}
+
+async function runAsciiGenerator() {
+    if (!isAsciiTool(state.currentTool)) {
+        setStatus('Select the ASCII Art tool', true);
+        return;
+    }
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    await ensureAsciiFontsLoaded();
+    const text = elements.asciiInput?.value || '';
+    const font = (elements.asciiFont?.value || state.ascii.font || 'standard').toLowerCase();
+    const widthVal = Number.parseInt(elements.asciiWidth?.value || '', 10);
+    const width = Number.isFinite(widthVal) ? widthVal : undefined;
+    const align = currentAsciiAlign();
+    try {
+        const art = generate_ascii_art(text, font, width, align);
+        state.ascii.output = art;
+        state.ascii.font = font;
+        if (width) state.ascii.width = width;
+        state.ascii.align = align;
+        setAsciiOutput(art, 'ASCII art generated');
+    } catch (err) {
+        console.error(err);
+        setAsciiOutput('', err?.message || 'Unable to generate ASCII art', true);
+    }
+}
+
+function activateAsciiTool() {
+    renderAsciiFonts();
+    if (elements.asciiWidth) {
+        elements.asciiWidth.value = state.ascii.width || 80;
+    }
+    const align = state.ascii.align || 'left';
+    const alignInput = document.querySelector(`input[name="asciiAlign"][value="${align}"]`);
+    if (alignInput) {
+        alignInput.checked = true;
+    }
+    if (state.ascii.output) {
+        setAsciiOutput(state.ascii.output, 'Ready');
+    } else {
+        setAsciiOutput('', 'Enter text to render');
+    }
+    ensureAsciiFontsLoaded();
+}
+
+function handleAsciiCopy() {
+    if (!state.ascii.output) {
+        setStatus('No ASCII art to copy', true);
+        return;
+    }
+    copyText(state.ascii.output, 'ASCII art');
+}
+
+function handleAsciiDownload() {
+    if (!state.ascii.output) {
+        setStatus('No ASCII art to download', true);
+        return;
+    }
+    const blob = new Blob([state.ascii.output], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'ascii-art.txt';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setStatus('Downloaded ascii-art.txt', false);
+}
+
+/**
+ * Updates the random results display with generated strings.
+ * Shows/hides the "Copy All" button based on whether there are results.
+ */
+function updateRandomResults(values) {
+    state.randomResults = Array.isArray(values)
+        ? values.filter((value) => typeof value === 'string' && value.length > 0)
+        : [];
+    if (!elements.randomResults) return;
+
+    // Show/hide "Copy All" button
+    if (elements.randomCopyAll) {
+        if (state.randomResults.length > 0) {
+            elements.randomCopyAll.style.display = 'inline-flex';
+        } else {
+            elements.randomCopyAll.style.display = 'none';
+        }
+    }
+
+    if (!state.randomResults.length) {
+        elements.randomResults.innerHTML =
+            '<div class="random-placeholder">Click Generate to produce strings</div>';
+        return;
+    }
+
+    // Render results with improved structure
+    const items = state.randomResults
+        .map(
+            (value) => `
+        <div class="random-result-item" data-random-value="${escapeAttr(value)}">
+          <span class="random-result-text">${escapeHTML(value)}</span>
+        </div>
+      `
+        )
+        .join('');
+    elements.randomResults.innerHTML = items;
+}
+
+/**
+ * Handles clicking on individual result items to copy them.
+ */
+function handleRandomResultsClick(event) {
+    const row = event.target.closest('.random-result-item');
+    if (!row) return;
+    const value = row.dataset.randomValue || '';
+    if (!value) return;
+    copyText(value, 'Random string');
+}
+
+/**
+ * Copies all generated random strings to clipboard, one per line.
+ */
+function handleRandomCopyAll() {
+    if (!state.randomResults || state.randomResults.length === 0) {
+        setStatus('No results to copy', true);
+        return;
+    }
+    const allText = state.randomResults.join('\n');
+    copyText(allText, 'All random strings');
+}
+
+function setQrMode(mode, shouldRender = true) {
+    const nextMode = ['otp', 'wifi', 'custom'].includes(mode) ? mode : 'otp';
+    const changed = state.qr.mode !== nextMode;
+    state.qr.mode = nextMode;
+    if (elements.qrModeOtp) elements.qrModeOtp.checked = nextMode === 'otp';
+    if (elements.qrModeWifi) elements.qrModeWifi.checked = nextMode === 'wifi';
+    if (elements.qrModeCustom) elements.qrModeCustom.checked = nextMode === 'custom';
+    updateQrModeVisibility();
+    if (shouldRender) {
+        if (changed) {
+            state.qr.lastResult = null;
+            renderQrPlaceholder('Generate to see a 250 × 250 QR preview.');
+        } else if (state.qr.lastResult) {
+            renderQrResult(state.qr.lastResult);
+        } else {
+            renderQrPlaceholder('Generate to see a 250 × 250 QR preview.');
+        }
+    }
+}
+
+function activateQrTool() {
+    setQrMode(state.qr.mode || 'otp', false);
+    if (elements.qrOtpAccount) elements.qrOtpAccount.value = state.qr.otpAccount || '';
+    if (elements.qrOtpSecret) elements.qrOtpSecret.value = state.qr.otpSecret || '';
+    if (elements.qrOtpIssuer) elements.qrOtpIssuer.value = state.qr.otpIssuer || '';
+    if (elements.qrOtpAlgorithm) elements.qrOtpAlgorithm.value = state.qr.otpAlgorithm || 'SHA1';
+    if (elements.qrOtpPeriod) elements.qrOtpPeriod.value = state.qr.otpPeriod || 30;
+    if (elements.qrOtpDigits) elements.qrOtpDigits.value = state.qr.otpDigits || 6;
+    if (elements.qrWifiType) elements.qrWifiType.value = state.qr.wifiType || 'WPA';
+    if (elements.qrWifiSsid) elements.qrWifiSsid.value = state.qr.wifiSsid || '';
+    if (elements.qrWifiPass) elements.qrWifiPass.value = state.qr.wifiPass || '';
+    if (elements.qrCustomString) elements.qrCustomString.value = state.qr.customString || '';
+    if (elements.qrFormat) elements.qrFormat.value = state.qr.format || 'png';
+    if (elements.qrEccLevel) elements.qrEccLevel.value = state.qr.ecc || 'Q';
+    updateQrModeVisibility();
+    if (state.qr.lastResult) {
+        renderQrResult(state.qr.lastResult);
+    } else {
+        renderQrPlaceholder('Generate to see a 250 × 250 QR preview.');
+    }
+    setStatus('Ready', false);
+}
+
+function updateQrModeVisibility() {
+    document.querySelectorAll('#qrWorkspace .qr-row[data-mode]').forEach((row) => {
+        const mode = row.dataset.mode || '';
+        row.classList.toggle('hidden', mode !== state.qr.mode);
+    });
+}
+
+function handleQrFieldChange(event) {
+    const { id, value } = event.target;
+    switch (id) {
+        case 'qrOtpAccount':
+            state.qr.otpAccount = value;
+            break;
+        case 'qrOtpSecret':
+            state.qr.otpSecret = value;
+            break;
+        case 'qrOtpIssuer':
+            state.qr.otpIssuer = value;
+            break;
+        case 'qrOtpAlgorithm':
+            state.qr.otpAlgorithm = value || 'SHA1';
+            break;
+        case 'qrOtpPeriod': {
+            const period = clampNumber(value, 1, 300, 30);
+            state.qr.otpPeriod = period;
+            event.target.value = period;
+            break;
+        }
+        case 'qrOtpDigits': {
+            const digits = clampNumber(value, 4, 10, 6);
+            state.qr.otpDigits = digits;
+            event.target.value = digits;
+            break;
+        }
+        case 'qrWifiType':
+            state.qr.wifiType = value || 'WPA';
+            break;
+        case 'qrWifiSsid':
+            state.qr.wifiSsid = value;
+            break;
+        case 'qrWifiPass':
+            state.qr.wifiPass = value;
+            break;
+        case 'qrCustomString':
+            state.qr.customString = value;
+            break;
+        case 'qrEccLevel':
+            state.qr.ecc = value || 'Q';
+            break;
+        default:
+            break;
+    }
+}
+
+function buildQrPayload() {
+    if (state.qr.mode === 'otp') {
+        return {
+            otpAccount: elements.qrOtpAccount?.value || state.qr.otpAccount || '',
+            otpSecret: elements.qrOtpSecret?.value || state.qr.otpSecret || '',
+            otpIssuer: elements.qrOtpIssuer?.value || state.qr.otpIssuer || '',
+            otpAlgorithm: elements.qrOtpAlgorithm?.value || state.qr.otpAlgorithm || 'SHA1',
+            otpPeriod: Number(elements.qrOtpPeriod?.value || state.qr.otpPeriod || 30),
+            otpDigits: Number(elements.qrOtpDigits?.value || state.qr.otpDigits || 6),
+        };
+    }
+    if (state.qr.mode === 'wifi') {
+        return {
+            wifiType: elements.qrWifiType?.value || state.qr.wifiType || 'WPA',
+            wifiSsid: elements.qrWifiSsid?.value || state.qr.wifiSsid || '',
+            wifiPass: elements.qrWifiPass?.value || state.qr.wifiPass || '',
+        };
+    }
+    return {
+        customString: elements.qrCustomString?.value || state.qr.customString || '',
+        qrEcc: elements.qrEccLevel?.value || state.qr.ecc || 'Q',
+    };
+}
+
+function normalizeQrResult(result) {
+    const base = normalizeMapResult(result);
+    const source = Object.keys(base).length ? base : result || {};
+    const format = (source.format || source.Format || '').toString();
+    return {
+        kind: source.kind || source.Kind || '',
+        payload: source.payload || source.Payload || '',
+        format: format || 'png',
+        mime: source.mime || source.Mime || '',
+        width: Number(source.width ?? 250) || 250,
+        height: Number(source.height ?? 250) || 250,
+        dataUrl: source.dataUrl || source.data_url || '',
+        dataBase64: source.dataBase64 || source.data_base64 || '',
+        downloadName: source.downloadName || source.download_name || `qr-code.${format || 'png'}`,
+    };
+}
+
+function handleQrGenerate() {
+    if (!isQrTool(state.currentTool)) {
+        setStatus('Select the QR Code tool first', true);
+        return;
+    }
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    const payload = buildQrPayload();
+    try {
+        const raw = generate_qr_code(state.qr.mode, state.qr.format, payload);
+        const result = normalizeQrResult(raw);
+        if (!result.dataUrl) {
+            renderQrPlaceholder('No QR data returned');
+            setStatus('QR generation failed', true);
+            return;
+        }
+        state.qr.lastResult = result;
+        renderQrResult(result);
+        setStatus(`QR generated (${result.format.toUpperCase()})`, false);
+    } catch (err) {
+        console.error(err);
+        renderQrError(err?.message || String(err));
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function renderQrResult(result) {
+    if (!elements.qrPreview) return;
+    const size = Number(result.width || 250) || 250;
+    const height = Number(result.height || size) || size;
+    const payload = result.payload
+        ? escapeHTML(result.payload)
+        : '<span class="muted">(empty)</span>';
+    const meta = [];
+    if (result.kind) meta.push(`Kind: ${result.kind.toUpperCase()}`);
+    if (result.format) meta.push(`Format: ${result.format.toUpperCase()}`);
+    if (state.qr.ecc) meta.push(`ECC: ${state.qr.ecc}`);
+    meta.push(`Size: ${size} × ${height}`);
+    elements.qrPreview.innerHTML = `
+        <div class="qr-image-frame">
+            <img src="${escapeAttr(result.dataUrl || '')}" alt="QR code" width="${size}" height="${height}" loading="lazy" />
+        </div>
+        <div class="qr-payload">${payload}</div>
+    `;
+    if (elements.qrMeta) {
+        elements.qrMeta.innerHTML = meta.length
+            ? meta.map((item) => `<span>${escapeHTML(item)}</span>`).join('')
+            : '';
+    }
+    if (elements.qrDownload) {
+        elements.qrDownload.removeAttribute('disabled');
+    }
+    if (elements.qrError) {
+        elements.qrError.textContent = '';
+    }
+}
+
+function renderQrPlaceholder(message) {
+    if (!elements.qrPreview) return;
+    elements.qrPreview.innerHTML = `<div class="muted">${escapeHTML(
+        message || 'Generate to see a QR preview'
+    )}</div>`;
+    if (elements.qrDownload) {
+        elements.qrDownload.setAttribute('disabled', 'disabled');
+    }
+    if (elements.qrMeta) {
+        elements.qrMeta.innerHTML = '';
+    }
+}
+
+function renderQrError(message) {
+    renderQrPlaceholder('QR generation failed');
+    if (elements.qrError) {
+        elements.qrError.textContent = message || 'Unable to generate QR code';
+    }
+}
+
+function downloadQrImage() {
+    const result = state.qr.lastResult;
+    if (!result || !result.dataUrl) {
+        setStatus('No QR code to download', true);
+        return;
+    }
+    const link = document.createElement('a');
+    link.href = result.dataUrl;
+    link.download = result.downloadName || `qr-code.${result.format || 'png'}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setStatus('QR downloaded', false);
+}
+
+function handleQrParseFileChange(event) {
+    const files = Array.from(event.target?.files || []);
+    if (files.length) {
+        handleQrParseSelectedFiles(files);
+    }
+}
+
+function handleQrParseSelectedFiles(files) {
+    if (!files.length || !isQrTool(state.currentTool)) return;
+    // Read all files up-front so batch decoding stays deterministic.
+    Promise.all(
+        files.map(
+            (file) =>
+                new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        resolve({
+                            name: file.name || 'uploaded',
+                            bytes: new Uint8Array(reader.result || new ArrayBuffer(0)),
+                        });
+                    };
+                    reader.onerror = () => {
+                        resolve({ name: file.name || 'uploaded', bytes: new Uint8Array() });
+                    };
+                    reader.readAsArrayBuffer(file);
+                })
+        )
+    ).then((loaded) => {
+        state.qrParse.files = loaded;
+        runQrParse();
+    });
+}
+
+// Decodes every queued QR image via the batch wasm helper.
+async function runQrParse() {
+    if (!isQrTool(state.currentTool) || state.currentTool !== 'generator-qr-parse') {
+        return;
+    }
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    if (!state.qrParse.files || !state.qrParse.files.length) {
+        setStatus('Select an image to decode', true);
+        return;
+    }
+    try {
+        setStatus('Decoding QR batch...', false);
+        const payload = state.qrParse.files.map((file) => ({
+            fileName: file.name,
+            bytes: file.bytes,
+        }));
+        const result = await parse_qr_codes_batch(payload);
+        const entries = Array.isArray(result) ? result : [];
+        state.qrParse.results = entries;
+        renderQrParseResults(entries);
+        const decodedCount = entries.filter((item) => item?.results?.length).length;
+        setStatus(
+            decodedCount ? `Decoded ${decodedCount} file(s)` : 'No QR codes found',
+            decodedCount === 0
+        );
+    } catch (err) {
+        console.error(err);
+        setStatus(`⚠️ ${err?.message || err}`, true);
+        renderQrParseResults([]);
+    }
+}
+
+// Renders batch QR payloads grouped by source file.
+function renderQrParseResults(results) {
+    if (!elements.qrParseResults) return;
+    if (!results || !results.length) {
+        elements.qrParseResults.innerHTML =
+            '<div class="muted">Drop or choose images to decode QR payloads.</div>';
+        return;
+    }
+    const html = results
+        .map((entry, idx) => {
+            const name = escapeHTML(entry?.fileName || `File #${idx + 1}`);
+            const error = entry?.error || '';
+            const payloads = Array.isArray(entry?.results) ? entry.results : [];
+            const payloadHtml = payloads
+                .map((res, resIdx) => {
+                    const payload = res?.payload || '';
+                    const version = res?.version ? `v${res.version}` : '';
+                    const ecc = res?.eccLevel || res?.ecc_level || '';
+                    const meta = [version, ecc].filter(Boolean).join(' · ');
+                    return `<div class="qr-parse-card" data-file-index="${idx}" data-payload-index="${resIdx}">
+  <header>
+    <span class="qr-parse-label">QR #${resIdx + 1}${meta ? ` — ${escapeHTML(meta)}` : ''}</span>
+    <button class="ghost-btn" data-copy-qrcode="${idx}-${resIdx}" data-copy-value="${escapeAttr(
+        payload
+    )}">📋 Copy</button>
+  </header>
+  <pre class="qr-parse-payload">${escapeHTML(payload || '(empty)')}</pre>
+</div>`;
+                })
+                .join('');
+            const body =
+                payloadHtml ||
+                `<div class="qr-parse-card"><pre class="qr-parse-payload">No QR codes detected</pre></div>`;
+            const errorBlock = error
+                ? `<div class="qr-parse-error">⚠️ ${escapeHTML(error)}</div>`
+                : '';
+            return `<div class="qr-parse-file">
+  <div class="qr-parse-file-head">
+    <div class="qr-parse-file-name">${name}</div>
+    <div class="qr-parse-file-meta">${payloads.length} QR code(s)</div>
+  </div>
+  ${errorBlock}
+  <div class="qr-parse-file-results">${body}</div>
+</div>`;
+        })
+        .join('');
+    elements.qrParseResults.innerHTML = html;
+}
+
+function handleQrParseResultsClick(event) {
+    const button = event.target.closest('[data-copy-qrcode]');
+    if (!button) return;
+    const value = button.dataset.copyValue || '';
+    if (value) {
+        copyText(value, 'QR payload');
+        setStatus('Copied', false);
+    }
+}
+
+function handleSshTypeChange(event) {
+    state.sshType = event.target.value;
+    updateSshVisibility();
+}
+
+function handleSshBitsChange(event) {
+    const value = parseInt(event.target.value, 10);
+    state.sshBits = Number.isFinite(value) ? value : 4096;
+}
+
+function handleSshCommentChange(event) {
+    state.sshComment = event.target.value || '';
+}
+
+function handleSshFormatChange(event) {
+    state.sshFormat = event.target.value || 'openssh';
+    if (state.sshLastKey) {
+        renderSshOutputs();
+    }
+}
+
+function handleSshKdfChange(event) {
+    const value = parseInt(event.target.value, 10);
+    const clamped = Math.min(500, Math.max(16, Number.isFinite(value) ? value : 16));
+    state.sshKdf = clamped;
+    if (elements.sshKdf) elements.sshKdf.value = clamped;
+}
+
+function handleSshResidentChange(event) {
+    state.sshResident = Boolean(event?.target?.checked);
+}
+
+function handleSshVerifyChange(event) {
+    state.sshVerify = Boolean(event?.target?.checked);
+}
+
+function runSshGenerator() {
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    const keyType = elements.sshType?.value || 'ed25519';
+    const rawBits = parseInt(elements.sshBits?.value || '4096', 10) || 4096;
+    const bits = keyType === 'rsa' ? Math.max(2048, rawBits) : rawBits;
+    const comment = elements.sshComment?.value || '';
+    const format = elements.sshFormat?.value || 'openssh';
+    const kdf = parseInt(elements.sshKdf?.value || '16', 10) || 16;
+    const resident = Boolean(elements.sshResident?.checked);
+    const verify = Boolean(elements.sshVerify?.checked);
+    try {
+        const result = generate_ssh_key(keyType, bits, comment, format, kdf, resident, verify);
+        const data = normalizeMapResult(result);
+        state.sshLastKey = data;
+        renderSshOutputs();
+        setStatus('SSH key generated', false);
+    } catch (err) {
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+/**
+ * Updates SSH UI visibility based on selected key type.
+ * Shows/hides RSA bits input and Security Key options as needed.
+ */
+function updateSshVisibility() {
+    const isRsa = state.sshType === 'rsa';
+    const isSk = state.sshType.endsWith('-sk');
+
+    // Show/hide RSA bits input
+    if (elements.sshBitsRow) {
+        elements.sshBitsRow.classList.toggle('hidden', !isRsa);
+    }
+    if (elements.sshBits) {
+        elements.sshBits.disabled = !isRsa;
+    }
+
+    // Show/hide Security Key options section
+    if (elements.sshSkOptions) {
+        elements.sshSkOptions.classList.toggle('hidden', !isSk);
+    }
+
+    // Legacy support: also update individual option elements
+    document.querySelectorAll('.ssh-sk-option').forEach((el) => {
+        el.classList.toggle('hidden', !isSk);
+    });
+}
+
+function renderSshOutputs() {
+    if (!state.sshLastKey) {
+        if (elements.sshPublic) elements.sshPublic.value = '';
+        if (elements.sshPrivate) elements.sshPrivate.value = '';
+        return;
+    }
+    const data = state.sshLastKey;
+    const format = state.sshFormat || data.format || 'openssh';
+    if (elements.sshPublic && typeof data.publicKey === 'string') {
+        elements.sshPublic.value = data.publicKey;
+    }
+    if (elements.sshPrivate && typeof data.privateKey === 'string') {
+        const base = data.privateKey;
+        const rendered =
+            format === 'pem'
+                ? base.replace('OPENSSH PRIVATE KEY', 'PRIVATE KEY').replace(/openssh/gi, 'pem')
+                : base;
+        elements.sshPrivate.value = rendered;
+    }
+}
+
+function handleHashEncodingChange(event) {
+    const value = event?.target?.value || 'base16';
+    state.hashEncoding = value;
+    updateCoderActionsVisibility();
+    if (state.lastHashResults) renderHashResults(state.lastHashResults);
+}
+
+function handleHashModeToggle(event) {
+    state.hashUseHmac = Boolean(event?.target?.checked);
+    if (elements.hashHmacSecret) {
+        elements.hashHmacSecret.classList.toggle('hidden', !state.hashUseHmac);
+    }
+    if (state.lastHashResults) renderHashResults(state.lastHashResults);
+    scheduleCoder(true);
+}
+
+function handleHashSecretInput(event) {
+    state.hashHmacSecret = event?.target?.value || '';
+    if (state.hashUseHmac) {
+        scheduleCoder(true);
+    }
+}
+
+function handleTimestampPreset(event) {
+    const button = event.target.closest('button[data-preset]');
+    if (!button) return;
+    const preset = button.dataset.preset;
+
+    // If "Now" is already active, stop updates
+    if (preset === 'now' && timestampUpdateTimer) {
+        stopTimestampUpdates();
+        return;
+    }
+
+    const entry = buildTimestampPreset(preset);
+    if (!entry) return;
+    const target = document.querySelector(`#timestampWorkspace input[data-field="${entry.field}"]`);
+    if (!target) return;
+    target.value = entry.value;
+    runTimestampConversion(entry.field, entry.value);
+
+    // If "Now" preset is selected, start dynamic updates
+    if (preset === 'now') {
+        startTimestampUpdates();
+    } else {
+        stopTimestampUpdates();
+    }
+}
+
+// Global timer for timestamp updates
+let timestampUpdateTimer = null;
+
+function startTimestampUpdates() {
+    // Clear any existing timer
+    stopTimestampUpdates();
+
+    // Update immediately
+    updateAllTimestampFields();
+
+    // Set up timer to update every second
+    timestampUpdateTimer = setInterval(() => {
+        updateAllTimestampFields();
+    }, 1000);
+
+    // Update button state
+    const nowButton = document.querySelector('button[data-preset="now"]');
+    if (nowButton) {
+        nowButton.textContent = 'Stop';
+        nowButton.classList.add('active');
+    }
+}
+
+function stopTimestampUpdates() {
+    if (timestampUpdateTimer) {
+        clearInterval(timestampUpdateTimer);
+        timestampUpdateTimer = null;
+    }
+
+    // Reset button state
+    const nowButton = document.querySelector('button[data-preset="now"]');
+    if (nowButton) {
+        nowButton.textContent = 'Now';
+        nowButton.classList.remove('active');
+    }
+}
+
+function updateAllTimestampFields() {
+    if (!state.wasmReady) return;
+
+    // Use "now" source to get high-precision timestamp from Rust
+    try {
+        const record = normalizeMapResult(convert_timestamp('now', ''));
+        state.timestampUpdating = true;
+
+        timestampFields.forEach(({ id, key, readonly }) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            const value = record[key] ?? '';
+
+            // For readonly fields, always update
+            // For editable fields, only update if they're currently showing "now" time
+            if (readonly || isNowFieldValue(input.value, key)) {
+                input.value = value;
+            }
+        });
+
+        state.timestampUpdating = false;
+    } catch (err) {
+        state.timestampUpdating = false;
+        console.error('Timestamp update failed:', err);
+    }
+}
+
+function isNowFieldValue(_value, _field) {
+    // Check if the current value appears to be from a recent "now" update
+    // This is a heuristic - in practice, we'll update all fields when "Now" is active
+    return true;
+}
+
+function buildTimestampPreset(kind) {
+    if (kind !== 'now') {
+        return null;
+    }
+    const iso = new Date().toISOString();
+    return { field: 'iso8601', value: iso };
+}
+
+function activateTimestampTool() {
+    if (!elements.timestampInputs?.length) return;
+    const filled = Array.from(elements.timestampInputs).find((input) => input?.value?.trim());
+    if (filled && filled.dataset.field) {
+        runTimestampConversion(filled.dataset.field, filled.value, true);
+    } else {
+        clearTimestampOutputs();
+    }
+}
+
+function handleTimestampInput(event) {
+    const target = event.target;
+    if (!target || state.timestampUpdating) return;
+    const field = target.dataset.field;
+    if (!field) return;
+    const value = target.value || '';
+    if (!value.trim()) {
+        clearTimestampOutputs();
+        return;
+    }
+    runTimestampConversion(field, value);
+}
+
+function runTimestampConversion(field, value, silent = false) {
+    if (!state.wasmReady) {
+        if (!silent) setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    if (!elements.timestampInputs?.length) return;
+    try {
+        const record = normalizeMapResult(convert_timestamp(field, value));
+        state.timestampUpdating = true;
+        timestampFields.forEach(({ id, key, readonly }) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            const nextValue = record[key] ?? '';
+            // For readonly fields, always update
+            // For editable fields, update unless it's the current input field
+            if (readonly || key !== field) {
+                input.value = nextValue || (key === field ? value : nextValue);
+            }
+        });
+        state.timestampUpdating = false;
+        if (!silent) {
+            setStatus('Converted timestamp', false);
+        }
+    } catch (err) {
+        state.timestampUpdating = false;
+        if (!silent) {
+            setStatus(err?.message || err?.toString() || 'Conversion failed', true);
+        }
+    }
+}
+
+function clearTimestampOutputs() {
+    if (!elements.timestampInputs?.length) return;
+    elements.timestampInputs.forEach((input) => {
+        input.value = '';
+    });
+}
+
+function activateTotpTool() {
+    if (elements.totpSecret) {
+        elements.totpSecret.value = state.totpSecret || '';
+    }
+    if (elements.totpAlgorithm) {
+        elements.totpAlgorithm.value = state.totpAlgorithm || 'SHA256';
+    }
+    if (elements.totpPeriod) {
+        elements.totpPeriod.value = state.totpPeriod;
+    }
+    if (elements.totpDigits) {
+        elements.totpDigits.value = state.totpDigits;
+    }
+    refreshTotp(true);
+    stopTotpTimer();
+    state.totpTimer = setInterval(() => refreshTotp(true), 1000);
+}
+
+function stopTotpTimer() {
+    if (state.totpTimer) {
+        clearInterval(state.totpTimer);
+        state.totpTimer = null;
+    }
+}
+
+function handleTotpFieldChange() {
+    if (elements.totpSecret) {
+        state.totpSecret = elements.totpSecret.value || '';
+    }
+    if (elements.totpAlgorithm) {
+        state.totpAlgorithm = elements.totpAlgorithm.value || 'SHA256';
+    }
+    if (elements.totpPeriod) {
+        let period = parseInt(elements.totpPeriod.value, 10);
+        if (!Number.isFinite(period)) period = 30;
+        period = Math.min(Math.max(period, 1), 300);
+        state.totpPeriod = period;
+        elements.totpPeriod.value = period;
+    }
+    if (elements.totpDigits) {
+        let digits = parseInt(elements.totpDigits.value, 10);
+        if (!Number.isFinite(digits)) digits = 6;
+        digits = Math.min(Math.max(digits, 4), 10);
+        state.totpDigits = digits;
+        elements.totpDigits.value = digits;
+    }
+    refreshTotp();
+}
+
+function refreshTotp(silent = false) {
+    // Runs RFC 6238 logic in wasm. We refresh every second while the workspace is active.
+    if (!elements.totpSecret) return;
+    const secret = elements.totpSecret.value || '';
+    if (!secret.trim()) {
+        renderTotpError('Enter a secret');
+        if (!silent) setStatus('Secret is required', true);
+        return;
+    }
+    if (!state.wasmReady) {
+        if (!silent) setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    try {
+        const result = totp_token(
+            secret,
+            elements.totpAlgorithm?.value || 'SHA256',
+            state.totpPeriod,
+            state.totpDigits
+        );
+        renderTotpResult(result);
+        if (!silent) setStatus('Generated TOTP code', false);
+    } catch (err) {
+        renderTotpError(err?.message || String(err));
+        if (!silent) setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function renderTotpResult(result) {
+    if (!result) return;
+    if (elements.totpCode) {
+        elements.totpCode.textContent = result.code || '';
+    }
+    if (elements.totpPeriodLabel) {
+        elements.totpPeriodLabel.textContent = `${
+            result.algorithm || 'SHA256'
+        } · every ${result.period || 30}s`;
+    }
+    if (elements.totpRemainingLabel) {
+        elements.totpRemainingLabel.textContent = `${result.remaining || 0}s remaining`;
+    }
+    if (elements.totpError) {
+        elements.totpError.textContent = '';
+    }
+}
+
+function renderTotpError(message) {
+    if (elements.totpCode) {
+        elements.totpCode.textContent = '——';
+    }
+    if (elements.totpError) {
+        elements.totpError.textContent = message || '';
+    }
+    if (elements.totpPeriodLabel) {
+        elements.totpPeriodLabel.textContent = '';
+    }
+    if (elements.totpRemainingLabel) {
+        elements.totpRemainingLabel.textContent = '';
+    }
+}
+
+function copyTotpCode() {
+    const value = elements.totpCode?.textContent?.trim();
+    if (!value) {
+        setStatus('No code to copy', true);
+        return;
+    }
+    copyText(value, 'TOTP code');
+}
+
+function activateDataTool() {
+    if (elements.dataRows) {
+        elements.dataRows.value = state.dataRows;
+    }
+    handleDataSchemaInput();
+}
+
+function activateDiffTool() {
+    updateDiffLineNumbers();
+    scheduleDiff(true);
+}
+
+function updateDiffLineNumbers() {
+    updateTextareaLineNumbers('diffLeftInput', 'diffLeftLineNumbers');
+    updateTextareaLineNumbers('diffRightInput', 'diffRightLineNumbers');
+}
+
+function updateTextareaLineNumbers(textareaId, lineNumbersId) {
+    const textarea = elements[textareaId];
+    const lineNumbers = elements[lineNumbersId];
+    if (!textarea || !lineNumbers) return;
+
+    const lines = textarea.value.split('\n');
+    const lineCount = lines.length;
+
+    // Generate line number elements
+    const lineNumberElements = [];
+    for (let i = 1; i <= lineCount; i++) {
+        lineNumberElements.push(`<div>${i}</div>`);
+    }
+
+    lineNumbers.innerHTML = lineNumberElements.join('');
+}
+
+function handleDiffInput() {
+    if (!isDiffTool(state.currentTool)) return;
+    updateDiffLineNumbers();
+    scheduleDiff(false);
+}
+
+function scheduleDiff(immediate = false) {
+    if (!isDiffTool(state.currentTool)) return;
+    clearTimeout(state.diffTimer);
+    const delay = immediate ? 0 : 300;
+    state.diffTimer = setTimeout(generateDiff, delay);
+}
+
+function generateDiff() {
+    if (!state.wasmReady || !isDiffTool(state.currentTool)) return;
+
+    const leftText = elements.diffLeftInput?.value || '';
+    const rightText = elements.diffRightInput?.value || '';
+
+    if (!leftText && !rightText) {
+        if (elements.diffOutput) elements.diffOutput.textContent = '';
+        if (elements.diffSummary) elements.diffSummary.textContent = 'No differences found';
+        return;
+    }
+
+    try {
+        const unifiedDiff = generate_unified_text_diff(
+            leftText,
+            rightText,
+            'original.txt',
+            'modified.txt'
+        );
+
+        if (elements.diffOutput) {
+            if (unifiedDiff) {
+                // Apply syntax highlighting to diff output
+                elements.diffOutput.innerHTML = highlightDiffOutput(unifiedDiff);
+            } else {
+                elements.diffOutput.textContent = 'No differences found';
+            }
+        }
+
+        // Update summary
+        if (elements.diffSummary) {
+            if (unifiedDiff) {
+                const stats = analyzeDiffStats(unifiedDiff);
+                elements.diffSummary.textContent = `${stats.additions} additions, ${stats.deletions} deletions`;
+            } else {
+                elements.diffSummary.textContent = 'No differences found';
+            }
+        }
+    } catch (error) {
+        console.error('Diff generation failed:', error);
+        setStatus('Diff generation failed', true);
+    }
+}
+
+function highlightDiffOutput(diffText) {
+    if (!diffText) return '';
+
+    // Split into lines and process each line
+    const lines = diffText.split('\n');
+    const highlighted = lines.map((line) => {
+        if (line.startsWith('+')) {
+            return `<div class="addition">${escapeHtml(line)}</div>`;
+        } else if (line.startsWith('-')) {
+            return `<div class="deletion">${escapeHtml(line)}</div>`;
+        } else if (line.startsWith('@@')) {
+            return `<div class="context"><strong>${escapeHtml(line)}</strong></div>`;
+        } else {
+            return `<div class="context">${escapeHtml(line)}</div>`;
+        }
+    });
+
+    return highlighted.join('');
+}
+
+function analyzeDiffStats(diffText) {
+    const lines = diffText.split('\n');
+    let additions = 0;
+    let deletions = 0;
+
+    for (const line of lines) {
+        if (line.startsWith('+')) {
+            additions++;
+        } else if (line.startsWith('-')) {
+            deletions++;
+        }
+    }
+
+    return { additions, deletions };
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function handleDiffSwap() {
+    if (!isDiffTool(state.currentTool)) return;
+
+    const leftValue = elements.diffLeftInput?.value || '';
+    const rightValue = elements.diffRightInput?.value || '';
+
+    if (elements.diffLeftInput) elements.diffLeftInput.value = rightValue;
+    if (elements.diffRightInput) elements.diffRightInput.value = leftValue;
+
+    // Swap labels
+    const leftLabel = elements.diffLeftLabel?.textContent || 'Original Text';
+    const rightLabel = elements.diffRightLabel?.textContent || 'Modified Text';
+
+    if (elements.diffLeftLabel) elements.diffLeftLabel.textContent = rightLabel;
+    if (elements.diffRightLabel) elements.diffRightLabel.textContent = leftLabel;
+
+    updateDiffLineNumbers();
+    scheduleDiff(true);
+}
+
+function handleDiffClear() {
+    if (!isDiffTool(state.currentTool)) return;
+
+    if (elements.diffLeftInput) elements.diffLeftInput.value = '';
+    if (elements.diffRightInput) elements.diffRightInput.value = '';
+    if (elements.diffOutput) elements.diffOutput.textContent = '';
+
+    updateDiffLineNumbers();
+    if (elements.diffSummary) elements.diffSummary.textContent = 'No differences found';
+}
+
+function handleDiffCopy(side) {
+    if (!isDiffTool(state.currentTool)) return;
+
+    let text = '';
+    if (side === 'left' && elements.diffLeftInput) {
+        text = elements.diffLeftInput.value;
+    } else if (side === 'right' && elements.diffRightInput) {
+        text = elements.diffRightInput.value;
+    }
+
+    if (text) {
+        copyText(text, 'Diff input');
+    }
+}
+
+function handleDiffCopyOutput() {
+    if (!isDiffTool(state.currentTool) || !elements.diffOutput) return;
+
+    const text = elements.diffOutput.textContent || '';
+    if (text) {
+        copyText(text, 'Diff output');
+    }
+}
+
+function handleDataRowsChange() {
+    getClampedDataRows();
+    if (isDataTool(state.currentTool)) {
+        markDataDirty('Rows updated. Click Generate to refresh.');
+    }
+}
+
+function getClampedDataRows() {
+    let value = state.dataRows;
+    if (elements.dataRows) {
+        const parsed = parseInt(elements.dataRows.value, 10);
+        if (Number.isFinite(parsed)) {
+            value = parsed;
+        }
+    }
+    value = Math.min(Math.max(value || 1, 1), 100);
+    state.dataRows = value;
+    if (elements.dataRows) {
+        elements.dataRows.value = value;
+    }
+    return value;
+}
+
+function handleDataSchemaInput() {
+    // Debounce schema parsing to keep typing snappy on large CREATE TABLE blobs.
+    if (!elements.dataSchema) return;
+    if (!isDataTool(state.currentTool)) return;
+    const schema = elements.dataSchema.value || '';
+    clearTimeout(state.dataSchemaTimer);
+    state.dataSchemaTimer = setTimeout(() => parseDataSchema(schema), 400);
+}
+
+function parseDataSchema(schemaText) {
+    // Let the wasm helper crunch the schema and mirror whatever it finds in the editor UI.
+    if (!state.wasmReady) return;
+    const trimmed = schemaText.trim();
+    if (!trimmed) {
+        state.dataTables = [];
+        state.dataOverrides = {};
+        state.dataDirty = false;
+        renderDataColumnEditor();
+        if (elements.dataOutput) elements.dataOutput.value = '';
+        return;
+    }
+    state.dataKind = detectDataKind(trimmed);
+    try {
+        const tables = inspect_schema(trimmed);
+        if (Array.isArray(tables)) {
+            state.dataTables = tables;
+            pruneDataOverrides();
+            renderDataColumnEditor();
+            markDataDirty('Schema parsed. Click Generate to refresh.');
+        } else {
+            state.dataTables = [];
+            state.dataDirty = false;
+            renderDataColumnEditor();
+            setStatus('No tables detected', true);
+        }
+    } catch (err) {
+        console.error(err);
+        state.dataDirty = false;
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function detectDataKind(text) {
+    if (!text) return 'sql';
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+            const parsed = JSON.parse(trimmed);
+            if (Array.isArray(parsed) || parsed?.type) {
+                return 'json';
+            }
+        } catch (err) {
+            // Fall through to SQL when JSON parsing fails.
+        }
+    }
+    return 'sql';
+}
+
+function pruneDataOverrides() {
+    if (!state.dataTables?.length) {
+        state.dataOverrides = {};
+        return;
+    }
+    const valid = {};
+    state.dataTables.forEach((table) => {
+        valid[table.name] = new Set(table.columns.map((col) => col.name));
+    });
+    Object.keys(state.dataOverrides).forEach((tableName) => {
+        if (!valid[tableName]) {
+            delete state.dataOverrides[tableName];
+            return;
+        }
+        Object.keys(state.dataOverrides[tableName]).forEach((columnName) => {
+            if (!valid[tableName].has(columnName)) {
+                delete state.dataOverrides[tableName][columnName];
+            }
+        });
+        if (!Object.keys(state.dataOverrides[tableName]).length) {
+            delete state.dataOverrides[tableName];
+        }
+    });
+}
+
+function renderDataColumnEditor() {
+    // Rebuild the column cards every time so include/override controls stay aligned with the schema snapshot.
+    if (!elements.dataColumnEditor) return;
+    if (!state.dataTables?.length) {
+        elements.dataColumnEditor.innerHTML =
+            '<div class="muted">Paste a schema to configure column ranges.</div>';
+        return;
+    }
+    const groups = state.dataTables
+        .map((table) => {
+            const cards = table.columns
+                .map((column) => renderDataColumnCard(table.name, column))
+                .join('');
+            return `<div class="data-column-group"><h3>${escapeHTML(
+                table.name
+            )}</h3>${cards}</div>`;
+        })
+        .join('');
+    elements.dataColumnEditor.innerHTML = groups;
+}
+
+function renderDataColumnCard(tableName, column) {
+    // Numeric fields get min/max/allowed inputs; textual fields surface metadata only.
+    const kind = column.kind || 'string';
+    const overrides = state.dataOverrides?.[tableName]?.[column.name] || {};
+    const include = overrides.exclude !== true;
+    const disabledAttr = include ? '' : ' disabled';
+    const cardClass = include ? 'data-column-card' : 'data-column-card excluded';
+    const isNumeric = ['integer', 'decimal', 'float', 'boolean'].includes(kind);
+    const defaultValue = column.default_value ? escapeHTML(column.default_value) : '—';
+    const minPlaceholder = column.min_value || '';
+    const maxPlaceholder = column.max_value || '';
+    const minValue = overrides.min ?? '';
+    const maxValue = overrides.max ?? '';
+    const allowedValue = overrides.allowed ?? '';
+    const controls = isNumeric
+        ? `<div class="data-override-row">
+        <label>
+          <span>Min</span>
+          <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(
+              column.name
+          )}" data-field="min" value="${escapeAttr(
+              minValue
+          )}" placeholder="${escapeAttr(minPlaceholder)}"${disabledAttr} />
+        </label>
+        <label>
+          <span>Max</span>
+          <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(
+              column.name
+          )}" data-field="max" value="${escapeAttr(
+              maxValue
+          )}" placeholder="${escapeAttr(maxPlaceholder)}"${disabledAttr} />
+        </label>
+        <label>
+          <span>Allowed (comma)</span>
+          <input type="text" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(
+              column.name
+          )}" data-field="allowed" value="${escapeAttr(
+              allowedValue
+          )}" placeholder="e.g. 10,20"${disabledAttr} />
+        </label>
+      </div>`
+        : column.enum_values?.length
+          ? `<div class="muted">Enum values: ${escapeHTML(column.enum_values.join(', '))}</div>`
+          : '<div class="muted">Text columns use lorem ipsum</div>';
+    return `<div class="${cardClass}">
+    <header>
+      <div class="data-column-header-info">
+        <strong>${escapeHTML(column.name)}</strong>
+        <span>${escapeHTML(column.data_type || '')}</span>
+      </div>
+      <label class="data-include-toggle">
+        <input type="checkbox" data-table="${escapeAttr(
+            tableName
+        )}" data-column="${escapeAttr(column.name)}" data-field="include" ${
+            include ? 'checked' : ''
+        } />
+        <span>Include</span>
+      </label>
+    </header>
+    <div class="muted">Default: ${defaultValue}</div>
+    ${controls}
+  </div>`;
+}
+
+function handleDataOverrideInput(event) {
+    // Persist override tweaks so Generate can replay the exact same numbers.
+    const input = event.target.closest('[data-field]');
+    if (!input) return;
+    const table = input.dataset.table;
+    const column = input.dataset.column;
+    const field = input.dataset.field;
+    if (!table || !column || !field) return;
+    if (!state.dataOverrides[table]) state.dataOverrides[table] = {};
+    if (!state.dataOverrides[table][column]) state.dataOverrides[table][column] = {};
+    const entry = state.dataOverrides[table][column];
+    if (field === 'include') {
+        const include = input.checked !== false;
+        if (!include) {
+            entry.exclude = true;
+        } else {
+            delete entry.exclude;
+        }
+        cleanupDataOverrideEntry(table, column);
+        syncDataColumnCardState(input.closest('.data-column-card'), include);
+        markDataDirty('Column selection updated. Click Generate to refresh.');
+        return;
+    }
+    const value = input.value || '';
+    if (!value.trim()) {
+        delete entry[field];
+    } else {
+        entry[field] = value;
+    }
+    cleanupDataOverrideEntry(table, column);
+    markDataDirty('Overrides updated. Click Generate to refresh.');
+}
+
+function cleanupDataOverrideEntry(table, column) {
+    if (!state.dataOverrides[table]) return;
+    if (
+        column &&
+        state.dataOverrides[table][column] &&
+        !Object.keys(state.dataOverrides[table][column]).length
+    ) {
+        delete state.dataOverrides[table][column];
+    }
+    if (!Object.keys(state.dataOverrides[table]).length) {
+        delete state.dataOverrides[table];
+    }
+}
+
+function markDataDirty(message) {
+    state.dataDirty = true;
+    if (message && isDataTool(state.currentTool)) {
+        setStatus(message, false);
+    }
+}
+
+function syncDataColumnCardState(card, include) {
+    if (!card) return;
+    card.classList.toggle('excluded', !include);
+    const inputs = card.querySelectorAll('input[data-field]:not([data-field="include"])');
+    inputs.forEach((el) => {
+        el.disabled = !include;
+    });
+}
+
+function buildDataOverrides() {
+    const overrides = {};
+    Object.entries(state.dataOverrides || {}).forEach(([tableName, columns]) => {
+        const tableOverrides = {};
+        Object.entries(columns).forEach(([columnName, config]) => {
+            const entry = {};
+            if (config.exclude === true) {
+                entry.exclude = true;
+            }
+            const min = parseFloat(config.min);
+            if (Number.isFinite(min)) entry.min = min;
+            const max = parseFloat(config.max);
+            if (Number.isFinite(max)) entry.max = max;
+            const allowed = parseAllowedNumbers(config.allowed);
+            if (allowed.length) entry.allowed = allowed;
+            if (Object.keys(entry).length) {
+                tableOverrides[columnName] = entry;
+            }
+        });
+        if (Object.keys(tableOverrides).length) {
+            overrides[tableName] = tableOverrides;
+        }
+    });
+    return overrides;
+}
+
+function parseAllowedNumbers(value) {
+    if (!value) return [];
+    return value
+        .split(',')
+        .map((part) => parseFloat(part.trim()))
+        .filter((num) => Number.isFinite(num));
+}
+
+function runDataGenerator() {
+    if (!isDataTool(state.currentTool)) {
+        setStatus('Select the SQL Inserts tool', true);
+        return;
+    }
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    if (!elements.dataSchema) return;
+    const rows = getClampedDataRows();
+    const schema = elements.dataSchema.value || '';
+    if (!schema.trim()) {
+        setStatus('Schema is empty', true);
+        state.dataDirty = false;
+        return;
+    }
+    if (state.dataSchemaTimer) {
+        clearTimeout(state.dataSchemaTimer);
+        state.dataSchemaTimer = null;
+        parseDataSchema(schema);
+    } else if (!state.dataTables?.length) {
+        parseDataSchema(schema);
+    }
+    if (!state.dataTables?.length) {
+        setStatus('No tables detected', true);
+        return;
+    }
+    try {
+        const overrides = buildDataOverrides();
+        const result = generate_insert_statements(schema, rows, overrides) || '';
+        if (elements.dataOutput) {
+            elements.dataOutput.value = result;
+        }
+        state.dataDirty = false;
+        const isJson = state.dataKind === 'json' || result.trim().startsWith('[');
+        setStatus(isJson ? 'Generated JSON rows' : 'Generated INSERT statements', false);
+    } catch (err) {
+        console.error(err);
+        setStatus(`⚠️ ${err?.message || err}`, true);
+        if (elements.dataOutput) {
+            elements.dataOutput.value = '';
+        }
+    }
+}
+
+function copyDataOutput() {
+    const value = elements.dataOutput?.value || '';
+    if (!value.trim()) {
+        setStatus('No INSERT statements to copy', true);
+        return;
+    }
+    copyText(value, 'INSERT statements');
+    setStatus('Copied', false);
+}
+
+function activateKdfTool() {
+    seedKdfInputs();
+    setKdfAlgorithm(state.kdf.active || 'bcrypt');
+    clearKdfStatuses();
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+    } else {
+        setStatus('Ready', false);
+    }
+}
+
+function refreshKdfSalts() {
+    seedKdfInputs(true);
+    setStatus('Salts regenerated', false);
+}
+
+function setKdfAlgorithm(algo) {
+    state.kdf.active = algo;
+    if (elements.kdfAlgoSelect) {
+        elements.kdfAlgoSelect.value = algo;
+    }
+    const cards = elements.kdfCards || [];
+    cards.forEach((card) => {
+        const match = card.dataset.algo === algo;
+        card.classList.toggle('hidden', !match);
+    });
+}
+
+function seedKdfInputs(forceSalt = false) {
+    // Keep both Argon2 and Bcrypt salts populated; button click forces regeneration.
+    if (elements.argonSalt) {
+        if (forceSalt || !elements.argonSalt.value.trim()) {
+            state.kdf.salts.argon = randomSaltBase64(16);
+            elements.argonSalt.value = state.kdf.salts.argon;
+        } else {
+            state.kdf.salts.argon = elements.argonSalt.value.trim();
+        }
+    }
+    if (elements.bcryptSalt) {
+        if (forceSalt || !elements.bcryptSalt.value.trim()) {
+            state.kdf.salts.bcrypt = randomBcryptSalt();
+            elements.bcryptSalt.value = state.kdf.salts.bcrypt;
+        } else {
+            state.kdf.salts.bcrypt = elements.bcryptSalt.value.trim();
+        }
+    }
+}
+
+// KDF flows:
+// - Hash: uses wasm functions to generate hashes. Output field stays editable so users can tweak/replace.
+// - Verify: if input starts with scheme ($2... or $argon2...), verify via wasm; otherwise treat input as plain text and compare to password (utility for quick equality checks like "apple111").
+// - Salts: empty salt triggers secure random generation; "Random salt" button clears bcrypt salt and regenerates Argon2/S crypt salts.
+async function runBcryptHash() {
+    if (!state.wasmReady) {
+        setKdfStatus('bcryptStatus', 'Wasm not loaded', true);
+        return;
+    }
+    const password = readPassword(elements.bcryptPassword, 'bcryptStatus');
+    if (!password) return;
+    const cost = clampNumber(elements.bcryptCost?.value, 4, 31, state.kdf.bcryptCost);
+    state.kdf.bcryptCost = cost;
+    if (elements.bcryptCost) elements.bcryptCost.value = cost;
+    try {
+        setKdfStatus('bcryptStatus', 'Generating...');
+        const saltInput = getInputValue(elements.bcryptSalt);
+        const hash = await bcrypt_hash(password, cost, saltInput || undefined);
+        if (elements.bcryptSalt) {
+            const salt = bcryptSaltFromHash(hash);
+            if (salt) elements.bcryptSalt.value = salt;
+        }
+        if (elements.bcryptOutput) elements.bcryptOutput.value = hash || '';
+        if (elements.bcryptVerifyHash) {
+            elements.bcryptVerifyHash.value = hash || '';
+        }
+        setKdfStatus('bcryptStatus', 'Hash generated', 'ok');
+    } catch (err) {
+        console.error(err);
+        setKdfStatus('bcryptStatus', err?.message || 'Generate failed', true);
+    }
+}
+
+async function verifyBcrypt() {
+    if (!state.wasmReady) {
+        setKdfStatus('bcryptStatus', 'Wasm not loaded', true);
+        return;
+    }
+    const password = readPassword(elements.bcryptPassword, 'bcryptStatus');
+    const verifyInput = getInputValue(elements.bcryptVerifyHash);
+    const outputHash = getInputValue(elements.bcryptOutput);
+    const hash = verifyInput || outputHash;
+
+    // If password is empty, allow direct comparison between the two lower fields.
+    if (!password) {
+        if (!verifyInput || !outputHash) {
+            setKdfStatus('bcryptStatus', 'Fill both fields to compare', true);
+            setStatus('Fill both fields to compare', true);
+            return;
+        }
+        let ok = false;
+        const topIsHash = outputHash.startsWith('$2');
+        const bottomIsHash = verifyInput.startsWith('$2');
+        if (topIsHash && bottomIsHash) {
+            // Both are hashes; direct equality
+            ok = verifyInput === outputHash;
+        } else if (topIsHash) {
+            // Top is hash, bottom plain
+            ok = await bcrypt_verify(verifyInput, outputHash);
+        } else if (bottomIsHash) {
+            // Bottom is hash, top plain
+            ok = await bcrypt_verify(outputHash, verifyInput);
+        } else {
+            // both plain strings
+            ok = verifyInput === outputHash;
+        }
+        setKdfStatus('bcryptStatus', ok ? 'Match' : 'Mismatch', ok ? 'ok' : true);
+        setStatus(ok ? 'Match' : 'Mismatch', !ok);
+        return;
+    }
+
+    if (!hash) {
+        setKdfStatus('bcryptStatus', 'Please paste or generate a bcrypt hash', true);
+        return;
+    }
+    try {
+        setKdfStatus('bcryptStatus', 'Verifying…');
+        let ok = false;
+        if (hash.startsWith('$2')) {
+            ok = await bcrypt_verify(password, hash);
+        } else {
+            ok = hash === password;
+        }
+        setKdfStatus('bcryptStatus', ok ? 'Match' : 'Mismatch', ok ? 'ok' : true);
+    } catch (err) {
+        console.error(err);
+        setKdfStatus('bcryptStatus', err?.message || 'Verify failed', true);
+    }
+}
+
+async function runArgonHash() {
+    if (!state.wasmReady) {
+        setKdfStatus('argonStatus', 'Wasm not loaded', true);
+        return;
+    }
+    const password = readPassword(elements.argonPassword, 'argonStatus');
+    if (!password) {
+        setKdfStatus('argonStatus', 'Please enter password', true);
+        return;
+    }
+    const time = clampNumber(elements.argonTime?.value, 1, 12, state.kdf.argonTime);
+    const mem = clampNumber(elements.argonMem?.value, 4096, 1048576, state.kdf.argonMem);
+    const parallelism = clampNumber(
+        elements.argonParallelism?.value,
+        1,
+        8,
+        state.kdf.argonParallelism
+    );
+    const hashLen = clampNumber(elements.argonHashLen?.value, 8, 128, state.kdf.argonHashLen);
+    state.kdf.argonTime = time;
+    state.kdf.argonMem = mem;
+    state.kdf.argonParallelism = parallelism;
+    state.kdf.argonHashLen = hashLen;
+    const saltInput = getInputValue(elements.argonSalt);
+    const salt = saltInput || randomSaltBase64(16);
+    if (!saltInput && elements.argonSalt) elements.argonSalt.value = salt;
+    try {
+        setKdfStatus('argonStatus', 'Generating…');
+        const variant = elements.argonType?.value || 'argon2id';
+        const encoded = await argon2_hash(password, salt, time, mem, parallelism, hashLen, variant);
+        if (elements.argonOutput) elements.argonOutput.value = encoded || '';
+        if (elements.argonVerifyHash) {
+            elements.argonVerifyHash.value = encoded || '';
+        }
+        setKdfStatus('argonStatus', 'Hash generated', 'ok');
+    } catch (err) {
+        console.error(err);
+        setKdfStatus('argonStatus', err?.message || 'Generate failed', true);
+    }
+}
+
+async function verifyArgon() {
+    if (!state.wasmReady) {
+        setKdfStatus('argonStatus', 'Wasm not loaded', true);
+        return;
+    }
+    const password = readPassword(elements.argonPassword, 'argonStatus');
+    const verifyInput = getInputValue(elements.argonVerifyHash);
+    const outputHash = getInputValue(elements.argonOutput);
+    const encoded = verifyInput || outputHash;
+
+    if (!password) {
+        if (!verifyInput || !outputHash) {
+            setKdfStatus('argonStatus', 'Fill both fields to compare', true);
+            setStatus('Fill both fields to compare', true);
+            return;
+        }
+        let ok = false;
+        const topIsHash = outputHash.startsWith('$argon2');
+        const bottomIsHash = verifyInput.startsWith('$argon2');
+        if (topIsHash && bottomIsHash) {
+            ok = verifyInput === outputHash;
+        } else if (topIsHash) {
+            ok = await argon2_verify(verifyInput, outputHash);
+        } else if (bottomIsHash) {
+            ok = await argon2_verify(outputHash, verifyInput);
+        } else {
+            ok = verifyInput === outputHash;
+        }
+        setKdfStatus('argonStatus', ok ? 'Match' : 'Mismatch', ok ? 'ok' : true);
+        setStatus(ok ? 'Match' : 'Mismatch', !ok);
+        return;
+    }
+
+    if (!encoded) {
+        setKdfStatus('argonStatus', 'Please paste or generate Argon2 PHC string', true);
+        return;
+    }
+    try {
+        setKdfStatus('argonStatus', 'Verifying…');
+        let ok = false;
+        if (encoded.startsWith('$argon2')) {
+            ok = await argon2_verify(password, encoded);
+        } else {
+            ok = encoded === password;
+        }
+        setKdfStatus('argonStatus', ok ? 'Match' : 'Mismatch', ok ? 'ok' : true);
+    } catch (err) {
+        console.error(err);
+        setKdfStatus('argonStatus', err?.message || 'Verify failed', true);
+    }
+}
+
+function setKdfStatus(key, message, intent = '') {
+    const el = elements[key];
+    if (!el) return;
+    el.textContent = message;
+    el.classList.remove('ok', 'error');
+    if (intent === 'ok') el.classList.add('ok');
+    else if (intent) el.classList.add('error');
+}
+
+function clearKdfStatuses() {
+    setKdfStatus('bcryptStatus', 'Idle');
+    setKdfStatus('argonStatus', 'Idle');
+}
+
+// Crypto tool: routes UI controls to wasm AES/ChaCha encrypt/decrypt helpers.
+function activateCryptoTool() {
+    const algo = state.crypto.algorithm || 'aes-256-gcm';
+    if (elements.cryptoAlgorithm) {
+        elements.cryptoAlgorithm.value = algo;
+    }
+    handleCryptoAlgorithmChange();
+    setCryptoInputMode(state.crypto.inputMode || 'text');
+    renderCryptoFileMeta();
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+    } else {
+        setStatus('Ready', false);
+    }
+}
+
+function handleCryptoAlgorithmChange() {
+    const algo = elements.cryptoAlgorithm?.value || 'aes-256-gcm';
+    state.crypto.algorithm = algo;
+    const suite = cryptoSuites[algo] || cryptoSuites['aes-256-gcm'];
+    if (elements.cryptoNonce) {
+        elements.cryptoNonce.placeholder = `Leave blank to auto-generate ${suite.nonceLen}-byte nonce (Base64)`;
+    }
+}
+
+function seedCryptoKey() {
+    const suite = cryptoSuites[state.crypto.algorithm] || cryptoSuites['aes-256-gcm'];
+    const key = randomSaltBase64(suite.keyLen);
+    if (elements.cryptoKey) {
+        elements.cryptoKey.value = key;
+    }
+    setStatus('Generated random key', false);
+}
+
+function seedCryptoNonce() {
+    const suite = cryptoSuites[state.crypto.algorithm] || cryptoSuites['aes-256-gcm'];
+    const nonce = randomSaltBase64(suite.nonceLen);
+    if (elements.cryptoNonce) {
+        elements.cryptoNonce.value = nonce;
+    }
+    setStatus('Generated random nonce', false);
+}
+
+function setCryptoInputMode(mode) {
+    state.crypto.inputMode = mode;
+    const isFile = mode === 'file';
+    if (elements.cryptoModeText) {
+        elements.cryptoModeText.checked = !isFile;
+    }
+    if (elements.cryptoModeFile) {
+        elements.cryptoModeFile.checked = isFile;
+    }
+    elements.cryptoPlaintext?.classList.toggle('hidden', isFile);
+    elements.cryptoFile?.classList.toggle('hidden', !isFile);
+    if (!isFile) {
+        state.crypto.fileBytes = null;
+        state.crypto.fileName = '';
+        state.crypto.fileSize = 0;
+        state.crypto.files = [];
+        state.crypto.results = [];
+        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
+    }
+    renderCryptoFileMeta();
+}
+
+async function handleCryptoFileChange(event) {
+    const files = Array.from(event?.target?.files || []);
+    if (!files.length) {
+        state.crypto.fileBytes = null;
+        state.crypto.fileName = '';
+        state.crypto.fileSize = 0;
+        state.crypto.files = [];
+        state.crypto.results = [];
+        renderCryptoFileMeta();
+        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
+        return;
+    }
+    try {
+        setStatus(`Loading ${files.length} file(s)...`, false);
+        const buffers = await Promise.all(files.map((file) => file.arrayBuffer()));
+        state.crypto.files = files.map((file, idx) => ({
+            name: file.name,
+            bytes: new Uint8Array(buffers[idx]),
+            size: file.size,
+        }));
+        // Keep backward compatibility for single file mode
+        if (files.length === 1) {
+            state.crypto.fileBytes = state.crypto.files[0].bytes;
+            state.crypto.fileName = state.crypto.files[0].name;
+            state.crypto.fileSize = state.crypto.files[0].size;
+        } else {
+            state.crypto.fileBytes = null;
+            state.crypto.fileName = '';
+            state.crypto.fileSize = 0;
+        }
+        state.crypto.results = [];
+        renderCryptoFileMeta();
+        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
+        setStatus(`${files.length} file(s) loaded`, false);
+    } catch (err) {
+        console.error(err);
+        state.crypto.files = [];
+        state.crypto.results = [];
+        setStatus(`⚠️ Failed to read files: ${err?.message || err}`, true);
+        renderCryptoFileMeta();
+        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
+    }
+}
+
+function renderCryptoFileMeta() {
+    if (!elements.cryptoFileMeta) return;
+    if (state.crypto.inputMode !== 'file') {
+        elements.cryptoFileMeta.classList.add('hidden');
+        elements.cryptoFileMeta.textContent = 'No file selected';
+        return;
+    }
+    elements.cryptoFileMeta.classList.remove('hidden');
+    const files = state.crypto.files || [];
+    if (files.length === 0) {
+        elements.cryptoFileMeta.textContent = 'No file selected';
+    } else if (files.length === 1) {
+        const file = files[0];
+        elements.cryptoFileMeta.textContent = `${file.name} (${file.size} bytes)`;
+    } else {
+        const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+        elements.cryptoFileMeta.textContent = `${files.length} files selected (${totalSize} bytes total)`;
+    }
+}
+
+function handleCryptoEncrypt() {
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    const algo = elements.cryptoAlgorithm?.value || 'aes-256-gcm';
+    state.crypto.algorithm = algo;
+    const key = elements.cryptoKey?.value?.trim();
+    const nonce = elements.cryptoNonce?.value?.trim();
+
+    if (state.crypto.inputMode === 'file') {
+        const files = state.crypto.files || [];
+        if (!files.length) {
+            setStatus('Select file(s) to encrypt', true);
+            return;
+        }
+
+        // Batch encryption
+        if (files.length > 1) {
+            try {
+                setStatus(`Encrypting ${files.length} file(s)...`, false);
+                state.crypto.results = [];
+                let sharedKey = key;
+                let sharedNonce = nonce;
+
+                files.forEach((file, idx) => {
+                    setStatus(`Encrypting ${file.name} (${idx + 1}/${files.length})...`, false);
+                    const result = encrypt_bytes(
+                        algo,
+                        file.bytes,
+                        sharedKey || undefined,
+                        sharedNonce || undefined
+                    );
+
+                    // Use the same key/nonce for all files if not provided
+                    if (!sharedKey && result.keyB64) {
+                        sharedKey = result.keyB64;
+                        if (elements.cryptoKey) elements.cryptoKey.value = sharedKey;
+                    }
+                    if (!sharedNonce && result.nonceB64) {
+                        sharedNonce = result.nonceB64;
+                        if (elements.cryptoNonce) elements.cryptoNonce.value = sharedNonce;
+                    }
+
+                    // Decode ciphertext to bytes for download
+                    const cipherB64 = result.ciphertextB64 || '';
+                    const binaryString = atob(cipherB64);
+                    const cipherBytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        cipherBytes[i] = binaryString.charCodeAt(i);
+                    }
+                    state.crypto.results.push({
+                        name: file.name + '.encrypted',
+                        blob: new Blob([cipherBytes], { type: 'application/octet-stream' }),
+                        ciphertextB64: cipherB64,
+                    });
+                });
+
+                // For batch mode, show first result in textarea or summary
+                if (elements.cryptoCiphertext && state.crypto.results.length > 0) {
+                    elements.cryptoCiphertext.value = `${state.crypto.results.length} file(s) encrypted. Use Download button to save.`;
+                }
+                if (elements.cryptoDownload) elements.cryptoDownload.disabled = false;
+                setStatus(`${files.length} file(s) encrypted successfully`, false);
+            } catch (err) {
+                console.error(err);
+                state.crypto.results = [];
+                setStatus(`⚠️ ${err?.message || err}`, true);
+                if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
+            }
+            return;
+        }
+
+        // Single file mode (backward compatibility)
+        if (!state.crypto.fileBytes?.length) {
+            setStatus('Select a file to encrypt', true);
+            return;
+        }
+    }
+
+    // Text mode or single file mode
+    let payload = new Uint8Array();
+    if (state.crypto.inputMode === 'file') {
+        payload = state.crypto.fileBytes;
+    } else {
+        const text = elements.cryptoPlaintext?.value || '';
+        payload = utf8ToBytes(text);
+    }
+
+    try {
+        const result = encrypt_bytes(algo, payload, key || undefined, nonce || undefined);
+        const cipher = result.ciphertextB64 || '';
+        if (elements.cryptoCiphertext) {
+            elements.cryptoCiphertext.value = cipher;
+        }
+        if (elements.cryptoKey && result.keyB64) {
+            elements.cryptoKey.value = result.keyB64;
+        }
+        if (elements.cryptoNonce && result.nonceB64) {
+            elements.cryptoNonce.value = result.nonceB64;
+        }
+
+        // Store result for single file download
+        if (state.crypto.inputMode === 'file' && state.crypto.fileName) {
+            const binaryString = atob(cipher);
+            const cipherBytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                cipherBytes[i] = binaryString.charCodeAt(i);
+            }
+            state.crypto.results = [
+                {
+                    name: state.crypto.fileName + '.encrypted',
+                    blob: new Blob([cipherBytes], { type: 'application/octet-stream' }),
+                    ciphertextB64: cipher,
+                },
+            ];
+            if (elements.cryptoDownload) elements.cryptoDownload.disabled = false;
+        }
+
+        setStatus('Encrypted', false);
+    } catch (err) {
+        console.error(err);
+        setStatus(`⚠️ ${err?.message || err}`, true);
+        state.crypto.results = [];
+        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
+    }
+}
+
+function handleCryptoDecrypt() {
+    if (!state.wasmReady) {
+        setStatus('Waiting for WebAssembly...', true);
+        return;
+    }
+    const algo = elements.cryptoAlgorithm?.value || 'aes-256-gcm';
+    const key = elements.cryptoKey?.value?.trim();
+    const nonce = elements.cryptoNonce?.value?.trim();
+    const isFileMode = state.crypto.inputMode === 'file';
+
+    if (!key || !nonce) {
+        setStatus('Key and nonce are required to decrypt', true);
+        return;
+    }
+
+    if (isFileMode) {
+        const files = state.crypto.files || [];
+        if (!files.length) {
+            setStatus('Select encrypted file(s) to decrypt', true);
+            return;
+        }
+        try {
+            state.crypto.results = [];
+            files.forEach((file, idx) => {
+                setStatus(`Decrypting ${file.name} (${idx + 1}/${files.length})...`, false);
+                const cipherB64 = bytesToBase64(file.bytes);
+                const plainBytes = decrypt_bytes(algo, cipherB64, key, nonce);
+                const decoded = bytesToUtf8Strict(plainBytes);
+                const name = deriveDecryptedName(file.name);
+                state.crypto.results.push({
+                    name,
+                    blob: new Blob([plainBytes], { type: 'application/octet-stream' }),
+                    plaintext: decoded,
+                    bytes: plainBytes,
+                });
+            });
+            if (elements.cryptoDecryptOutput) {
+                if (state.crypto.results.length === 1) {
+                    const first = state.crypto.results[0];
+                    const text = first.plaintext;
+                    const bytes = first.bytes || new Uint8Array();
+                    elements.cryptoDecryptOutput.value =
+                        text !== null ? text : toBase64(bytes, false);
+                } else {
+                    elements.cryptoDecryptOutput.value = `${state.crypto.results.length} file(s) decrypted. Use Download.`;
+                }
+            }
+            if (elements.cryptoDownload) elements.cryptoDownload.disabled = false;
+            setStatus(`${files.length} file(s) decrypted`, false);
+        } catch (err) {
+            console.error(err);
+            state.crypto.results = [];
+            if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
+            setStatus(`⚠️ ${err?.message || err}`, true);
+        }
+        return;
+    }
+
+    // Text mode
+    const cipher = elements.cryptoDecryptInput?.value?.trim();
+    if (!cipher) {
+        setStatus('Paste ciphertext to decrypt', true);
+        return;
+    }
+    try {
+        const bytes = decrypt_bytes(algo, cipher, key, nonce);
+        const decoded = bytesToUtf8Strict(bytes);
+        if (elements.cryptoDecryptOutput) {
+            elements.cryptoDecryptOutput.value =
+                decoded !== null ? decoded : toBase64(bytes, false);
+        }
+        state.crypto.results = [];
+        const okMsg = decoded !== null ? 'Decrypted' : 'Decrypted (displayed as Base64)';
+        setStatus(okMsg, false);
+    } catch (err) {
+        console.error(err);
+        setStatus(`⚠️ ${err?.message || err}`, true);
+    }
+}
+
+function deriveDecryptedName(original = '') {
+    if (original.toLowerCase().endsWith('.encrypted')) {
+        return original.slice(0, -10) || 'decrypted';
+    }
+    if (original.toLowerCase().endsWith('.enc')) {
+        return original.slice(0, -4) || 'decrypted';
+    }
+    return `${original || 'decrypted'}.decrypted`;
+}
+
+function copyCryptoCiphertext() {
+    const value = elements.cryptoCiphertext?.value || '';
+    if (!value.trim()) {
+        setStatus('No ciphertext to copy', true);
+        return;
+    }
+    copyText(value, 'ciphertext');
+    setStatus('Copied', false);
+}
+
+function handleCryptoDownload() {
+    const results = state.crypto.results || [];
+    if (!results.length) {
+        setStatus('No files to download', true);
+        return;
+    }
+
+    if (results.length === 1) {
+        const single = results[0];
+        const url = URL.createObjectURL(single.blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = single.name || 'encrypted';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+        setStatus('Downloaded', false);
+        return;
+    }
+
+    // Batch download
+    results.forEach((result, idx) => {
+        setTimeout(() => {
+            const url = URL.createObjectURL(result.blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = result.name || `encrypted-${idx + 1}`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 0);
+        }, idx * 100);
+    });
+    setStatus(`${results.length} file(s) downloaded`, false);
+}
+
+function getInputValue(el) {
+    return el?.value?.trim() || '';
+}
+
+function readPassword(el, _statusKey) {
+    const value = el?.value || '';
+    return value;
+}
+
+function clampNumber(value, min, max, fallback) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.min(max, Math.max(min, num));
+}
+
+function bytesToBase64(bytes) {
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+}
+
+function utf8ToBytes(text) {
+    if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(text);
+    const bytes = new Uint8Array(text.length);
+    for (let i = 0; i < text.length; i += 1) bytes[i] = text.charCodeAt(i);
+    return bytes;
+}
+
+function bytesToUtf8Strict(bytes) {
+    if (typeof TextDecoder === 'undefined') return null;
+    try {
+        return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch (err) {
+        return null;
+    }
+}
+
+function randomSaltBase64(byteLength = 16) {
+    const arr = new Uint8Array(byteLength);
+    crypto.getRandomValues(arr);
+    return bytesToBase64(arr);
+}
+
+function randomBcryptSalt(byteLength = 16) {
+    const arr = new Uint8Array(byteLength);
+    crypto.getRandomValues(arr);
+    const std = bytesToBase64(arr).replace(/=+$/g, '');
+    // Bcrypt uses crypt-base64 alphabet: ./A-Za-z0-9
+    return std.replace(/\+/g, '.').replace(/\//g, '/');
+}
+
+function bcryptSaltFromHash(hash) {
+    if (!hash || !hash.startsWith('$')) return '';
+    const parts = hash.split('$');
+    if (parts.length < 4) return '';
+    const saltAndHash = parts[3] || '';
+    return saltAndHash.slice(0, 22);
+}
+
+function sanitizeRandomExclude(value) {
+    if (!value) return '';
+    const compact = value.replace(/\s+/g, '');
+    if (!compact) return '';
+    const seen = new Set();
+    let result = '';
+    for (const ch of compact) {
+        if (!seen.has(ch)) {
+            seen.add(ch);
+            result += ch;
+        }
+    }
+    return result;
+}
+
+async function copyText(value, label) {
+    try {
+        await navigator.clipboard.writeText(value);
+        setStatus(`Copied ${label}`, false);
+        showCopyFeedback(`Copied ${label}`);
+    } catch (err) {
+        console.error(err);
+        setStatus('Unable to access clipboard', true);
+        showCopyFeedback('Failed to copy');
+    }
+}
+
+function showCopyFeedback(message) {
+    // Remove existing feedback
+    const existing = document.querySelector('.copy-feedback');
+    if (existing) {
+        existing.remove();
+    }
+
+    // Create new feedback element
+    const feedback = document.createElement('div');
+    feedback.className = 'copy-feedback';
+    feedback.textContent = message;
+    document.body.appendChild(feedback);
+
+    // Remove after animation
+    setTimeout(() => {
+        if (feedback.parentNode) {
+            feedback.remove();
+        }
+    }, 2000);
+}
+
+function escapeHTML(value = '') {
+    const text = value == null ? '' : String(value);
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function escapeAttr(value = '') {
+    return escapeHTML(value).replace(/'/g, '&#39;');
+}
+
+function normalizeUuidResult(value) {
+    return normalizeMapResult(value);
+}
+
+function normalizeMapResult(value) {
+    if (!value) {
+        return {};
+    }
+    if (value instanceof Map) {
+        const record = {};
+        value.forEach((val, key) => {
+            record[String(key)] = typeof val === 'string' ? val : String(val ?? '');
+        });
+        return record;
+    }
+    if (typeof value === 'object' && !Array.isArray(value)) {
+        const record = {};
+        Object.keys(value).forEach((key) => {
+            const val = value[key];
+            record[key] = typeof val === 'string' ? val : String(val ?? '');
+        });
+        return record;
+    }
+    return {};
+}
+
+function capitalize(text) {
+    if (!text) return '';
+    return text.charAt(0).toUpperCase() + text.slice(1);
+}

@@ -1,0 +1,301 @@
+/* ============================================
+   FORM COMPONENTS
+   Input, textarea, and form control styles
+   ============================================ */
+
+/* Enhanced inputs & textareas */
+input:not([type='checkbox'], [type='radio']),
+select,
+textarea {
+    transition: var(--transition-smooth);
+    border: 1px solid var(--card-border);
+    background-color: var(--input-bg);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--fg);
+    font-family: inherit;
+
+    /* Ensure proper form control attributes for IDE extensions */
+    appearance: none;
+    box-sizing: border-box;
+}
+
+input:not([type='checkbox'], [type='radio']):focus,
+select:focus,
+textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgb(122 162 247 / 15%);
+    background-color: var(--input-focus-bg);
+    transform: translateY(-1px);
+    outline: none;
+}
+
+input:not([type='checkbox'], [type='radio']):hover:not(:focus),
+select:hover:not(:focus),
+textarea:hover:not(:focus) {
+    border-color: rgb(255 255 255 / 15%);
+    background-color: rgb(0 0 0 / 35%);
+}
+
+textarea {
+    resize: vertical;
+    min-height: 120px;
+    font-family:
+        JetBrains Mono,
+        SFMono-Regular,
+        Monaco,
+        Inconsolata,
+        Fira Code,
+        monospace;
+    line-height: 1.5;
+}
+
+/* Custom select arrow */
+select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 12px center;
+    background-repeat: no-repeat;
+    background-size: 16px;
+    padding-right: 40px;
+    appearance: none;
+    cursor: pointer;
+}
+
+select:focus {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%237aa2f7' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+}
+
+/* Enhanced checkboxes and radio buttons */
+input[type='checkbox'],
+input[type='radio'] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    border-radius: 4px;
+    border: 2px solid rgb(255 255 255 / 20%);
+    background: rgb(0 0 0 / 30%);
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+input[type='checkbox']:checked,
+input[type='radio']:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgb(122 162 247 / 20%);
+}
+
+input[type='checkbox']:hover,
+input[type='radio']:hover {
+    border-color: rgb(255 255 255 / 30%);
+    box-shadow: 0 0 0 2px rgb(255 255 255 / 10%);
+}
+
+/* Form groups and labels */
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.form-group label span {
+    color: var(--muted);
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+/* Input groups */
+.input-group {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+}
+
+.input-group input,
+.input-group select {
+    flex: 1;
+}
+
+.input-group button {
+    white-space: nowrap;
+    padding: 12px 20px;
+}
+
+/* Validation states */
+input:invalid,
+select:invalid,
+textarea:invalid {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 3px rgb(255 123 123 / 15%);
+}
+
+input:invalid:focus,
+select:invalid:focus,
+textarea:invalid:focus {
+    box-shadow: 0 0 0 3px rgb(255 123 123 / 20%);
+}
+
+/* Success states */
+input:valid,
+select:valid,
+textarea:valid {
+    border-color: var(--success);
+}
+
+/* Range input slider styles */
+input[type='range'] {
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: transparent;
+    outline: none;
+    padding: 0;
+    margin: 8px 0;
+    cursor: pointer;
+}
+
+/* Range track - WebKit browsers (Chrome, Safari, Edge) */
+input[type='range']::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 6px;
+    background: linear-gradient(90deg, rgb(122 162 247 / 30%) 0%, rgb(122 162 247 / 15%) 100%);
+    border: 1px solid rgb(122 162 247 / 20%);
+    border-radius: 3px;
+    transition: var(--transition-smooth);
+}
+
+input[type='range']:hover::-webkit-slider-runnable-track {
+    background: linear-gradient(90deg, rgb(122 162 247 / 40%) 0%, rgb(122 162 247 / 25%) 100%);
+    border-color: rgb(122 162 247 / 30%);
+}
+
+input[type='range']:focus::-webkit-slider-runnable-track {
+    background: linear-gradient(90deg, rgb(122 162 247 / 50%) 0%, rgb(122 162 247 / 35%) 100%);
+    border-color: var(--accent);
+}
+
+/* Range thumb - WebKit browsers */
+input[type='range']::-webkit-slider-thumb {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    background: linear-gradient(135deg, var(--accent) 0%, #9db4ff 100%);
+    border: 2px solid rgb(255 255 255 / 20%);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    box-shadow:
+        0 2px 6px rgb(0 0 0 / 30%),
+        0 0 0 0 rgb(122 162 247 / 0%);
+    margin-top: -6px;
+}
+
+input[type='range']:hover::-webkit-slider-thumb {
+    background: linear-gradient(135deg, #9db4ff 0%, var(--accent) 100%);
+    border-color: rgb(255 255 255 / 40%);
+    box-shadow:
+        0 3px 8px rgb(0 0 0 / 40%),
+        0 0 0 4px rgb(122 162 247 / 15%);
+    transform: scale(1.1);
+}
+
+input[type='range']:focus::-webkit-slider-thumb {
+    box-shadow:
+        0 3px 8px rgb(0 0 0 / 40%),
+        0 0 0 6px rgb(122 162 247 / 25%);
+    transform: scale(1.15);
+}
+
+input[type='range']:active::-webkit-slider-thumb {
+    transform: scale(1.05);
+}
+
+/* Range track - Firefox */
+input[type='range']::-moz-range-track {
+    width: 100%;
+    height: 6px;
+    background: linear-gradient(90deg, rgb(122 162 247 / 30%) 0%, rgb(122 162 247 / 15%) 100%);
+    border: 1px solid rgb(122 162 247 / 20%);
+    border-radius: 3px;
+    transition: var(--transition-smooth);
+}
+
+input[type='range']:hover::-moz-range-track {
+    background: linear-gradient(90deg, rgb(122 162 247 / 40%) 0%, rgb(122 162 247 / 25%) 100%);
+    border-color: rgb(122 162 247 / 30%);
+}
+
+input[type='range']:focus::-moz-range-track {
+    background: linear-gradient(90deg, rgb(122 162 247 / 50%) 0%, rgb(122 162 247 / 35%) 100%);
+    border-color: var(--accent);
+}
+
+/* Range thumb - Firefox */
+input[type='range']::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: linear-gradient(135deg, var(--accent) 0%, #9db4ff 100%);
+    border: 2px solid rgb(255 255 255 / 20%);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    box-shadow:
+        0 2px 6px rgb(0 0 0 / 30%),
+        0 0 0 0 rgb(122 162 247 / 0%);
+}
+
+input[type='range']:hover::-moz-range-thumb {
+    background: linear-gradient(135deg, #9db4ff 0%, var(--accent) 100%);
+    border-color: rgb(255 255 255 / 40%);
+    box-shadow:
+        0 3px 8px rgb(0 0 0 / 40%),
+        0 0 0 4px rgb(122 162 247 / 15%);
+    transform: scale(1.1);
+}
+
+input[type='range']:focus::-moz-range-thumb {
+    box-shadow:
+        0 3px 8px rgb(0 0 0 / 40%),
+        0 0 0 6px rgb(122 162 247 / 25%);
+    transform: scale(1.15);
+}
+
+input[type='range']:active::-moz-range-thumb {
+    transform: scale(1.05);
+}
+
+/* Range input wrapper */
+.range-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+/* Range value display */
+.range-value {
+    min-width: 40px;
+    padding: 6px 12px;
+    background: rgb(122 162 247 / 15%);
+    border: 1px solid rgb(122 162 247 / 30%);
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    text-align: center;
+    font-family:
+        JetBrains Mono,
+        monospace;
+}

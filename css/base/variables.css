@@ -1,0 +1,36 @@
+/* ============================================
+   BASE VARIABLES & RESET
+   Core CSS variables and global reset styles
+   ============================================ */
+
+:root {
+    --bg: #05060a;
+    --panel: #0f111a;
+    --border: rgb(255 255 255 / 8%);
+    --fg: #f7f7f7;
+    --muted: #a0a8b7;
+    --accent: #7aa2f7;
+    --danger: #ff7b7b;
+    --radius: 12px;
+    --sidebar-width: 260px;
+
+    /* Enhanced UI variables */
+    --bg-gradient: linear-gradient(135deg, #05060a 0%, #0a0c14 100%);
+    --card-bg: rgb(255 255 255 / 3%);
+    --card-border: rgb(255 255 255 / 8%);
+    --card-hover-border: rgb(122 162 247 / 30%);
+    --input-bg: rgb(0 0 0 / 30%);
+    --input-focus-bg: rgb(0 0 0 / 40%);
+    --accent-glow: 0 0 20px rgb(122 162 247 / 15%);
+    --success: #7dcfb6;
+    --warning: #ffd93d;
+    --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+.hidden {
+    display: none !important;
+}
