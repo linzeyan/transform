@@ -352,4 +352,90 @@ mod tests {
             }
         }
     }
+
+    // Replacement (modify a line)
+    #[test]
+    fn test_replacement_shows_delete_and_add() {
+        let old = "line 1\nold line\nline 3";
+        let new = "line 1\nnew line\nline 3";
+        let result = generate_diff(old, new, &DiffConfig::default());
+        assert_eq!(result.stats.deletions, 1);
+        assert_eq!(result.stats.additions, 1);
+        let del = result
+            .lines
+            .iter()
+            .find(|l| l.change_type == DiffChangeType::Deletion)
+            .unwrap();
+        assert_eq!(del.content, "old line");
+        let add = result
+            .lines
+            .iter()
+            .find(|l| l.change_type == DiffChangeType::Addition)
+            .unwrap();
+        assert_eq!(add.content, "new line");
+    }
+
+    // Empty texts
+    #[test]
+    fn test_empty_both_texts() {
+        let result = generate_diff("", "", &DiffConfig::default());
+        assert_eq!(result.stats.additions, 0);
+        assert_eq!(result.stats.deletions, 0);
+    }
+
+    #[test]
+    fn test_empty_old_text() {
+        let result = generate_diff("", "new content", &DiffConfig::default());
+        assert_eq!(result.stats.additions, 1);
+        assert_eq!(result.stats.deletions, 0);
+    }
+
+    #[test]
+    fn test_empty_new_text() {
+        let result = generate_diff("old content", "", &DiffConfig::default());
+        assert_eq!(result.stats.additions, 0);
+        assert_eq!(result.stats.deletions, 1);
+    }
+
+    // Single line
+    #[test]
+    fn test_single_line_identical() {
+        let result = generate_diff("same", "same", &DiffConfig::default());
+        assert_eq!(result.stats.context, 1);
+        assert_eq!(result.stats.additions, 0);
+        assert_eq!(result.stats.deletions, 0);
+    }
+
+    // CRLF vs LF handling
+    #[test]
+    fn test_crlf_vs_lf() {
+        let old = "line 1\r\nline 2\r\nline 3";
+        let new = "line 1\nline 2\nline 3";
+        // After splitting by lines(), \r should be stripped on the old side.
+        let result = generate_diff(old, new, &DiffConfig::default());
+        // The diff should detect changes because \r is part of the content.
+        // This documents the current behavior with CRLF.
+        assert!(result.lines.len() >= 3);
+    }
+
+    // Unified diff with identical texts should produce empty output
+    #[test]
+    fn test_unified_diff_identical_texts() {
+        let text = "line 1\nline 2";
+        let diff = generate_unified_diff(text, text, "a/f.txt", "b/f.txt", &DiffConfig::default());
+        assert!(
+            diff.is_empty(),
+            "identical texts should produce empty unified diff"
+        );
+    }
+
+    // Multi-line additions
+    #[test]
+    fn test_multiple_additions() {
+        let old = "a";
+        let new = "a\nb\nc\nd";
+        let result = generate_diff(old, new, &DiffConfig::default());
+        assert_eq!(result.stats.additions, 3);
+        assert_eq!(result.stats.context, 1);
+    }
 }

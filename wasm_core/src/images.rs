@@ -998,4 +998,210 @@ mod tests {
         .expect("watermark applied");
         assert!(res.data_url.starts_with("data:image/png;base64,"));
     }
+
+    // =====================================================================
+    // Unsupported format error
+    // =====================================================================
+
+    #[test]
+    fn unsupported_format_returns_error() {
+        let png_bytes = encode_sample_as(PictureFormat::Png);
+        let err = convert_image_bytes("png", "bmp", &png_bytes, ImageOptions::default());
+        assert!(err.is_err());
+        assert!(
+            err.unwrap_err().to_lowercase().contains("unsupported"),
+            "error should mention unsupported format"
+        );
+    }
+
+    #[test]
+    fn empty_bytes_returns_error() {
+        let err = convert_image_bytes("png", "jpg", &[], ImageOptions::default());
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), "input image is empty");
+    }
+
+    // =====================================================================
+    // Watermark zero opacity rejection
+    // =====================================================================
+
+    #[test]
+    fn watermark_zero_opacity_rejected() {
+        let png_bytes = encode_sample_as(PictureFormat::Png);
+        let err = apply_image_watermark_bytes(
+            "png",
+            "png",
+            &png_bytes,
+            ImageOptions::default(),
+            WatermarkOptions {
+                text: "test".into(),
+                opacity: 0.0,
+                ..Default::default()
+            },
+        );
+        assert!(err.is_err());
+        assert!(err.unwrap_err().contains("opacity"));
+    }
+
+    // =====================================================================
+    // Watermark direction variants
+    // =====================================================================
+
+    #[test]
+    fn watermark_vertical_direction() {
+        let png_bytes = encode_sample_as(PictureFormat::Png);
+        let res = apply_image_watermark_bytes(
+            "png",
+            "png",
+            &png_bytes,
+            ImageOptions::default(),
+            WatermarkOptions {
+                text: "V".into(),
+                opacity: 0.5,
+                direction: WatermarkDirection::Vertical,
+                ..Default::default()
+            },
+        );
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn watermark_horizontal_direction() {
+        let png_bytes = encode_sample_as(PictureFormat::Png);
+        let res = apply_image_watermark_bytes(
+            "png",
+            "png",
+            &png_bytes,
+            ImageOptions::default(),
+            WatermarkOptions {
+                text: "H".into(),
+                opacity: 0.5,
+                direction: WatermarkDirection::Horizontal,
+                ..Default::default()
+            },
+        );
+        assert!(res.is_ok());
+    }
+
+    // =====================================================================
+    // Hex color parsing edge cases
+    // =====================================================================
+
+    #[test]
+    fn hex_color_3_char_returns_none() {
+        // 3-char hex is not supported; only 6 or 8 char.
+        let result = parse_hex_color("#FFF");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn hex_color_invalid_chars_returns_none() {
+        let result = parse_hex_color("#ZZZZZZ");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn hex_color_8_char_with_alpha() {
+        let color = parse_hex_color("#FF000080").expect("8-char hex");
+        assert_eq!(color.r, 255);
+        assert_eq!(color.g, 0);
+        assert_eq!(color.b, 0);
+        assert_eq!(color.a, 128);
+    }
+
+    #[test]
+    fn hex_color_6_char_defaults_alpha_to_ff() {
+        let color = parse_hex_color("#00FF00").expect("6-char hex");
+        assert_eq!(color.g, 255);
+        assert_eq!(color.a, 255);
+    }
+
+    // =====================================================================
+    // Path separator handling (cross-platform)
+    // =====================================================================
+
+    #[test]
+    fn download_name_sanitizes_forward_slash() {
+        let name = derive_download_name("dir/subdir/photo.png", "webp");
+        assert!(!name.contains('/'));
+        assert!(name.ends_with(".webp"));
+    }
+
+    #[test]
+    fn download_name_sanitizes_backslash() {
+        let name = derive_download_name("dir\\subdir\\photo.png", "jpg");
+        assert!(!name.contains('\\'));
+        assert!(name.ends_with(".jpg"));
+    }
+
+    #[test]
+    fn download_name_file_with_spaces() {
+        let name = derive_download_name("my photo.png", "webp");
+        assert_eq!(name, "my photo.webp");
+    }
+
+    // =====================================================================
+    // Image format conversion preserves dimensions
+    // =====================================================================
+
+    #[test]
+    fn conversion_preserves_dimensions_png_to_jpg() {
+        let fixture = gradient_rgba(16, 12);
+        let png_bytes = encode_dynamic_as(&fixture, PictureFormat::Png);
+        let result = convert_image_bytes("png", "jpg", &png_bytes, ImageOptions::default())
+            .expect("png -> jpg");
+        assert_eq!(result.width, 16);
+        assert_eq!(result.height, 12);
+    }
+
+    #[test]
+    fn conversion_preserves_dimensions_jpg_to_webp() {
+        let fixture = gradient_rgba(10, 20);
+        let jpg_bytes = encode_dynamic_as(&fixture, PictureFormat::Jpeg);
+        let result = convert_image_bytes("jpg", "webp", &jpg_bytes, ImageOptions::default())
+            .expect("jpg -> webp");
+        assert_eq!(result.width, 10);
+        assert_eq!(result.height, 20);
+    }
+
+    // =====================================================================
+    // WebP quality levels boundary
+    // =====================================================================
+
+    #[test]
+    fn webp_levels_quality_1_returns_minimum() {
+        let levels = webp_levels_from_quality(1);
+        assert!(levels >= 2, "minimum 2 levels");
+    }
+
+    #[test]
+    fn webp_levels_quality_100_returns_256() {
+        let levels = webp_levels_from_quality(100);
+        assert_eq!(levels, 256);
+    }
+
+    #[test]
+    fn quantize_rgb_quality_100_is_noop() {
+        let mut data = vec![100u8, 150, 200, 255, 50, 75, 100, 255];
+        let original = data.clone();
+        quantize_rgb_for_webp(&mut data, 100);
+        assert_eq!(data, original, "quality 100 should be a no-op");
+    }
+
+    // =====================================================================
+    // Watermark empty image
+    // =====================================================================
+
+    #[test]
+    fn watermark_empty_bytes_returns_error() {
+        let err = apply_image_watermark_bytes(
+            "png",
+            "png",
+            &[],
+            ImageOptions::default(),
+            WatermarkOptions::default(),
+        );
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), "input image is empty");
+    }
 }

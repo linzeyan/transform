@@ -251,3 +251,674 @@ fn xml_to_json_round_trip_single_field() {
     let v: Value = serde_json::from_str(&json).unwrap();
     assert_eq!(v["name"], "Ada");
 }
+
+// =====================================================================
+// XML Edge Cases
+// =====================================================================
+
+#[test]
+fn xml_nested_elements() {
+    let xml_text =
+        xml::json_to_xml(r#"{"user":{"name":"Ada","address":{"city":"London"}}}"#).unwrap();
+    assert!(xml_text.contains("<user>"));
+    assert!(xml_text.contains("<address>"));
+    assert!(xml_text.contains("<city>London</city>"));
+    assert!(xml_text.contains("</address>"));
+}
+
+#[test]
+fn xml_arrays_produce_repeated_tags() {
+    let xml_text = xml::json_to_xml(r#"{"items":[1,2,3]}"#).unwrap();
+    let count = xml_text.matches("<items>").count();
+    assert_eq!(count, 3, "array items should produce repeated tags");
+}
+
+#[test]
+fn xml_empty_object() {
+    let result = xml::json_to_xml("{}");
+    assert!(result.is_ok());
+    let xml_text = result.unwrap();
+    assert!(xml_text.contains("<root>"));
+    assert!(xml_text.contains("</root>"));
+}
+
+#[test]
+fn xml_escapes_special_chars_in_values() {
+    let xml_text = xml::json_to_xml(r#"{"msg":"<script>alert('xss')</script>"}"#).unwrap();
+    assert!(!xml_text.contains("<script>"), "XML values must be escaped");
+    assert!(xml_text.contains("&lt;script&gt;"));
+}
+
+#[test]
+fn xml_to_json_groups_repeated_tags_into_array() {
+    let json = xml::xml_to_json("<root><item>a</item><item>b</item><item>c</item></root>").unwrap();
+    let v: Value = serde_json::from_str(&json).unwrap();
+    assert!(v["item"].is_array(), "repeated tags should become arrays");
+    assert_eq!(v["item"].as_array().unwrap().len(), 3);
+}
+
+// =====================================================================
+// Markdown Edge Cases
+// =====================================================================
+
+#[test]
+fn markdown_code_blocks_preserve_content() {
+    let html = markdown::markdown_to_html("```\nlet x = 1;\n```").unwrap();
+    assert!(html.contains("<pre><code>"));
+    assert!(html.contains("let x = 1;"));
+    assert!(html.contains("</code></pre>"));
+}
+
+#[test]
+fn markdown_links_render_correctly() {
+    let html = markdown::markdown_to_html("[Click here](https://example.com)").unwrap();
+    assert!(html.contains("<a href="));
+    assert!(html.contains("https://example.com"));
+    assert!(html.contains("Click here"));
+}
+
+#[test]
+fn markdown_nested_formatting() {
+    let html = markdown::markdown_to_html("**bold and *italic* text**").unwrap();
+    assert!(html.contains("<strong>"));
+    assert!(html.contains("<em>"));
+}
+
+#[test]
+fn markdown_html_escaping_prevents_xss() {
+    let html = markdown::markdown_to_html("<script>alert('xss')</script>").unwrap();
+    assert!(!html.contains("<script>"), "scripts must be escaped");
+    assert!(html.contains("&lt;script&gt;"));
+}
+
+#[test]
+fn markdown_crlf_normalization() {
+    let html = markdown::markdown_to_html("# Title\r\n\r\nParagraph\r\n").unwrap();
+    assert!(html.contains("<h1>"));
+    assert!(html.contains("Title"));
+}
+
+#[test]
+fn html_to_markdown_strips_script_tags() {
+    let md = markdown::html_to_markdown("<p>Hello</p><script>alert('xss')</script><p>World</p>")
+        .unwrap();
+    assert!(!md.contains("script"));
+    assert!(!md.contains("alert"));
+    assert!(md.contains("Hello"));
+    assert!(md.contains("World"));
+}
+
+// =====================================================================
+// Go Struct Edge Cases
+// =====================================================================
+
+#[test]
+fn go_struct_nested_objects() {
+    let json: Value =
+        serde_json::from_str(r#"{"user":{"name":"Ada","address":{"city":"London"}}}"#).unwrap();
+    let go = go_struct::json_value_to_go(&json);
+    assert!(go.contains("type User struct"));
+    assert!(go.contains("type Address struct"));
+    assert!(go.contains("City string"));
+}
+
+#[test]
+fn go_struct_arrays() {
+    let json: Value = serde_json::from_str(r#"{"items":[{"id":1},{"id":2}]}"#).unwrap();
+    let go = go_struct::json_value_to_go(&json);
+    assert!(go.contains("[]"));
+    assert!(go.contains("Items"));
+}
+
+#[test]
+fn go_struct_to_value_depth_limit_does_not_panic() {
+    // Create a deeply nested struct definition.
+    let mut src = String::new();
+    for i in 0..20 {
+        src.push_str(&format!(
+            "type T{} struct {{ Inner T{} `json:\"inner\"` }}\n",
+            i,
+            i + 1
+        ));
+    }
+    src.push_str("type T20 struct { Val int `json:\"val\"` }\n");
+    let result = go_struct::go_struct_to_value(&src);
+    // Should succeed or return a truncated result, never panic.
+    assert!(result.is_ok());
+}
+
+#[test]
+fn go_struct_empty_struct_error() {
+    let err = go_struct::go_struct_to_value("no struct here");
+    assert!(err.is_err());
+}
+
+// =====================================================================
+// GraphQL Edge Cases
+// =====================================================================
+
+#[test]
+fn graphql_arrays_produce_list_types() {
+    let gql = graphql::json_to_graphql(r#"{"tags":["a","b"],"items":[{"id":1}]}"#).unwrap();
+    assert!(gql.contains("[String]") || gql.contains("tags:"));
+    assert!(gql.contains("items:"));
+}
+
+#[test]
+fn graphql_nested_types() {
+    let gql = graphql::json_to_graphql(r#"{"user":{"profile":{"bio":"hello"}}}"#).unwrap();
+    assert!(gql.contains("type User"));
+    assert!(gql.contains("type Profile"));
+    assert!(gql.contains("bio: String"));
+}
+
+#[test]
+fn graphql_to_json_and_back() {
+    let original = r#"{"id":1,"name":"test"}"#;
+    let gql = graphql::json_to_graphql(original).unwrap();
+    let json_back = graphql::graphql_to_json(&gql).unwrap();
+    let v: Value = serde_json::from_str(&json_back).unwrap();
+    assert!(v.get("id").is_some());
+    assert!(v.get("name").is_some());
+}
+
+// =====================================================================
+// Protobuf Edge Cases
+// =====================================================================
+
+#[test]
+fn proto_nested_messages() {
+    let proto_text =
+        proto::json_to_proto(r#"{"user":{"name":"Ada","address":{"city":"London"}}}"#).unwrap();
+    assert!(proto_text.contains("message User"));
+    assert!(proto_text.contains("message Address"));
+    assert!(proto_text.contains("string city"));
+}
+
+#[test]
+fn proto_repeated_fields() {
+    let proto_text = proto::json_to_proto(r#"{"tags":["a","b"]}"#).unwrap();
+    assert!(proto_text.contains("repeated"));
+}
+
+#[test]
+fn proto_to_json_and_back() {
+    let original = r#"{"id":1,"name":"Ada"}"#;
+    let proto_text = proto::json_to_proto(original).unwrap();
+    let json_back = proto::proto_to_json(&proto_text).unwrap();
+    let v: Value = serde_json::from_str(&json_back).unwrap();
+    assert!(v.get("id").is_some());
+    assert!(v.get("name").is_some());
+}
+
+// =====================================================================
+// Schema Edge Cases
+// =====================================================================
+
+#[test]
+fn schema_array_with_objects() {
+    let src = json!([{"id": 1, "name": "Ada"}]);
+    let schema_val = schema::json_to_schema(&src);
+    assert_eq!(schema_val["type"], "array");
+    assert!(schema_val["items"].is_object());
+}
+
+#[test]
+fn schema_nested_objects() {
+    let src = json!({"user": {"name": "Ada", "age": 30}});
+    let schema_val = schema::json_to_schema(&src);
+    assert_eq!(schema_val["type"], "object");
+    assert!(schema_val["properties"]["user"]["properties"]["name"].is_object());
+}
+
+#[test]
+fn schema_null_handling() {
+    let src = json!({"maybe": null});
+    let schema_val = schema::json_to_schema(&src);
+    // Null should produce some schema representation, not panic.
+    assert!(schema_val["properties"]["maybe"].is_object());
+}
+
+#[test]
+fn schema_sample_produces_valid_values() {
+    let src = json!({"name": "Ada", "age": 30, "active": true});
+    let schema_val = schema::json_to_schema(&src);
+    let sample = schema::schema_to_sample(&schema_val);
+    assert!(sample.get("name").is_some());
+    assert!(sample.get("age").is_some());
+    assert!(sample.get("active").is_some());
+}
+
+// =====================================================================
+// JSON/YAML/TOML Roundtrip Regression
+// =====================================================================
+
+#[test]
+fn json_yaml_toml_roundtrip_consistency() {
+    let original = r#"{"name":"Ada","age":30,"active":true}"#;
+    let yaml = formats::convert_formats("JSON", "YAML", original).unwrap();
+    let toml = formats::convert_formats("JSON", "TOML", original).unwrap();
+    let json_from_yaml = formats::convert_formats("YAML", "JSON", &yaml).unwrap();
+    let json_from_toml = formats::convert_formats("TOML", "JSON", &toml).unwrap();
+    let v1: Value = serde_json::from_str(&json_from_yaml).unwrap();
+    let v2: Value = serde_json::from_str(&json_from_toml).unwrap();
+    let v_orig: Value = serde_json::from_str(original).unwrap();
+    assert_eq!(v1, v_orig, "YAML roundtrip must preserve data");
+    assert_eq!(v2, v_orig, "TOML roundtrip must preserve data");
+}
+
+#[test]
+fn json_xml_roundtrip() {
+    let original = r#"{"name":"Ada","age":"30"}"#;
+    let xml_text = formats::convert_formats("JSON", "XML", original).unwrap();
+    let json_back = formats::convert_formats("XML", "JSON", &xml_text).unwrap();
+    let v: Value = serde_json::from_str(&json_back).unwrap();
+    assert_eq!(v["name"], "Ada");
+    assert_eq!(v["age"], "30");
+}
+
+#[test]
+fn json_msgpack_roundtrip() {
+    let original = r#"{"key":"value","num":42}"#;
+    let msgpack = formats::convert_formats("JSON", "MsgPack", original).unwrap();
+    let json_back = formats::convert_formats("MsgPack", "JSON", &msgpack).unwrap();
+    let v: Value = serde_json::from_str(&json_back).unwrap();
+    assert_eq!(v["key"], "value");
+    assert_eq!(v["num"], 42);
+}
+
+// =====================================================================
+// Helpers Name Transformation Edge Cases
+// =====================================================================
+
+#[test]
+fn helpers_snake_name_handles_various_cases() {
+    assert_eq!(helpers::snake_name("camelCase"), "camel_case");
+    assert_eq!(helpers::snake_name("HTTPStatus"), "http_status");
+    assert_eq!(helpers::snake_name("already_snake"), "already_snake");
+    assert_eq!(helpers::snake_name("proxy-rewrite"), "proxy_rewrite");
+}
+
+#[test]
+fn helpers_export_name_edge_cases() {
+    assert_eq!(helpers::export_name(""), "");
+    assert_eq!(helpers::export_name("a"), "A");
+    assert_eq!(helpers::export_name("_private"), "Private");
+}
+
+#[test]
+fn helpers_split_words_edge_cases() {
+    assert_eq!(helpers::split_words("simpleWord"), vec!["simple", "Word"]);
+    assert_eq!(helpers::split_words("ABC"), vec!["ABC"]);
+    assert_eq!(helpers::split_words("a"), vec!["a"]);
+}
+
+// =====================================================================
+// Phase 2: Tabular Format Tests
+// =====================================================================
+
+use crate::convert::tabular;
+
+#[test]
+fn tabular_infer_format_from_name_csv() {
+    let fmt = tabular::infer_format_from_name("data.csv");
+    assert_eq!(fmt, Some(tabular::TabularFormat::Csv));
+}
+
+#[test]
+fn tabular_infer_format_from_name_tsv() {
+    let fmt = tabular::infer_format_from_name("data.tsv");
+    assert_eq!(fmt, Some(tabular::TabularFormat::Tsv));
+}
+
+#[test]
+fn tabular_infer_format_from_name_json() {
+    assert_eq!(
+        tabular::infer_format_from_name("data.json"),
+        Some(tabular::TabularFormat::Json)
+    );
+    assert_eq!(
+        tabular::infer_format_from_name("data.ndjson"),
+        Some(tabular::TabularFormat::Json)
+    );
+}
+
+#[test]
+fn tabular_infer_format_from_name_parquet() {
+    assert_eq!(
+        tabular::infer_format_from_name("data.parquet"),
+        Some(tabular::TabularFormat::Parquet)
+    );
+}
+
+#[test]
+fn tabular_infer_format_from_name_avro() {
+    assert_eq!(
+        tabular::infer_format_from_name("data.avro"),
+        Some(tabular::TabularFormat::Avro)
+    );
+}
+
+#[test]
+fn tabular_infer_format_from_name_arrow_variants() {
+    assert_eq!(
+        tabular::infer_format_from_name("data.arrow"),
+        Some(tabular::TabularFormat::ArrowIpc)
+    );
+    assert_eq!(
+        tabular::infer_format_from_name("data.ipc"),
+        Some(tabular::TabularFormat::ArrowIpc)
+    );
+    assert_eq!(
+        tabular::infer_format_from_name("data.feather"),
+        Some(tabular::TabularFormat::ArrowIpc)
+    );
+}
+
+#[test]
+fn tabular_infer_format_from_name_unknown() {
+    assert_eq!(tabular::infer_format_from_name("data.xlsx"), None);
+    assert_eq!(tabular::infer_format_from_name("readme.md"), None);
+}
+
+#[test]
+fn tabular_infer_format_case_insensitive() {
+    assert_eq!(
+        tabular::infer_format_from_name("DATA.CSV"),
+        Some(tabular::TabularFormat::Csv)
+    );
+    assert_eq!(
+        tabular::infer_format_from_name("FILE.Parquet"),
+        Some(tabular::TabularFormat::Parquet)
+    );
+}
+
+#[test]
+fn tabular_csv_to_json_roundtrip() {
+    let csv_data = b"name,age\nAda,30\nBob,25\n";
+    let result = tabular::convert_tabular("csv", "json", csv_data).expect("csv to json");
+    assert_eq!(result.mime_type, "application/json");
+    let parsed: Value = serde_json::from_slice(&result.bytes).expect("parse json");
+    let arr = parsed.as_array().expect("array");
+    assert_eq!(arr.len(), 2);
+    assert_eq!(arr[0]["name"], "Ada");
+    assert_eq!(arr[0]["age"], "30");
+}
+
+#[test]
+fn tabular_json_to_csv_roundtrip() {
+    let json_data = br#"[{"name":"Ada","age":"30"},{"name":"Bob","age":"25"}]"#;
+    let result = tabular::convert_tabular("json", "csv", json_data).expect("json to csv");
+    assert_eq!(result.mime_type, "text/csv");
+    let csv_text = String::from_utf8(result.bytes).expect("utf8");
+    assert!(csv_text.contains("name"));
+    assert!(csv_text.contains("Ada"));
+    assert!(csv_text.contains("Bob"));
+}
+
+#[test]
+fn tabular_tsv_to_json() {
+    let tsv_data = b"name\tage\nAda\t30\nBob\t25\n";
+    let result = tabular::convert_tabular("tsv", "json", tsv_data).expect("tsv to json");
+    let parsed: Value = serde_json::from_slice(&result.bytes).expect("parse json");
+    let arr = parsed.as_array().expect("array");
+    assert_eq!(arr.len(), 2);
+    assert_eq!(arr[0]["name"], "Ada");
+}
+
+#[test]
+fn tabular_json_to_tsv() {
+    let json_data = br#"[{"name":"Ada","score":"100"}]"#;
+    let result = tabular::convert_tabular("json", "tsv", json_data).expect("json to tsv");
+    assert_eq!(result.mime_type, "text/tab-separated-values");
+    let tsv_text = String::from_utf8(result.bytes).expect("utf8");
+    assert!(tsv_text.contains('\t'), "TSV output should contain tabs");
+    assert!(tsv_text.contains("Ada"));
+}
+
+#[test]
+fn tabular_ndjson_input() {
+    let ndjson = b"{\"id\":1,\"val\":\"a\"}\n{\"id\":2,\"val\":\"b\"}\n";
+    let result = tabular::convert_tabular("json", "csv", ndjson).expect("ndjson to csv");
+    let csv_text = String::from_utf8(result.bytes).expect("utf8");
+    assert!(csv_text.contains("id"));
+    assert!(csv_text.contains("val"));
+}
+
+#[test]
+fn tabular_csv_quoted_fields() {
+    let csv_data = b"name,bio\n\"Ada\",\"Loves, coding\"\n\"Bob\",\"Writes \"\"code\"\"\"\n";
+    let result = tabular::convert_tabular("csv", "json", csv_data).expect("quoted csv");
+    let parsed: Value = serde_json::from_slice(&result.bytes).expect("parse");
+    let arr = parsed.as_array().expect("array");
+    assert_eq!(arr[0]["bio"], "Loves, coding");
+}
+
+#[test]
+fn tabular_unsupported_format_rejected() {
+    let err = tabular::convert_tabular("xlsx", "json", b"data");
+    assert!(err.is_err());
+    assert!(err.unwrap_err().contains("Unsupported"));
+}
+
+#[test]
+fn tabular_csv_single_column() {
+    let csv_data = b"value\n1\n2\n3\n";
+    let result = tabular::convert_tabular("csv", "json", csv_data).expect("single col");
+    let parsed: Value = serde_json::from_slice(&result.bytes).expect("parse");
+    let arr = parsed.as_array().expect("array");
+    assert_eq!(arr.len(), 3);
+}
+
+#[test]
+fn tabular_row_count_reported() {
+    let csv_data = b"a,b\n1,2\n3,4\n5,6\n";
+    let result = tabular::convert_tabular("csv", "json", csv_data).expect("row count");
+    assert_eq!(result.row_count, 3);
+}
+
+// =====================================================================
+// Phase 2: Additional Convert Edge Cases
+// =====================================================================
+
+#[test]
+fn markdown_heading_levels_1_through_6() {
+    for level in 1..=6 {
+        let hashes = "#".repeat(level);
+        let input = format!("{} Heading {}", hashes, level);
+        let html = markdown::markdown_to_html(&input).unwrap();
+        assert!(
+            html.contains(&format!("<h{level}>")),
+            "missing h{level} tag"
+        );
+        assert!(
+            html.contains(&format!("</h{level}>")),
+            "missing closing h{level} tag"
+        );
+    }
+}
+
+#[test]
+fn markdown_list_items() {
+    let input = "- item 1\n- item 2\n- item 3";
+    let html = markdown::markdown_to_html(input).unwrap();
+    assert!(html.contains("<ul>"));
+    let li_count = html.matches("<li>").count();
+    assert_eq!(li_count, 3, "expected 3 list items");
+}
+
+#[test]
+fn markdown_asterisk_list() {
+    let input = "* star item 1\n* star item 2";
+    let html = markdown::markdown_to_html(input).unwrap();
+    assert!(html.contains("<ul>"));
+    assert!(html.contains("<li>"));
+}
+
+#[test]
+fn html_to_markdown_headings() {
+    for level in 1..=6 {
+        let html = format!("<h{level}>Title</h{level}>");
+        let md = markdown::html_to_markdown(&html).unwrap();
+        let expected_prefix = "#".repeat(level);
+        assert!(
+            md.contains(&expected_prefix),
+            "missing {expected_prefix} in markdown output: {md}"
+        );
+    }
+}
+
+#[test]
+fn html_to_markdown_bold_and_italic() {
+    let md = markdown::html_to_markdown("<strong>bold</strong> and <em>italic</em>").unwrap();
+    assert!(md.contains("**bold**"));
+    assert!(md.contains("*italic*"));
+}
+
+#[test]
+fn html_to_markdown_links() {
+    let md = markdown::html_to_markdown("<a href=\"https://example.com\">Click</a>").unwrap();
+    assert!(md.contains("[Click](https://example.com)"));
+}
+
+#[test]
+fn html_to_markdown_code_blocks() {
+    let md = markdown::html_to_markdown("<pre><code>let x = 1;</code></pre>").unwrap();
+    assert!(md.contains("```"));
+    assert!(md.contains("let x = 1;"));
+}
+
+#[test]
+fn html_to_markdown_inline_code() {
+    let md = markdown::html_to_markdown("Use <code>foo()</code> here").unwrap();
+    assert!(md.contains("`foo()`"));
+}
+
+#[test]
+fn html_to_markdown_style_stripped() {
+    let md = markdown::html_to_markdown("<style>body{color:red}</style><p>Hello</p>").unwrap();
+    assert!(!md.contains("color:red"));
+    assert!(md.contains("Hello"));
+}
+
+#[test]
+fn go_struct_bool_and_float_types() {
+    let json: Value = serde_json::from_str(r#"{"active":true,"score":3.14}"#).unwrap();
+    let go = go_struct::json_value_to_go(&json);
+    assert!(go.contains("bool"), "boolean should map to bool");
+    assert!(go.contains("float64"), "float should map to float64");
+}
+
+#[test]
+fn go_struct_null_value_maps_to_interface() {
+    let json: Value = serde_json::from_str(r#"{"unknown":null}"#).unwrap();
+    let go = go_struct::json_value_to_go(&json);
+    assert!(
+        go.contains("interface{}"),
+        "null should map to interface{{}}"
+    );
+}
+
+#[test]
+fn go_struct_json_tag_preserves_original_key() {
+    let json: Value = serde_json::from_str(r#"{"my-key":1,"another_key":"v"}"#).unwrap();
+    let go = go_struct::json_value_to_go(&json);
+    assert!(
+        go.contains(r#"`json:"my-key"`"#),
+        "json tag should preserve original key name"
+    );
+    assert!(go.contains(r#"`json:"another_key"`"#));
+}
+
+#[test]
+fn xml_boolean_and_number_values() {
+    let xml_text = xml::json_to_xml(r#"{"active":true,"count":42}"#).unwrap();
+    assert!(xml_text.contains("<active>true</active>"));
+    assert!(xml_text.contains("<count>42</count>"));
+}
+
+#[test]
+fn xml_null_value_produces_empty_element() {
+    let xml_text = xml::json_to_xml(r#"{"empty":null}"#).unwrap();
+    assert!(xml_text.contains("<empty"));
+}
+
+#[test]
+fn schema_string_type() {
+    let src = json!("hello");
+    let schema_val = schema::json_to_schema(&src);
+    assert_eq!(schema_val["type"], "string");
+}
+
+#[test]
+fn schema_boolean_type() {
+    let src = json!(true);
+    let schema_val = schema::json_to_schema(&src);
+    assert_eq!(schema_val["type"], "boolean");
+}
+
+#[test]
+fn schema_number_types() {
+    let int_schema = schema::json_to_schema(&json!(42));
+    // serde_json treats all numbers as "number" type in JSON Schema
+    assert!(int_schema["type"] == "integer" || int_schema["type"] == "number");
+    let float_schema = schema::json_to_schema(&json!(3.19));
+    assert_eq!(float_schema["type"], "number");
+}
+
+#[test]
+fn msgpack_nested_object_roundtrip() {
+    let original = r#"{"outer":{"inner":{"deep":"value"}},"list":[1,2,3]}"#;
+    let encoded = msgpack::json_to_msgpack(original).unwrap();
+    let decoded = msgpack::msgpack_to_json(&encoded).unwrap();
+    let v: Value = serde_json::from_str(&decoded).unwrap();
+    assert_eq!(v["outer"]["inner"]["deep"], "value");
+    assert_eq!(v["list"][0], 1);
+    assert_eq!(v["list"][2], 3);
+}
+
+#[test]
+fn helpers_lower_first_preserves_acronyms() {
+    assert_eq!(helpers::lower_first("HTTPServer"), "httpServer");
+    assert_eq!(helpers::lower_first("URLParser"), "urlParser");
+    assert_eq!(helpers::lower_first("ID"), "id");
+}
+
+#[test]
+fn helpers_snake_name_empty_returns_field() {
+    assert_eq!(helpers::snake_name(""), "field");
+    assert_eq!(helpers::snake_name("---"), "field");
+}
+
+#[test]
+fn helpers_is_all_upper_edge_cases() {
+    assert!(!helpers::is_all_upper(""));
+    assert!(helpers::is_all_upper("ABC123"));
+    assert!(!helpers::is_all_upper("ABCabc"));
+    assert!(helpers::is_all_upper("A"));
+}
+
+#[test]
+fn json_schema_roundtrip() {
+    let original = r#"{"name":"Ada","age":30,"tags":["rust","wasm"]}"#;
+    let json_text = formats::convert_formats("JSON", "JSON Schema", original).unwrap();
+    let schema_val: Value = serde_json::from_str(&json_text).unwrap();
+    assert_eq!(schema_val["type"], "object");
+    assert!(schema_val["properties"]["name"].is_object());
+    assert!(schema_val["properties"]["tags"].is_object());
+}
+
+#[test]
+fn toon_handles_special_values() {
+    let payload = json!({
+        "null_val": null,
+        "bool_val": true,
+        "num_val": 3.54,
+        "empty_str": ""
+    });
+    let toon_text = toon::json_to_toon(&payload.to_string()).expect("toon encode");
+    let json_back = toon::toon_to_json(&toon_text).expect("toon decode");
+    let parsed: Value = serde_json::from_str(&json_back).unwrap();
+    assert!(parsed["null_val"].is_null());
+    assert_eq!(parsed["bool_val"], true);
+}

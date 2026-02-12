@@ -12,7 +12,7 @@ lint: fmt
 	cargo clippy $(WASM_CORE) -- -D warnings
 
 test:
-	cargo test $(WASM_CORE) --all
+	cargo test $(WASM_CORE) --all -- --quiet
 	@command -v wasm-pack >/dev/null || (cargo install wasm-pack)
 	wasm-pack test --chrome --headless wasm_core
 
