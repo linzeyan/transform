@@ -27,7 +27,7 @@ urlencoding = "2"
 ascii85 = "0.2"
 qrcode = { version = "0.14", features = ["image", "svg"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "avif"] }
-rqrr = "0.7"
+rqrr = "0.10"
 data-encoding = "2"
 hex = "0.4"
 crc = "3"
@@ -51,13 +51,13 @@ password-hash = "0.5"
 ssh-key = { version = "0.6", features = ["ed25519", "rsa", "rand_core"] }
 rand_core = "0.6"
 x509-parser = "0.16"
-time = { version = "0.3", features = ["formatting"] }
+time = { version = "0.3.47", features = ["formatting"] }
 aes-gcm = { version = "0.10", features = ["std"] }
 chacha20poly1305 = { version = "0.10", features = ["std"] }
-arrow2 = { version = "0.17", default-features = false, features = ["io_csv", "io_json", "io_ipc", "io_parquet", "io_avro"] }
+arrow2 = { version = "0.18", default-features = false, features = ["io_csv", "io_json", "io_ipc", "io_parquet", "io_avro"] }
 csv = "1"
 avro-schema = "0.3"
-parquet2 = { version = "0.17", default-features = false }
+parquet2 = { version = "0.17.2", default-features = false }
 apache-avro = { version = "0.21", default-features = false }
 figlet-rs = "0.1"
 font8x8 = "0.3"
