@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64"
+    xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Convert">
+    <title>Convert</title>
+    <style>
+        :root { --icon-color: #111; --bg: transparent; }
+        @media (prefers-color-scheme: dark) {
+        :root { --icon-color: #fff; --bg: transparent; }
+        }
+    </style>
+
+    <rect x="0" y="0" width="64" height="64" rx="12" fill="var(--bg)" />
+
+    <!-- Upper curved arrow (↻) -->
+    <path d="M14 36
+           A18 18 0 0 1 41 18"
+        fill="none" stroke="var(--icon-color)"
+        stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+    <!-- Upper arrow head -->
+    <path d="M41 18 L48 18 L44 12 Z"
+        fill="var(--icon-color)" />
+
+    <!-- Lower curved arrow (↺) -->
+    <path d="M50 28
+           A18 18 0 0 1 23 46"
+        fill="none" stroke="var(--icon-color)"
+        stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+    <!-- Lower arrow head -->
+    <path d="M23 46 L16 46 L20 52 Z"
+        fill="var(--icon-color)" />
+</svg>

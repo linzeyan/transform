@@ -1,0 +1,267 @@
+/* ============================================
+   PANEL COMPONENTS
+   Panel, card, and container styles
+   ============================================ */
+
+.tool-view {
+    display: grid;
+    gap: 16px;
+    padding: 16px 24px 8px;
+}
+
+#converterWorkspace {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#coderWorkspace {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#pairWorkspace {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#numberWorkspace {
+    grid-template-columns: 1fr;
+}
+
+#ipv4Workspace {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#uuidWorkspace,
+#userAgentWorkspace {
+    grid-template-columns: 1fr;
+}
+
+#certWorkspace {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tool-view.hidden {
+    display: none;
+}
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+}
+
+.coder-header {
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.coder-mode-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 18px 12px;
+    flex-wrap: wrap;
+}
+
+.coder-mode-row .checkbox {
+    margin: 0;
+}
+
+#coderFileMeta {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.panel-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.panel-actions.hidden {
+    display: none;
+}
+
+.panel-actions .ghost-btn {
+    background: rgb(255 255 255 / 8%);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    font-weight: 500;
+    font-size: 12px;
+    padding: 6px 10px;
+}
+
+.panel-actions .ghost-btn:hover {
+    background: rgb(255 255 255 / 14%);
+}
+
+textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--fg);
+    font: inherit;
+    padding: 16px 18px;
+    resize: none;
+    min-height: 220px;
+}
+
+textarea:focus {
+    outline: none;
+}
+
+/* Enhanced panel styles */
+.tool-view {
+    gap: 24px;
+    padding: 24px 28px 16px;
+    animation: fade-in 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#converterWorkspace {
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 28px;
+}
+
+#converterWorkspace .panel {
+    background: linear-gradient(135deg, rgb(255 255 255 / 5%) 0%, rgb(255 255 255 / 2%) 100%);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+    transition: var(--transition-smooth);
+    overflow: hidden;
+}
+
+#converterWorkspace .panel:hover {
+    border-color: var(--card-hover-border);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+}
+
+.panel-header {
+    background: linear-gradient(135deg, rgb(255 255 255 / 8%) 0%, rgb(255 255 255 / 4%) 100%);
+    border-bottom: 1px solid rgb(255 255 255 / 10%);
+    padding: 20px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.panel-header h2,
+.panel-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--fg);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.panel-header .panel-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.panel-header .panel-actions button {
+    background: rgb(255 255 255 / 8%);
+    border: 1px solid rgb(255 255 255 / 15%);
+    color: var(--fg);
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: var(--transition-smooth);
+}
+
+.panel-header .panel-actions button:hover {
+    background: rgb(255 255 255 / 15%);
+    border-color: rgb(255 255 255 / 25%);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
+}
+
+#converterWorkspace textarea {
+    background: rgb(0 0 0 / 25%);
+    border: 1px solid rgb(255 255 255 / 8%);
+    border-radius: 12px;
+    padding: 20px;
+    font-size: 14px;
+    line-height: 1.6;
+    resize: vertical;
+    min-height: 300px;
+    transition: var(--transition-smooth);
+}
+
+#converterWorkspace textarea:focus {
+    background: rgb(0 0 0 / 35%);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgb(122 162 247 / 12%);
+    outline: none;
+}
+
+/* Enhanced coder workspace */
+#coderWorkspace {
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 28px;
+}
+
+#coderWorkspace .panel {
+    background: linear-gradient(135deg, rgb(255 255 255 / 5%) 0%, rgb(255 255 255 / 2%) 100%);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+    transition: var(--transition-smooth);
+}
+
+#coderWorkspace .panel:hover {
+    border-color: var(--card-hover-border);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+}
+
+/* Enhanced generator workspaces */
+#uuidWorkspace,
+#userAgentWorkspace,
+#randomWorkspace,
+#qrWorkspace,
+#totpWorkspace,
+#sqlWorkspace,
+#sshWorkspace {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+#uuidWorkspace .panel,
+#userAgentWorkspace .panel,
+#randomWorkspace .panel,
+#qrWorkspace .panel,
+#totpWorkspace .panel,
+#sqlWorkspace .panel,
+#sshWorkspace .panel {
+    background: linear-gradient(135deg, rgb(255 255 255 / 5%) 0%, rgb(255 255 255 / 2%) 100%);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+    transition: var(--transition-smooth);
+}
+
+#uuidWorkspace .panel:hover,
+#userAgentWorkspace .panel:hover,
+#randomWorkspace .panel:hover,
+#qrWorkspace .panel:hover,
+#totpWorkspace .panel:hover,
+#sqlWorkspace .panel:hover,
+#sshWorkspace .panel:hover {
+    border-color: var(--card-hover-border);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+}

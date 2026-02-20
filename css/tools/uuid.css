@@ -1,0 +1,72 @@
+/* ============================================
+   UUID GENERATOR TOOL
+   Styles specific to UUID generator
+   ============================================ */
+
+.uuid-list {
+    padding: 16px 18px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* UUID row styling - entire row is clickable for copy functionality */
+.uuid-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    background: rgb(255 255 255 / 2%);
+    cursor: pointer;
+    transition:
+        background 0.2s,
+        border-color 0.2s;
+}
+
+.uuid-row:hover {
+    background: rgb(255 255 255 / 5%);
+    border-color: rgb(122 162 247 / 30%);
+}
+
+.uuid-row code {
+    font-size: 15px;
+    color: var(--fg);
+}
+
+.generator-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* UUID Generator specific enhancements */
+#uuidWorkspace .uuid-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+#uuidWorkspace .uuid-controls label {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#uuidWorkspace .uuid-controls label span {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+}
+
+#uuidWorkspace .uuid-results {
+    background: rgb(0 0 0 / 20%);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid rgb(255 255 255 / 8%);
+}

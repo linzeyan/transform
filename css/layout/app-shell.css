@@ -1,0 +1,31 @@
+/* ============================================
+   APP SHELL LAYOUT
+   Main application layout structure
+   ============================================ */
+
+.app-shell {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 6px 1fr;
+    min-height: 100vh;
+}
+
+#sidebarBackdrop {
+    position: fixed;
+    inset: 0;
+    background: rgb(0 0 0 / 45%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 15;
+}
+
+body.sidebar-open #sidebarBackdrop {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.workspace {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
