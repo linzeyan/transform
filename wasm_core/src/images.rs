@@ -682,7 +682,7 @@ fn quantize_rgb_for_webp(data: &mut [u8], quality: u8) {
     }
     let levels = webp_levels_from_quality(quality);
     let step = 255.0 / (levels as f32 - 1.0);
-    for pixel in data.chunks_exact_mut(4) {
+    for pixel in data.as_chunks_mut::<4>().0 {
         for channel in pixel.iter_mut().take(3) {
             let value = f32::from(*channel);
             let bucket = (value / step).round();
