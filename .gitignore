@@ -4,3 +4,4 @@ www/pkg/
 .cargo
 package*
 node_modules
+/docs
