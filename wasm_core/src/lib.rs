@@ -1461,10 +1461,10 @@ fn json_schema_to_tables(schema: &Value) -> Option<Vec<TableSchema>> {
     // Handle { type: "array", items: { type: "object", properties: { ... } } }
     if let Some(Value::String(kind)) = schema.get("type") {
         let kind_lower = kind.to_ascii_lowercase();
-        if kind_lower == "array" {
-            if let Some(items) = schema.get("items") {
-                return json_schema_to_tables(items);
-            }
+        if kind_lower == "array"
+            && let Some(items) = schema.get("items")
+        {
+            return json_schema_to_tables(items);
         }
         if kind_lower != "object" {
             return None;
@@ -1642,14 +1642,14 @@ fn parse_column_line(line: &str, column_re: &Regex) -> Option<ColumnSchema> {
 }
 
 fn parse_length_and_scale(data_type: &str) -> (Option<usize>, Option<u32>) {
-    if let Some(start) = data_type.find('(') {
-        if let Some(end) = data_type[start + 1..].find(')') {
-            let inner = &data_type[start + 1..start + 1 + end];
-            let mut parts = inner.split(',');
-            let len = parts.next().and_then(|v| v.trim().parse::<usize>().ok());
-            let scale = parts.next().and_then(|v| v.trim().parse::<u32>().ok());
-            return (len, scale);
-        }
+    if let Some(start) = data_type.find('(')
+        && let Some(end) = data_type[start + 1..].find(')')
+    {
+        let inner = &data_type[start + 1..start + 1 + end];
+        let mut parts = inner.split(',');
+        let len = parts.next().and_then(|v| v.trim().parse::<usize>().ok());
+        let scale = parts.next().and_then(|v| v.trim().parse::<u32>().ok());
+        return (len, scale);
     }
     (None, None)
 }
@@ -1985,15 +1985,15 @@ fn sample_integer_json(column: &ColumnSchema, override_cfg: Option<&ColumnOverri
         if let Some(value) = override_cfg.max {
             max = value.floor() as i128;
         }
-        if let Some(list) = override_cfg.allowed.as_ref() {
-            if !list.is_empty() {
-                let idx = random_index(list.len());
-                let value = list[idx].round() as i128;
-                return value
-                    .clamp(i64::MIN as i128, i64::MAX as i128)
-                    .try_into()
-                    .unwrap_or(0);
-            }
+        if let Some(list) = override_cfg.allowed.as_ref()
+            && !list.is_empty()
+        {
+            let idx = random_index(list.len());
+            let value = list[idx].round() as i128;
+            return value
+                .clamp(i64::MIN as i128, i64::MAX as i128)
+                .try_into()
+                .unwrap_or(0);
         }
     }
     if max < min {
@@ -2015,11 +2015,11 @@ fn sample_decimal_json(column: &ColumnSchema, override_cfg: Option<&ColumnOverri
         if let Some(value) = override_cfg.max {
             max = value;
         }
-        if let Some(list) = override_cfg.allowed.as_ref() {
-            if !list.is_empty() {
-                let idx = random_index(list.len());
-                return list[idx];
-            }
+        if let Some(list) = override_cfg.allowed.as_ref()
+            && !list.is_empty()
+        {
+            let idx = random_index(list.len());
+            return list[idx];
         }
     }
     if max < min {
@@ -2037,11 +2037,11 @@ fn sample_float_json(_column: &ColumnSchema, override_cfg: Option<&ColumnOverrid
         if let Some(value) = override_cfg.max {
             max = value;
         }
-        if let Some(list) = override_cfg.allowed.as_ref() {
-            if !list.is_empty() {
-                let idx = random_index(list.len());
-                return list[idx];
-            }
+        if let Some(list) = override_cfg.allowed.as_ref()
+            && !list.is_empty()
+        {
+            let idx = random_index(list.len());
+            return list[idx];
         }
     }
     if max < min {
@@ -2100,12 +2100,12 @@ fn sample_integer_value(column: &ColumnSchema, override_cfg: Option<&ColumnOverr
         if let Some(value) = override_cfg.max {
             max = value.floor() as i128;
         }
-        if let Some(list) = override_cfg.allowed.as_ref() {
-            if !list.is_empty() {
-                let idx = random_index(list.len());
-                let value = list[idx].round() as i128;
-                return value.to_string();
-            }
+        if let Some(list) = override_cfg.allowed.as_ref()
+            && !list.is_empty()
+        {
+            let idx = random_index(list.len());
+            let value = list[idx].round() as i128;
+            return value.to_string();
         }
     }
     if max < min {
@@ -2123,11 +2123,11 @@ fn sample_decimal_value(column: &ColumnSchema, override_cfg: Option<&ColumnOverr
         if let Some(value) = override_cfg.max {
             max = value;
         }
-        if let Some(list) = override_cfg.allowed.as_ref() {
-            if !list.is_empty() {
-                let idx = random_index(list.len());
-                return format_decimal(list[idx], column.scale.unwrap_or(2));
-            }
+        if let Some(list) = override_cfg.allowed.as_ref()
+            && !list.is_empty()
+        {
+            let idx = random_index(list.len());
+            return format_decimal(list[idx], column.scale.unwrap_or(2));
         }
     }
     if max < min {
@@ -2147,11 +2147,11 @@ fn sample_float_value(column: &ColumnSchema, override_cfg: Option<&ColumnOverrid
         if let Some(value) = override_cfg.max {
             max = value;
         }
-        if let Some(list) = override_cfg.allowed.as_ref() {
-            if !list.is_empty() {
-                let idx = random_index(list.len());
-                return format!("{:.*}", precision as usize, list[idx]);
-            }
+        if let Some(list) = override_cfg.allowed.as_ref()
+            && !list.is_empty()
+        {
+            let idx = random_index(list.len());
+            return format!("{:.*}", precision as usize, list[idx]);
         }
     }
     if max < min {

@@ -461,10 +461,10 @@ fn derive_download_name(original: &str, target_ext: &str) -> String {
 
 fn decode_image(bytes: &[u8], fallback: PictureFormat) -> Result<DynamicImage, String> {
     // Try to honor magic bytes when present so mismatched extensions still work.
-    if let Ok(reader) = ImageReader::new(Cursor::new(bytes)).with_guessed_format() {
-        if let Ok(image) = reader.decode() {
-            return Ok(image);
-        }
+    if let Ok(reader) = ImageReader::new(Cursor::new(bytes)).with_guessed_format()
+        && let Ok(image) = reader.decode()
+    {
+        return Ok(image);
     }
     image::load_from_memory_with_format(bytes, fallback.image_format())
         .or_else(|_| image::load_from_memory(bytes))

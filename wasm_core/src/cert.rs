@@ -370,10 +370,10 @@ fn link_issuers(summaries: &mut [CertificateSummary]) {
     }
     for summary in summaries.iter_mut() {
         summary.is_self_signed = summary.subject == summary.issuer;
-        if let Some(ref aki) = summary.authority_key_id {
-            if let Some(pos) = ski_to_pos.get(aki) {
-                summary.issuer_position = Some(*pos);
-            }
+        if let Some(ref aki) = summary.authority_key_id
+            && let Some(pos) = ski_to_pos.get(aki)
+        {
+            summary.issuer_position = Some(*pos);
         }
     }
 }

@@ -22,12 +22,12 @@ pub fn export_name(key: &str) -> String {
         }
         out.remove(0);
     }
-    if let Some(first) = out.chars().next() {
-        if first.is_ascii_lowercase() {
-            let mut chars: Vec<char> = out.chars().collect();
-            chars[0] = first.to_ascii_uppercase();
-            out = chars.into_iter().collect();
-        }
+    if let Some(first) = out.chars().next()
+        && first.is_ascii_lowercase()
+    {
+        let mut chars: Vec<char> = out.chars().collect();
+        chars[0] = first.to_ascii_uppercase();
+        out = chars.into_iter().collect();
     }
     out
 }

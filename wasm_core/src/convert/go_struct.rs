@@ -214,11 +214,11 @@ fn parse_fields(body: &str) -> Vec<StructField> {
             continue;
         }
         let mut tag = String::new();
-        if let Some(start) = content.find('`') {
-            if let Some(end) = content[start + 1..].find('`') {
-                tag = content[start + 1..start + 1 + end].to_string();
-                content = content[..start].trim();
-            }
+        if let Some(start) = content.find('`')
+            && let Some(end) = content[start + 1..].find('`')
+        {
+            tag = content[start + 1..start + 1 + end].to_string();
+            content = content[..start].trim();
         }
         let parts: Vec<&str> = content.split_whitespace().collect();
         if parts.len() < 2 {
@@ -296,13 +296,13 @@ fn sample_for_type(expr: &str, defs: &HashMap<String, StructDefinition>, depth: 
     if trimmed.starts_with('*') {
         return sample_for_type(trimmed.trim_start_matches('*'), defs, depth);
     }
-    if trimmed.starts_with("map[") {
-        if let Some(end) = trimmed.find(']') {
-            let value_type = trimmed[end + 1..].trim();
-            let mut map = Map::new();
-            map.insert("key".into(), sample_for_type(value_type, defs, depth + 1));
-            return Value::Object(map);
-        }
+    if trimmed.starts_with("map[")
+        && let Some(end) = trimmed.find(']')
+    {
+        let value_type = trimmed[end + 1..].trim();
+        let mut map = Map::new();
+        map.insert("key".into(), sample_for_type(value_type, defs, depth + 1));
+        return Value::Object(map);
     }
     match trimmed {
         "string" | "[]byte" => Value::String(String::new()),

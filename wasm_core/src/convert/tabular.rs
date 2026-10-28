@@ -1,27 +1,16 @@
-use apache_avro::{
-    Codec as AvroCodec, Schema as AvroSchema, Writer as AvroWriter,
-    schema::{Name as AvroName, RecordField, RecordFieldOrder, RecordSchema, UnionSchema},
-    types::Value as AvroValue,
-};
-use arrow2::array::{
-    Array, BooleanArray, Float32Array, Float64Array, Int32Array, Int64Array, MutableArray,
-    MutableUtf8Array, Utf8Array,
-};
-use arrow2::chunk::Chunk;
-use arrow2::datatypes::{DataType, Field, Schema};
-use arrow2::io::avro::read as avro_read;
-use arrow2::io::ipc::{read as ipc_read, write as ipc_write};
-use arrow2::io::parquet::write::{
-    CompressionOptions, RowGroupIterator, WriteOptions as ParquetWriteOptions,
-};
-use arrow2::io::parquet::write::{Encoding, Version};
-use arrow2::io::parquet::{read as parquet_read, write as parquet_write};
-use avro_schema::read::read_metadata as avro_read_metadata;
+use arrow::array::{Array, ArrayRef, RecordBatch, RecordBatchReader, StringArray, StringBuilder};
+use arrow::datatypes::{DataType, Field, FieldRef, Schema, SchemaRef};
+use arrow::json::writer::{EncoderOptions, LineDelimited, make_encoder};
+use parquet::arrow::ArrowWriter;
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use parquet::basic::Compression;
+use parquet::file::properties::WriterProperties;
 use serde_json::Value as JsonValue;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::io::Cursor;
+use std::sync::Arc;
 
-type Batch = Chunk<Box<dyn Array>>;
+type Table = (SchemaRef, Vec<RecordBatch>);
 type ColumnData = Vec<Vec<Option<String>>>;
 
 /// Normalized representation returned by tabular conversions so the JS side can
@@ -83,19 +72,42 @@ fn err<T: std::fmt::Display>(msg: T) -> String {
     msg.to_string()
 }
 
-/// Parse textual or binary tabular data into a schema plus batches. All values are
-/// normalized to `Utf8` columns to keep type inference predictable across formats.
-fn read_to_batches(fmt: TabularFormat, data: &[u8]) -> Result<(Schema, Vec<Batch>), String> {
+/// Parse tabular data into a schema plus batches. Text formats become `Utf8`
+/// columns: guessing types from text would turn a zip code like `00123` into
+/// `123`. Binary formats keep the schema their producer wrote.
+fn read_table(fmt: TabularFormat, data: &[u8]) -> Result<Table, String> {
     match fmt {
         TabularFormat::Json => parse_json_rows(data),
         TabularFormat::Csv | TabularFormat::Tsv => parse_delimited_rows(fmt, data),
-        TabularFormat::Parquet => read_parquet_batches(data),
-        TabularFormat::Avro => read_avro_batches(data),
-        TabularFormat::ArrowIpc | TabularFormat::Feather => read_ipc_batches(data),
+        TabularFormat::Parquet => {
+            let reader =
+                ParquetRecordBatchReaderBuilder::try_new(bytes::Bytes::copy_from_slice(data))
+                    .map_err(err)?
+                    .build()
+                    .map_err(err)?;
+            collect_batches(reader)
+        }
+        TabularFormat::Avro => {
+            let reader = arrow_avro::reader::ReaderBuilder::new()
+                .build(Cursor::new(data))
+                .map_err(err)?;
+            collect_batches(reader)
+        }
+        TabularFormat::ArrowIpc | TabularFormat::Feather => {
+            let reader =
+                arrow::ipc::reader::FileReader::try_new(Cursor::new(data), None).map_err(err)?;
+            collect_batches(reader)
+        }
     }
 }
 
-fn parse_json_rows(data: &[u8]) -> Result<(Schema, Vec<Batch>), String> {
+fn collect_batches(reader: impl RecordBatchReader) -> Result<Table, String> {
+    let schema = reader.schema();
+    let batches = reader.collect::<Result<Vec<_>, _>>().map_err(err)?;
+    Ok((schema, batches))
+}
+
+fn parse_json_rows(data: &[u8]) -> Result<Table, String> {
     let text = std::str::from_utf8(data).map_err(err)?;
     let parsed: JsonValue = if text.trim_start().starts_with('[') {
         serde_json::from_str(text).map_err(err)?
@@ -114,10 +126,10 @@ fn parse_json_rows(data: &[u8]) -> Result<(Schema, Vec<Batch>), String> {
         JsonValue::Array(items) => items,
         other => return Err(format!("Expected JSON array or NDJSON, got {other}")),
     };
-    json_values_to_batches(rows)
+    json_values_to_table(rows)
 }
 
-fn json_values_to_batches(rows: Vec<JsonValue>) -> Result<(Schema, Vec<Batch>), String> {
+fn json_values_to_table(rows: Vec<JsonValue>) -> Result<Table, String> {
     let mut key_set = BTreeSet::new();
     for value in &rows {
         let obj = value
@@ -142,7 +154,7 @@ fn json_values_to_batches(rows: Vec<JsonValue>) -> Result<(Schema, Vec<Batch>), 
             columns[col_idx].push(cell);
         }
     }
-    build_batches_from_columns(names, columns)
+    text_table(names, columns)
 }
 
 fn json_cell_to_string(value: &JsonValue) -> Result<Option<String>, String> {
@@ -157,7 +169,7 @@ fn json_cell_to_string(value: &JsonValue) -> Result<Option<String>, String> {
     }
 }
 
-fn parse_delimited_rows(fmt: TabularFormat, data: &[u8]) -> Result<(Schema, Vec<Batch>), String> {
+fn parse_delimited_rows(fmt: TabularFormat, data: &[u8]) -> Result<Table, String> {
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
         .delimiter(fmt.delimiter().unwrap_or(b','))
@@ -175,368 +187,183 @@ fn parse_delimited_rows(fmt: TabularFormat, data: &[u8]) -> Result<(Schema, Vec<
             });
         }
     }
-    build_batches_from_columns(headers.iter().map(|s| s.to_string()).collect(), columns)
+    text_table(headers.iter().map(|s| s.to_string()).collect(), columns)
 }
 
-fn read_parquet_batches(data: &[u8]) -> Result<(Schema, Vec<Batch>), String> {
-    let mut cursor = Cursor::new(data);
-    let metadata = parquet_read::read_metadata(&mut cursor).map_err(err)?;
-    let schema = parquet_read::infer_schema(&metadata).map_err(err)?;
-    let row_groups = metadata.row_groups;
-    let reader =
-        parquet_read::FileReader::new(cursor, row_groups, schema.clone(), None, None, None);
-    let mut batches = Vec::new();
-    for batch in reader {
-        let chunk = batch.map_err(err)?;
-        batches.push(to_arc_batch(chunk));
-    }
-    Ok((schema, batches))
-}
-
-fn read_avro_batches(data: &[u8]) -> Result<(Schema, Vec<Batch>), String> {
-    let mut reader = Cursor::new(data);
-    let metadata = avro_read_metadata(&mut reader).map_err(err)?;
-    let schema = avro_read::infer_schema(&metadata.record).map_err(err)?;
-    let fields = schema.fields.clone();
-    let mut reader = avro_read::Reader::new(reader, metadata, fields, None);
-    let mut batches = Vec::new();
-    for batch in reader.by_ref() {
-        let chunk = batch.map_err(err)?;
-        batches.push(to_arc_batch(chunk));
-    }
-    Ok((schema, batches))
-}
-
-fn read_ipc_batches(data: &[u8]) -> Result<(Schema, Vec<Batch>), String> {
-    let mut cursor = Cursor::new(data);
-    let metadata = ipc_read::read_file_metadata(&mut cursor).map_err(err)?;
-    let mut reader = ipc_read::FileReader::new(cursor, metadata, None, None);
-    let schema = reader.schema().clone();
-    let mut batches = Vec::new();
-    for batch in reader.by_ref() {
-        let chunk = batch.map_err(err)?;
-        batches.push(to_arc_batch(chunk));
-    }
-    Ok((schema, batches))
-}
-
-/// Convert a schema+batches into string-backed columns so we can export to any format.
-fn normalize_to_utf8(schema: &Schema, batches: Vec<Batch>) -> Result<(Schema, Vec<Batch>), String> {
-    let field_names: Vec<String> = schema.fields.iter().map(|f| f.name.clone()).collect();
-    if batches.is_empty() {
-        return Ok((utf8_schema_from(&field_names), Vec::new()));
-    }
-    let mut normalized_batches = Vec::with_capacity(batches.len());
-    for batch in batches {
-        let mut columns: ColumnData = field_names.iter().map(|_| Vec::new()).collect();
-        for row_idx in 0..batch.len() {
-            for (col_idx, array) in batch.arrays().iter().enumerate() {
-                columns[col_idx].push(value_to_string(array.as_ref(), row_idx)?);
-            }
-        }
-        let batch = build_batch_from_columns(field_names.clone(), columns)?;
-        normalized_batches.push(batch);
-    }
-    Ok((utf8_schema_from(&field_names), normalized_batches))
-}
-
-fn value_to_string(array: &dyn Array, idx: usize) -> Result<Option<String>, String> {
-    if array.is_null(idx) {
-        return Ok(None);
-    }
-    match array.data_type() {
-        DataType::Utf8 => {
-            let arr = array
-                .as_any()
-                .downcast_ref::<Utf8Array<i32>>()
-                .ok_or_else(|| "Invalid Utf8 array".to_string())?;
-            Ok(arr.get(idx).map(|s| s.to_string()))
-        }
-        DataType::Boolean => {
-            let arr = array
-                .as_any()
-                .downcast_ref::<BooleanArray>()
-                .ok_or_else(|| "Invalid Bool array".to_string())?;
-            Ok(Some(arr.value(idx).to_string()))
-        }
-        DataType::Int32 => {
-            let arr = array
-                .as_any()
-                .downcast_ref::<Int32Array>()
-                .ok_or_else(|| "Invalid Int32 array".to_string())?;
-            Ok(Some(arr.value(idx).to_string()))
-        }
-        DataType::Int64 => {
-            let arr = array
-                .as_any()
-                .downcast_ref::<Int64Array>()
-                .ok_or_else(|| "Invalid Int64 array".to_string())?;
-            Ok(Some(arr.value(idx).to_string()))
-        }
-        DataType::Float32 => {
-            let arr = array
-                .as_any()
-                .downcast_ref::<Float32Array>()
-                .ok_or_else(|| "Invalid Float32 array".to_string())?;
-            Ok(Some(arr.value(idx).to_string()))
-        }
-        DataType::Float64 => {
-            let arr = array
-                .as_any()
-                .downcast_ref::<Float64Array>()
-                .ok_or_else(|| "Invalid Float64 array".to_string())?;
-            Ok(Some(arr.value(idx).to_string()))
-        }
-        other => Ok(Some(format!("{other:?}"))),
-    }
-}
-
-fn utf8_schema_from(fields: &[String]) -> Schema {
-    Schema::from(
-        fields
+fn text_table(names: Vec<String>, columns: ColumnData) -> Result<Table, String> {
+    let schema = Arc::new(Schema::new(
+        names
             .iter()
-            .map(|name| Field::new(name.clone(), DataType::Utf8, true))
+            .map(|name| Field::new(name, DataType::Utf8, true))
             .collect::<Vec<_>>(),
-    )
-}
-
-fn build_batches_from_columns(
-    fields: Vec<String>,
-    columns: ColumnData,
-) -> Result<(Schema, Vec<Batch>), String> {
-    let batch = build_batch_from_columns(fields.clone(), columns)?;
-    Ok((utf8_schema_from(&fields), vec![batch]))
-}
-
-fn build_batch_from_columns(_fields: Vec<String>, columns: ColumnData) -> Result<Batch, String> {
-    let mut arrays: Vec<Box<dyn Array>> = Vec::with_capacity(columns.len());
-    for col in columns {
-        let mut builder = MutableUtf8Array::<i32>::new();
-        for cell in col {
-            match cell {
-                Some(text) => builder.push(Some(text.as_str())),
-                None => builder.push_null(),
-            }
-        }
-        arrays.push(builder.as_box());
+    ));
+    if names.is_empty() {
+        return Ok((schema, Vec::new()));
     }
-    Chunk::try_new(arrays).map_err(err)
-}
-
-fn rows_from_batches(
-    schema: &Schema,
-    batches: Vec<Batch>,
-) -> Result<(Vec<String>, ColumnData), String> {
-    let (schema, normalized) = normalize_to_utf8(schema, batches)?;
-    let field_names: Vec<String> = schema.fields.iter().map(|f| f.name.clone()).collect();
-    if normalized.is_empty() {
-        let len = field_names.len();
-        return Ok((field_names, vec![Vec::new(); len]));
-    }
-    let mut merged_columns: Vec<Vec<Option<String>>> =
-        field_names.iter().map(|_| Vec::new()).collect();
-    for batch in normalized {
-        for (idx, array) in batch.arrays().iter().enumerate() {
-            let arr = array
-                .as_any()
-                .downcast_ref::<Utf8Array<i32>>()
-                .ok_or_else(|| "Invalid Utf8 array".to_string())?;
-            merged_columns[idx].extend(arr.iter().map(|v| v.map(|s| s.to_string())));
-        }
-    }
-    Ok((field_names, merged_columns))
-}
-
-fn write_from_rows(
-    fmt: TabularFormat,
-    fields: Vec<String>,
-    columns: ColumnData,
-) -> Result<TabularResult, String> {
-    match fmt {
-        TabularFormat::Json => write_json(fields, columns),
-        TabularFormat::Csv | TabularFormat::Tsv => write_delimited(fmt, fields, columns),
-        TabularFormat::Parquet => write_parquet(fields, columns),
-        TabularFormat::Avro => write_avro(fields, columns),
-        TabularFormat::ArrowIpc | TabularFormat::Feather => write_ipc(fields, columns),
-    }
-}
-
-fn to_arc_batch(batch: Chunk<Box<dyn Array>>) -> Batch {
-    batch
-}
-
-fn write_json(fields: Vec<String>, columns: ColumnData) -> Result<TabularResult, String> {
-    let mut rows = Vec::new();
-    let row_count = columns.first().map(|c| c.len()).unwrap_or(0);
-    for row_idx in 0..row_count {
-        let mut map = serde_json::Map::new();
-        for (field_idx, name) in fields.iter().enumerate() {
-            let val = columns
-                .get(field_idx)
-                .and_then(|col| col.get(row_idx))
-                .cloned()
-                .flatten();
-            map.insert(
-                name.clone(),
-                val.map(JsonValue::String).unwrap_or(JsonValue::Null),
-            );
-        }
-        rows.push(JsonValue::Object(map));
-    }
-    let text = serde_json::to_string_pretty(&JsonValue::Array(rows)).map_err(err)?;
-    let (mime, ext) = TabularFormat::Json.mime_and_ext();
-    Ok(TabularResult {
-        bytes: text.into_bytes(),
-        mime_type: mime.to_string(),
-        file_name: format!("converted.{ext}"),
-        row_count: row_count as u64,
-    })
-}
-
-fn write_delimited(
-    fmt: TabularFormat,
-    fields: Vec<String>,
-    columns: ColumnData,
-) -> Result<TabularResult, String> {
-    let mut wtr = csv::WriterBuilder::new()
-        .has_headers(true)
-        .delimiter(fmt.delimiter().unwrap_or(b','))
-        .from_writer(Vec::new());
-    wtr.write_record(&fields).map_err(err)?;
-    let row_count = columns.first().map(|c| c.len()).unwrap_or(0);
-    for row_idx in 0..row_count {
-        let mut row = Vec::with_capacity(fields.len());
-        for col in &columns {
-            row.push(col.get(row_idx).and_then(|v| v.clone()).unwrap_or_default());
-        }
-        wtr.write_record(&row).map_err(err)?;
-    }
-    wtr.flush().map_err(err)?;
-    let bytes = wtr.into_inner().map_err(err)?;
-    let (mime, ext) = fmt.mime_and_ext();
-    Ok(TabularResult {
-        bytes,
-        mime_type: mime.to_string(),
-        file_name: format!("converted.{ext}"),
-        row_count: row_count as u64,
-    })
-}
-
-fn make_utf8_batch(
-    fields: &[String],
-    columns: &ColumnData,
-) -> Result<(Schema, Vec<Batch>), String> {
-    let batch = build_batch_from_columns(fields.to_vec(), columns.to_vec())?;
-    let schema = utf8_schema_from(fields);
+    let arrays: Vec<ArrayRef> = columns
+        .into_iter()
+        .map(|col| Arc::new(StringArray::from(col)) as ArrayRef)
+        .collect();
+    let batch = RecordBatch::try_new(schema.clone(), arrays).map_err(err)?;
     Ok((schema, vec![batch]))
 }
 
-fn write_ipc(fields: Vec<String>, columns: ColumnData) -> Result<TabularResult, String> {
-    let (schema, batches) = make_utf8_batch(&fields, &columns)?;
-    let mut out = Vec::new();
-    let options = ipc_write::WriteOptions::default();
-    let mut writer =
-        ipc_write::FileWriter::try_new(&mut out, schema.clone(), None, options).map_err(err)?;
+fn write_table(fmt: TabularFormat, (schema, batches): &Table) -> Result<Vec<u8>, String> {
+    match fmt {
+        TabularFormat::Json => write_json(batches),
+        TabularFormat::Csv | TabularFormat::Tsv => {
+            write_delimited(fmt.delimiter().unwrap_or(b','), schema, batches)
+        }
+        TabularFormat::Parquet => {
+            // Snappy is what pyarrow, pandas and Spark write by default, so every
+            // reader that matters has it.
+            let props = WriterProperties::builder()
+                .set_compression(Compression::SNAPPY)
+                .build();
+            let mut writer =
+                ArrowWriter::try_new(Vec::new(), schema.clone(), Some(props)).map_err(err)?;
+            for batch in batches {
+                writer.write(batch).map_err(err)?;
+            }
+            writer.into_inner().map_err(err)
+        }
+        TabularFormat::Avro => {
+            let schema = avro_named(schema);
+            let mut writer =
+                arrow_avro::writer::AvroWriter::new(Vec::new(), schema.as_ref().clone())
+                    .map_err(err)?;
+            for batch in batches {
+                let batch =
+                    RecordBatch::try_new(schema.clone(), batch.columns().to_vec()).map_err(err)?;
+                writer.write(&batch).map_err(err)?;
+            }
+            writer.finish().map_err(err)?;
+            Ok(writer.into_inner())
+        }
+        TabularFormat::ArrowIpc | TabularFormat::Feather => {
+            let mut writer =
+                arrow::ipc::writer::FileWriter::try_new(Vec::new(), schema).map_err(err)?;
+            for batch in batches {
+                writer.write(batch).map_err(err)?;
+            }
+            writer.finish().map_err(err)?;
+            writer.into_inner().map_err(err)
+        }
+    }
+}
+
+/// Avro names are `[A-Za-z_][A-Za-z0-9_]*`, and CSV headers like `first name` are
+/// not. arrow-avro rewrites them in the schema it writes but then looks columns up
+/// by the rewritten name and fails, so rename before it sees them.
+fn avro_named(schema: &SchemaRef) -> SchemaRef {
+    let mut taken = BTreeSet::new();
+    let fields: Vec<Field> = schema
+        .fields()
+        .iter()
+        .map(|field| {
+            let mut name: String = field
+                .name()
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            if !name.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
+                name.insert(0, '_');
+            }
+            let base = name.clone();
+            let mut n = 1;
+            while !taken.insert(name.clone()) {
+                n += 1;
+                name = format!("{base}_{n}");
+            }
+            field.as_ref().clone().with_name(name)
+        })
+        .collect();
+    Arc::new(Schema::new(fields))
+}
+
+/// A JSON array with one object per line. Pretty-printing would mean re-parsing,
+/// which rounds decimals and drops their trailing zeros.
+fn write_json(batches: &[RecordBatch]) -> Result<Vec<u8>, String> {
+    let mut writer = arrow::json::WriterBuilder::new()
+        .with_explicit_nulls(true)
+        .build::<_, LineDelimited>(Vec::new());
     for batch in batches {
-        writer.write(&batch, None).map_err(err)?;
+        writer.write(batch).map_err(err)?;
     }
     writer.finish().map_err(err)?;
-    let (mime, ext) = TabularFormat::ArrowIpc.mime_and_ext();
-    Ok(TabularResult {
-        bytes: out,
-        mime_type: mime.to_string(),
-        file_name: format!("converted.{ext}"),
-        row_count: columns.first().map(|c| c.len()).unwrap_or(0) as u64,
-    })
-}
-
-fn write_parquet(fields: Vec<String>, columns: ColumnData) -> Result<TabularResult, String> {
-    let (schema, batches) = make_utf8_batch(&fields, &columns)?;
-    let options = ParquetWriteOptions {
-        write_statistics: true,
-        compression: CompressionOptions::Uncompressed,
-        version: Version::V2,
-        data_pagesize_limit: None,
-    };
-    let encodings: Vec<Vec<Encoding>> = schema
-        .fields
-        .iter()
-        .map(|_| vec![Encoding::Plain])
+    let lines = writer.into_inner();
+    let rows: Vec<&[u8]> = lines
+        .split(|b| *b == b'\n')
+        .filter(|line| !line.is_empty())
         .collect();
-    let row_groups =
-        RowGroupIterator::try_new(batches.iter().cloned().map(Ok), &schema, options, encodings)
-            .map_err(err)?;
-    let mut out = Vec::new();
-    let mut writer = parquet_write::FileWriter::try_new(&mut out, schema, options).map_err(err)?;
-    for group in row_groups {
-        writer.write(group.map_err(err)?).map_err(err)?;
+    if rows.is_empty() {
+        return Ok(b"[]".to_vec());
     }
-    writer.end(None).map_err(err)?;
-    let (mime, ext) = TabularFormat::Parquet.mime_and_ext();
-    Ok(TabularResult {
-        bytes: out,
-        mime_type: mime.to_string(),
-        file_name: format!("converted.{ext}"),
-        row_count: columns.first().map(|c| c.len()).unwrap_or(0) as u64,
-    })
+    let mut out = b"[\n".to_vec();
+    out.extend(rows.join(&b",\n"[..]));
+    out.extend(b"\n]\n");
+    Ok(out)
 }
 
-fn write_avro(fields: Vec<String>, columns: ColumnData) -> Result<TabularResult, String> {
-    let union = UnionSchema::new(vec![AvroSchema::Null, AvroSchema::String]).map_err(err)?;
-    let mut avro_fields = Vec::with_capacity(fields.len());
-    for (idx, name) in fields.iter().enumerate() {
-        avro_fields.push(RecordField {
-            name: name.clone(),
-            doc: None,
-            aliases: None,
-            default: Some(serde_json::Value::Null),
-            schema: AvroSchema::Union(union.clone()),
-            order: RecordFieldOrder::Ignore,
-            position: idx,
-            custom_attributes: BTreeMap::new(),
-        });
-    }
-    let schema = RecordSchema {
-        name: AvroName::new("AutoGenerated").map_err(err)?,
-        aliases: None,
-        doc: None,
-        fields: avro_fields,
-        lookup: fields
-            .iter()
-            .enumerate()
-            .map(|(idx, name)| (name.clone(), idx))
-            .collect(),
-        attributes: BTreeMap::new(),
+fn write_delimited(
+    delimiter: u8,
+    schema: &SchemaRef,
+    batches: &[RecordBatch],
+) -> Result<Vec<u8>, String> {
+    let empty = [RecordBatch::new_empty(schema.clone())];
+    // The header is written with the first batch, so a table without rows still
+    // needs one to keep its column names.
+    let batches = if batches.is_empty() {
+        &empty[..]
+    } else {
+        batches
     };
-    let schema = AvroSchema::Record(schema);
-
-    let mut writer = AvroWriter::with_codec(&schema, Vec::new(), AvroCodec::Null);
-    let row_count = columns.first().map(|c| c.len()).unwrap_or(0) as u64;
-    for row_idx in 0..row_count as usize {
-        let mut record = Vec::with_capacity(fields.len());
-        for (col_idx, name) in fields.iter().enumerate() {
-            let value = columns
-                .get(col_idx)
-                .and_then(|col| col.get(row_idx))
-                .cloned()
-                .flatten()
-                .map(|s| AvroValue::Union(1, Box::new(AvroValue::String(s))))
-                .unwrap_or_else(|| AvroValue::Union(0, Box::new(AvroValue::Null)));
-            record.push((name.clone(), value));
-        }
-        writer
-            .append(AvroValue::Record(record))
-            .map_err(|e| e.to_string())?;
+    let mut writer = arrow::csv::WriterBuilder::new()
+        .with_header(true)
+        .with_delimiter(delimiter)
+        .build(Vec::new());
+    for batch in batches {
+        writer.write(&nested_as_json(batch)?).map_err(err)?;
     }
-    writer.flush().map_err(|e| e.to_string())?;
-    let bytes = writer.into_inner().map_err(|e| e.to_string())?;
-    let (mime, ext) = TabularFormat::Avro.mime_and_ext();
-    Ok(TabularResult {
-        bytes,
-        mime_type: mime.to_string(),
-        file_name: format!("converted.{ext}"),
-        row_count,
-    })
+    Ok(writer.into_inner())
+}
+
+/// CSV has no lists or structs; spell those cells as JSON, the same text a JSON
+/// input's nested values get when they become CSV.
+fn nested_as_json(batch: &RecordBatch) -> Result<RecordBatch, String> {
+    let schema = batch.schema();
+    if !schema.fields().iter().any(|f| f.data_type().is_nested()) {
+        return Ok(batch.clone());
+    }
+    let mut fields = Vec::with_capacity(schema.fields().len());
+    let mut columns = Vec::with_capacity(schema.fields().len());
+    for (field, column) in schema.fields().iter().zip(batch.columns()) {
+        if field.data_type().is_nested() {
+            fields.push(Field::new(field.name(), DataType::Utf8, true));
+            columns.push(json_cells(field, column.as_ref())?);
+        } else {
+            fields.push(field.as_ref().clone());
+            columns.push(column.clone());
+        }
+    }
+    RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).map_err(err)
+}
+
+fn json_cells(field: &FieldRef, array: &dyn Array) -> Result<ArrayRef, String> {
+    let options = EncoderOptions::default();
+    let mut encoder = make_encoder(field, array, &options).map_err(err)?;
+    let mut cells = StringBuilder::new();
+    let mut buf = Vec::new();
+    for idx in 0..array.len() {
+        if encoder.is_null(idx) {
+            cells.append_null();
+            continue;
+        }
+        buf.clear();
+        encoder.encode(idx, &mut buf);
+        cells.append_value(std::str::from_utf8(&buf).map_err(err)?);
+    }
+    Ok(Arc::new(cells.finish()))
 }
 
 /// Main entry point used by wasm_bindgen wrapper.
@@ -545,9 +372,16 @@ pub fn convert_tabular(from: &str, to: &str, data: &[u8]) -> Result<TabularResul
         TabularFormat::parse(from).ok_or_else(|| format!("Unsupported source format: {from}"))?;
     let to_fmt =
         TabularFormat::parse(to).ok_or_else(|| format!("Unsupported target format: {to}"))?;
-    let (schema, batches) = read_to_batches(from_fmt, data)?;
-    let (fields, columns) = rows_from_batches(&schema, batches)?;
-    write_from_rows(to_fmt, fields, columns)
+    let table = read_table(from_fmt, data)?;
+    let row_count = table.1.iter().map(|b| b.num_rows() as u64).sum();
+    let bytes = write_table(to_fmt, &table)?;
+    let (mime, ext) = to_fmt.mime_and_ext();
+    Ok(TabularResult {
+        bytes,
+        mime_type: mime.to_string(),
+        file_name: format!("converted.{ext}"),
+        row_count,
+    })
 }
 
 /// Heuristic helper that guesses a tabular format from a file extension. Used by the
@@ -618,5 +452,155 @@ mod tests {
         let back = convert_tabular("Avro", "JSON", &avro.bytes).expect("avro -> json");
         let text = String::from_utf8(back.bytes).unwrap();
         assert!(text.contains("Ada"));
+    }
+
+    /// A typed table as a parquet/arrow producer hands it over: the columns the old
+    /// converter printed as type names, plus a nested one.
+    fn typed_ipc() -> Vec<u8> {
+        use arrow::array::{
+            Date32Array, Decimal128Array, Int8Array, ListBuilder, TimestampMillisecondArray,
+        };
+        let mut tags = ListBuilder::new(StringBuilder::new());
+        tags.values().append_value("a");
+        tags.values().append_value("b");
+        tags.append(true);
+        tags.append_null();
+        let columns: Vec<ArrayRef> = vec![
+            Arc::new(Int8Array::from(vec![Some(7), None])),
+            // 2026-10-28T12:00:00
+            Arc::new(TimestampMillisecondArray::from(vec![
+                Some(1_793_188_800_000),
+                None,
+            ])),
+            // 2026-01-01
+            Arc::new(Date32Array::from(vec![Some(20_454), None])),
+            Arc::new(
+                Decimal128Array::from(vec![Some(999), None])
+                    .with_precision_and_scale(10, 2)
+                    .unwrap(),
+            ),
+            Arc::new(tags.finish()),
+        ];
+        let fields: Vec<Field> = ["small", "ts", "day", "price", "tags"]
+            .iter()
+            .zip(&columns)
+            .map(|(name, col)| Field::new(*name, col.data_type().clone(), true))
+            .collect();
+        let schema = Arc::new(Schema::new(fields));
+        let batch = RecordBatch::try_new(schema.clone(), columns).unwrap();
+        let mut writer = arrow::ipc::writer::FileWriter::try_new(Vec::new(), &schema).unwrap();
+        writer.write(&batch).unwrap();
+        writer.finish().unwrap();
+        writer.into_inner().unwrap()
+    }
+
+    #[test]
+    fn typed_columns_survive_every_binary_target() {
+        let ipc = typed_ipc();
+        for target in ["Parquet", "Avro", "Arrow IPC"] {
+            let out = convert_tabular("Arrow IPC", target, &ipc).expect(target);
+            let back = convert_tabular(target, "JSON", &out.bytes).expect(target);
+            let text = String::from_utf8(back.bytes).unwrap();
+            for want in [
+                "\"small\":7",
+                "2026-10-28T12:00:00",
+                "\"day\":\"2026-01-01\"",
+                "9.99",
+                "[\"a\",\"b\"]",
+            ] {
+                assert!(text.contains(want), "{target}: {want} missing in {text}");
+            }
+            assert_eq!(back.row_count, 2, "{target}");
+        }
+    }
+
+    #[test]
+    fn nested_cells_export_to_csv_as_json() {
+        let out = convert_tabular("Arrow IPC", "CSV", &typed_ipc()).expect("ipc -> csv");
+        let mut reader = csv::Reader::from_reader(out.bytes.as_slice());
+        let headers = reader.headers().unwrap().clone();
+        assert_eq!(headers.get(4), Some("tags"));
+        let rows: Vec<csv::StringRecord> = reader.records().map(Result::unwrap).collect();
+        assert_eq!(&rows[0][4], r#"["a","b"]"#);
+        assert_eq!(&rows[1][4], "");
+    }
+
+    #[test]
+    fn text_inputs_keep_leading_zeros() {
+        let parquet = convert_tabular("CSV", "Parquet", b"zip\n00123\n").expect("csv -> parquet");
+        let back = convert_tabular("Parquet", "JSON", &parquet.bytes).expect("parquet -> json");
+        let text = String::from_utf8(back.bytes).unwrap();
+        assert!(text.contains("\"zip\":\"00123\""), "{text}");
+    }
+
+    /// Avro readers reject names with spaces or a leading digit, so CSV headers are
+    /// rewritten; colliding rewrites must not merge two columns into one.
+    #[test]
+    fn csv_headers_become_avro_names() {
+        let csv = b"first name,2024,first_name\nAda,x,y\n";
+        let avro = convert_tabular("CSV", "Avro", csv).expect("csv -> avro");
+        let back = convert_tabular("Avro", "CSV", &avro.bytes).expect("avro -> csv");
+        assert_eq!(
+            String::from_utf8(back.bytes).unwrap(),
+            "first_name,_2024,first_name_2\nAda,x,y\n"
+        );
+    }
+
+    #[test]
+    fn header_only_table_keeps_its_columns() {
+        let parquet = convert_tabular("CSV", "Parquet", b"a,b\n").expect("csv -> parquet");
+        assert_eq!(parquet.row_count, 0);
+        let back = convert_tabular("Parquet", "CSV", &parquet.bytes).expect("parquet -> csv");
+        assert_eq!(String::from_utf8(back.bytes).unwrap(), "a,b\n");
+    }
+
+    /// Files from the outside world, not from this converter: a round trip through
+    /// our own writer can't catch a codec we never enabled or a type we can only
+    /// write as text. Fixtures come from docs/scripts/tabular-interop.sh.
+    #[test]
+    #[ignore = "needs TABULAR_FIXTURES from docs/scripts/tabular-interop.sh"]
+    fn reads_files_written_by_pyarrow_and_fastavro() {
+        let dir = std::env::var("TABULAR_FIXTURES").expect("TABULAR_FIXTURES");
+        // (file, format, rows, values that must appear in the JSON output)
+        let typed = &["2026-10-28", "2026-01-01", "9.99", "alice"][..];
+        let cases = [
+            ("snappy.parquet", "Parquet", 3, typed),
+            ("zstd.parquet", "Parquet", 3, typed),
+            ("plain.parquet", "Parquet", 3, typed),
+            ("lz4.feather", "Feather", 3, typed),
+            ("plain.arrow", "Arrow IPC", 3, typed),
+            ("null.avro", "Avro", 2, &["2026-10-28", "alice"][..]),
+            ("deflate.avro", "Avro", 2, &["2026-10-28", "alice"][..]),
+            ("snappy.avro", "Avro", 2, &["2026-10-28", "alice"][..]),
+        ];
+        // What the old fallback printed instead of a cell: the column's type name.
+        let type_names = ["Int8", "Timestamp", "Date32", "Decimal", "List"];
+        let mut failures = Vec::new();
+        for (file, format, rows, values) in cases {
+            let data = std::fs::read(format!("{dir}/{file}")).unwrap();
+            match convert_tabular(format, "JSON", &data) {
+                Err(e) => failures.push(format!("{file} -> JSON: {e}")),
+                Ok(out) => {
+                    let text = String::from_utf8(out.bytes).unwrap();
+                    if out.row_count != rows {
+                        failures.push(format!("{file}: {} rows, want {rows}", out.row_count));
+                    }
+                    for v in values.iter().filter(|v| !text.contains(**v)) {
+                        failures.push(format!("{file} -> JSON lacks {v:?}"));
+                    }
+                    for t in type_names.iter().filter(|t| text.contains(**t)) {
+                        failures.push(format!("{file} -> JSON prints type name {t:?}"));
+                    }
+                }
+            }
+            // CSV has no nested types, yet a list column must not make the file unexportable.
+            if let Err(e) = convert_tabular(format, "CSV", &data) {
+                failures.push(format!("{file} -> CSV: {e}"));
+            }
+        }
+        for f in &failures {
+            println!("FAIL {f}");
+        }
+        assert!(failures.is_empty(), "{} interop failures", failures.len());
     }
 }

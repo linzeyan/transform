@@ -35,6 +35,13 @@ jobs:
           components: clippy, rustfmt
           targets: wasm32-unknown-unknown
 
+      # zstd (parquet/arrow/avro codecs) is C; the runner's LLVM can target wasm32.
+      - name: Use LLVM for wasm32 C code
+        run: |
+          llvm=$(ls -d /usr/lib/llvm-* | sort -V | tail -1)/bin
+          echo "CC_wasm32_unknown_unknown=$llvm/clang" >> "$GITHUB_ENV"
+          echo "AR_wasm32_unknown_unknown=$llvm/llvm-ar" >> "$GITHUB_ENV"
+
       - name: Build project
         run: make build && rm -f www/pkg/.gitignore
 

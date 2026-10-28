@@ -2,7 +2,7 @@
 name = "wasm_core"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -54,13 +54,23 @@ x509-parser = "0.16"
 time = { version = "0.3.47", features = ["formatting"] }
 aes-gcm = { version = "0.10", features = ["std"] }
 chacha20poly1305 = { version = "0.10", features = ["std"] }
-arrow2 = { version = "0.18", default-features = false, features = ["io_csv", "io_json", "io_ipc", "io_parquet", "io_avro"] }
+# Every codec the producing tools default to (snappy parquet, lz4 feather) must be
+# readable. Pure-Rust backends where there is a choice; zstd is C and needs a
+# wasm-capable clang (see Makefile).
+arrow = { version = "60.1", default-features = false, features = ["csv", "json", "ipc", "ipc_compression"] }
+parquet = { version = "60.1", default-features = false, features = ["arrow", "snap", "lz4", "zstd", "brotli", "flate2-rust_backend"] }
+arrow-avro = { version = "60.1", default-features = false, features = ["deflate", "snappy", "zstd", "bzip2"] }
+bytes = "1"
 csv = "1"
-avro-schema = "0.3"
-parquet2 = { version = "0.17.2", default-features = false }
-apache-avro = { version = "0.21", default-features = false }
 figlet-rs = "0.1"
 font8x8 = "0.3"
+
+# Each getrandom major needs its browser backend switched on by someone: 0.2 for
+# bcrypt and rand_core 0.6 (ssh-key, aes-gcm), which arrow2 used to do as a side
+# effect, and 0.4 for arrow-avro's sync markers.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
