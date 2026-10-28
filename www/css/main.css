@@ -23,3 +23,4 @@
 
 /* Utilities and responsive design */
 @import url('utilities/responsive.css');
+@import url('utilities/embed.css');

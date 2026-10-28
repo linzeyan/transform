@@ -26,7 +26,7 @@ input:not([type='checkbox'], [type='radio']):focus,
 select:focus,
 textarea:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgb(122 162 247 / 15%);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
     background-color: var(--input-focus-bg);
     transform: translateY(-1px);
     outline: none;
@@ -35,20 +35,22 @@ textarea:focus {
 input:not([type='checkbox'], [type='radio']):hover:not(:focus),
 select:hover:not(:focus),
 textarea:hover:not(:focus) {
-    border-color: rgb(255 255 255 / 15%);
-    background-color: rgb(0 0 0 / 35%);
+    border-color: color-mix(in srgb, var(--overlay) 15%, transparent);
+    background-color: color-mix(in srgb, var(--shade) 35%, transparent);
 }
 
 textarea {
     resize: vertical;
     min-height: 120px;
-    font-family:
+    font-family: var(
+        --mono,
         JetBrains Mono,
         SFMono-Regular,
         Monaco,
         Inconsolata,
         Fira Code,
-        monospace;
+        monospace
+    );
     line-height: 1.5;
 }
 
@@ -74,8 +76,8 @@ input[type='radio'] {
     height: 18px;
     accent-color: var(--accent);
     border-radius: 4px;
-    border: 2px solid rgb(255 255 255 / 20%);
-    background: rgb(0 0 0 / 30%);
+    border: 2px solid color-mix(in srgb, var(--overlay) 20%, transparent);
+    background: color-mix(in srgb, var(--shade) 30%, transparent);
     cursor: pointer;
     transition: var(--transition-smooth);
 }
@@ -84,13 +86,13 @@ input[type='checkbox']:checked,
 input[type='radio']:checked {
     background: var(--accent);
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgb(122 162 247 / 20%);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 input[type='checkbox']:hover,
 input[type='radio']:hover {
-    border-color: rgb(255 255 255 / 30%);
-    box-shadow: 0 0 0 2px rgb(255 255 255 / 10%);
+    border-color: color-mix(in srgb, var(--overlay) 30%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--overlay) 10%, transparent);
 }
 
 /* Form groups and labels */
@@ -138,13 +140,13 @@ input:invalid,
 select:invalid,
 textarea:invalid {
     border-color: var(--danger);
-    box-shadow: 0 0 0 3px rgb(255 123 123 / 15%);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 15%, transparent);
 }
 
 input:invalid:focus,
 select:invalid:focus,
 textarea:invalid:focus {
-    box-shadow: 0 0 0 3px rgb(255 123 123 / 20%);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 20%, transparent);
 }
 
 /* Success states */
@@ -170,19 +172,31 @@ input[type='range'] {
 input[type='range']::-webkit-slider-runnable-track {
     width: 100%;
     height: 6px;
-    background: linear-gradient(90deg, rgb(122 162 247 / 30%) 0%, rgb(122 162 247 / 15%) 100%);
-    border: 1px solid rgb(122 162 247 / 20%);
+    background: linear-gradient(
+        90deg in srgb,
+        color-mix(in srgb, var(--accent) 30%, transparent) 0%,
+        color-mix(in srgb, var(--accent) 15%, transparent) 100%
+    );
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
     border-radius: 3px;
     transition: var(--transition-smooth);
 }
 
 input[type='range']:hover::-webkit-slider-runnable-track {
-    background: linear-gradient(90deg, rgb(122 162 247 / 40%) 0%, rgb(122 162 247 / 25%) 100%);
-    border-color: rgb(122 162 247 / 30%);
+    background: linear-gradient(
+        90deg in srgb,
+        color-mix(in srgb, var(--accent) 40%, transparent) 0%,
+        color-mix(in srgb, var(--accent) 25%, transparent) 100%
+    );
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 input[type='range']:focus::-webkit-slider-runnable-track {
-    background: linear-gradient(90deg, rgb(122 162 247 / 50%) 0%, rgb(122 162 247 / 35%) 100%);
+    background: linear-gradient(
+        90deg in srgb,
+        color-mix(in srgb, var(--accent) 50%, transparent) 0%,
+        color-mix(in srgb, var(--accent) 35%, transparent) 100%
+    );
     border-color: var(--accent);
 }
 
@@ -191,30 +205,30 @@ input[type='range']::-webkit-slider-thumb {
     appearance: none;
     width: 18px;
     height: 18px;
-    background: linear-gradient(135deg, var(--accent) 0%, #9db4ff 100%);
-    border: 2px solid rgb(255 255 255 / 20%);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+    border: 2px solid color-mix(in srgb, var(--overlay) 20%, transparent);
     border-radius: 50%;
     cursor: pointer;
     transition: var(--transition-smooth);
     box-shadow:
-        0 2px 6px rgb(0 0 0 / 30%),
-        0 0 0 0 rgb(122 162 247 / 0%);
+        0 2px 6px color-mix(in srgb, var(--shade) 30%, transparent),
+        0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
     margin-top: -6px;
 }
 
 input[type='range']:hover::-webkit-slider-thumb {
-    background: linear-gradient(135deg, #9db4ff 0%, var(--accent) 100%);
-    border-color: rgb(255 255 255 / 40%);
+    background: linear-gradient(135deg, var(--accent-2) 0%, var(--accent) 100%);
+    border-color: color-mix(in srgb, var(--overlay) 40%, transparent);
     box-shadow:
-        0 3px 8px rgb(0 0 0 / 40%),
-        0 0 0 4px rgb(122 162 247 / 15%);
+        0 3px 8px color-mix(in srgb, var(--shade) 40%, transparent),
+        0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent);
     transform: scale(1.1);
 }
 
 input[type='range']:focus::-webkit-slider-thumb {
     box-shadow:
-        0 3px 8px rgb(0 0 0 / 40%),
-        0 0 0 6px rgb(122 162 247 / 25%);
+        0 3px 8px color-mix(in srgb, var(--shade) 40%, transparent),
+        0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent);
     transform: scale(1.15);
 }
 
@@ -226,19 +240,31 @@ input[type='range']:active::-webkit-slider-thumb {
 input[type='range']::-moz-range-track {
     width: 100%;
     height: 6px;
-    background: linear-gradient(90deg, rgb(122 162 247 / 30%) 0%, rgb(122 162 247 / 15%) 100%);
-    border: 1px solid rgb(122 162 247 / 20%);
+    background: linear-gradient(
+        90deg in srgb,
+        color-mix(in srgb, var(--accent) 30%, transparent) 0%,
+        color-mix(in srgb, var(--accent) 15%, transparent) 100%
+    );
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
     border-radius: 3px;
     transition: var(--transition-smooth);
 }
 
 input[type='range']:hover::-moz-range-track {
-    background: linear-gradient(90deg, rgb(122 162 247 / 40%) 0%, rgb(122 162 247 / 25%) 100%);
-    border-color: rgb(122 162 247 / 30%);
+    background: linear-gradient(
+        90deg in srgb,
+        color-mix(in srgb, var(--accent) 40%, transparent) 0%,
+        color-mix(in srgb, var(--accent) 25%, transparent) 100%
+    );
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 input[type='range']:focus::-moz-range-track {
-    background: linear-gradient(90deg, rgb(122 162 247 / 50%) 0%, rgb(122 162 247 / 35%) 100%);
+    background: linear-gradient(
+        90deg in srgb,
+        color-mix(in srgb, var(--accent) 50%, transparent) 0%,
+        color-mix(in srgb, var(--accent) 35%, transparent) 100%
+    );
     border-color: var(--accent);
 }
 
@@ -246,29 +272,29 @@ input[type='range']:focus::-moz-range-track {
 input[type='range']::-moz-range-thumb {
     width: 18px;
     height: 18px;
-    background: linear-gradient(135deg, var(--accent) 0%, #9db4ff 100%);
-    border: 2px solid rgb(255 255 255 / 20%);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+    border: 2px solid color-mix(in srgb, var(--overlay) 20%, transparent);
     border-radius: 50%;
     cursor: pointer;
     transition: var(--transition-smooth);
     box-shadow:
-        0 2px 6px rgb(0 0 0 / 30%),
-        0 0 0 0 rgb(122 162 247 / 0%);
+        0 2px 6px color-mix(in srgb, var(--shade) 30%, transparent),
+        0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
 }
 
 input[type='range']:hover::-moz-range-thumb {
-    background: linear-gradient(135deg, #9db4ff 0%, var(--accent) 100%);
-    border-color: rgb(255 255 255 / 40%);
+    background: linear-gradient(135deg, var(--accent-2) 0%, var(--accent) 100%);
+    border-color: color-mix(in srgb, var(--overlay) 40%, transparent);
     box-shadow:
-        0 3px 8px rgb(0 0 0 / 40%),
-        0 0 0 4px rgb(122 162 247 / 15%);
+        0 3px 8px color-mix(in srgb, var(--shade) 40%, transparent),
+        0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent);
     transform: scale(1.1);
 }
 
 input[type='range']:focus::-moz-range-thumb {
     box-shadow:
-        0 3px 8px rgb(0 0 0 / 40%),
-        0 0 0 6px rgb(122 162 247 / 25%);
+        0 3px 8px color-mix(in srgb, var(--shade) 40%, transparent),
+        0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent);
     transform: scale(1.15);
 }
 
@@ -288,14 +314,12 @@ input[type='range']:active::-moz-range-thumb {
 .range-value {
     min-width: 40px;
     padding: 6px 12px;
-    background: rgb(122 162 247 / 15%);
-    border: 1px solid rgb(122 162 247 / 30%);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
     border-radius: 6px;
     font-size: 13px;
     font-weight: 600;
     color: var(--accent);
     text-align: center;
-    font-family:
-        JetBrains Mono,
-        monospace;
+    font-family: var(--mono, JetBrains Mono, monospace);
 }

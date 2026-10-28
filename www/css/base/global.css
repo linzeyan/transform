@@ -6,12 +6,8 @@
 body {
     margin: 0;
     min-height: 100vh;
-    font:
-        14px/1.5 JetBrains Mono,
-        SFMono-Regular,
-        Menlo,
-        Consolas,
-        monospace;
+    font: var(--font-size, 14px) / 1.5
+        var(--font, JetBrains Mono, SFMono-Regular, Menlo, Consolas, monospace);
     background: var(--bg);
     color: var(--fg);
 }
@@ -29,18 +25,18 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-    background: rgb(0 0 0 / 20%);
+    background: color-mix(in srgb, var(--shade) 20%, transparent);
     border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgb(255 255 255 / 12%);
+    background: color-mix(in srgb, var(--overlay) 12%, transparent);
     border-radius: 5px;
     border: 2px solid transparent;
     background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: rgb(255 255 255 / 20%);
+    background: color-mix(in srgb, var(--overlay) 20%, transparent);
     background-clip: padding-box;
 }

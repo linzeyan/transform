@@ -1,0 +1,83 @@
+/* ============================================
+   EMBED MODE
+   Inside a host tab (VSCode): the host owns navigation and the theme
+   ============================================ */
+
+/* stylelint-disable custom-property-pattern -- VSCode names its theme variables in camelCase. */
+
+/*
+ * The webview sets --vscode-* on <html>, so the overrides sit there too: the
+ * variables derived in :root (--card-hover-border, --accent-glow, ...) are then
+ * recomputed from these instead of keeping the website's values.
+ */
+:root.embed {
+    --bg: var(--vscode-editor-background);
+    --bg-2: var(--bg);
+    --bg-gradient: var(--bg);
+    --panel: var(--vscode-editorWidget-background);
+    --card-bg: var(--panel);
+    --fg: var(--vscode-foreground);
+    --overlay: var(--fg);
+    --muted: var(--vscode-descriptionForeground);
+
+    /*
+     * textLink rather than focusBorder: the accent is also a text colour, and
+     * Dark Modern's focusBorder is about 3.3:1 on its editor background.
+     */
+    --accent: var(--vscode-textLink-foreground);
+    --accent-2: var(--accent);
+    --on-accent: var(--bg);
+
+    /* Only high contrast themes define contrastBorder. */
+    --border: var(--vscode-contrastBorder, var(--vscode-widget-border, var(--vscode-panel-border)));
+    --card-border: var(--border);
+    --input-bg: var(--vscode-input-background);
+    --input-focus-bg: var(--input-bg);
+
+    /* Shading as strong as the theme's own shadows; high contrast has none. */
+    --shade: var(--vscode-widget-shadow, transparent);
+
+    /*
+     * An editor theme has one colour per role, so every tone folds into it. These
+     * are colours VSCode draws as text and reach 4.5:1 on every built-in theme;
+     * errorForeground, editorWarning and testing-iconPassed fall to 2-3.4:1 on
+     * Light Modern.
+     */
+    --danger: var(--vscode-editorError-foreground);
+    --danger-1: var(--danger);
+    --danger-2: var(--danger);
+    --danger-3: var(--danger);
+    --danger-4: var(--danger);
+    --danger-5: var(--danger);
+    --warning: var(--vscode-gitDecoration-modifiedResourceForeground);
+    --warning-2: var(--warning);
+    --success: var(--vscode-gitDecoration-addedResourceForeground);
+    --success-2: var(--success);
+    --diff-add: var(--success);
+    --diff-del: var(--danger);
+    --font: var(--vscode-font-family);
+    --font-size: var(--vscode-font-size);
+    --mono: var(--vscode-editor-font-family);
+}
+
+:root.embed :is(#sidebar, #sidebarResizer, #sidebarBackdrop, .sidebar-toggle) {
+    /* !important: narrow windows show the toggle with !important. */
+    display: none !important;
+}
+
+:root.embed .app-shell {
+    grid-template-columns: 1fr;
+}
+
+/* The webview's default stylesheet pads the body by 20px on each side. */
+:root.embed body {
+    padding: 0;
+}
+
+/*
+ * Typed input and diffs are code. On the website every textarea inherits the
+ * page's monospace font; here the page font is the UI font, so say it.
+ */
+:root.embed :is(textarea, .diff-output) {
+    font-family: var(--mono);
+}

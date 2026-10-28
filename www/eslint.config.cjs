@@ -26,6 +26,7 @@ const browserGlobals = {
     atob: 'readonly',
     Blob: 'readonly',
     URL: 'readonly',
+    URLSearchParams: 'readonly',
     Notification: 'readonly',
     CSS: 'readonly',
     PublicKeyCredential: 'readonly',
@@ -44,6 +45,8 @@ const browserGlobals = {
     Image: 'readonly',
     Audio: 'readonly',
     structuredClone: 'readonly',
+    // Only inside a VSCode webview (embed mode); main.js checks for it first.
+    acquireVsCodeApi: 'readonly',
 };
 const js = require('@eslint/js');
 module.exports = [

@@ -91,7 +91,7 @@
 }
 
 .panel-actions .ghost-btn {
-    background: rgb(255 255 255 / 8%);
+    background: color-mix(in srgb, var(--overlay) 8%, transparent);
     color: var(--fg);
     border: 1px solid var(--border);
     font-weight: 500;
@@ -100,7 +100,7 @@
 }
 
 .panel-actions .ghost-btn:hover {
-    background: rgb(255 255 255 / 14%);
+    background: color-mix(in srgb, var(--overlay) 14%, transparent);
 }
 
 textarea {
@@ -131,10 +131,14 @@ textarea:focus {
 }
 
 #converterWorkspace .panel {
-    background: linear-gradient(135deg, rgb(255 255 255 / 5%) 0%, rgb(255 255 255 / 2%) 100%);
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--overlay) 5%, transparent) 0%,
+        color-mix(in srgb, var(--overlay) 2%, transparent) 100%
+    );
     border: 1px solid var(--card-border);
     border-radius: 16px;
-    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--shade) 15%, transparent);
     transition: var(--transition-smooth);
     overflow: hidden;
 }
@@ -142,12 +146,16 @@ textarea:focus {
 #converterWorkspace .panel:hover {
     border-color: var(--card-hover-border);
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--shade) 20%, transparent);
 }
 
 .panel-header {
-    background: linear-gradient(135deg, rgb(255 255 255 / 8%) 0%, rgb(255 255 255 / 4%) 100%);
-    border-bottom: 1px solid rgb(255 255 255 / 10%);
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--overlay) 8%, transparent) 0%,
+        color-mix(in srgb, var(--overlay) 4%, transparent) 100%
+    );
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     padding: 20px 24px;
     display: flex;
     justify-content: space-between;
@@ -170,8 +178,8 @@ textarea:focus {
 }
 
 .panel-header .panel-actions button {
-    background: rgb(255 255 255 / 8%);
-    border: 1px solid rgb(255 255 255 / 15%);
+    background: color-mix(in srgb, var(--overlay) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--overlay) 15%, transparent);
     color: var(--fg);
     padding: 8px 14px;
     border-radius: 8px;
@@ -183,15 +191,15 @@ textarea:focus {
 }
 
 .panel-header .panel-actions button:hover {
-    background: rgb(255 255 255 / 15%);
-    border-color: rgb(255 255 255 / 25%);
+    background: color-mix(in srgb, var(--overlay) 15%, transparent);
+    border-color: color-mix(in srgb, var(--overlay) 25%, transparent);
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--shade) 15%, transparent);
 }
 
 #converterWorkspace textarea {
-    background: rgb(0 0 0 / 25%);
-    border: 1px solid rgb(255 255 255 / 8%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
+    border: 1px solid color-mix(in srgb, var(--overlay) 8%, transparent);
     border-radius: 12px;
     padding: 20px;
     font-size: 14px;
@@ -202,9 +210,9 @@ textarea:focus {
 }
 
 #converterWorkspace textarea:focus {
-    background: rgb(0 0 0 / 35%);
+    background: color-mix(in srgb, var(--shade) 35%, transparent);
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgb(122 162 247 / 12%);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
     outline: none;
 }
 
@@ -215,17 +223,21 @@ textarea:focus {
 }
 
 #coderWorkspace .panel {
-    background: linear-gradient(135deg, rgb(255 255 255 / 5%) 0%, rgb(255 255 255 / 2%) 100%);
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--overlay) 5%, transparent) 0%,
+        color-mix(in srgb, var(--overlay) 2%, transparent) 100%
+    );
     border: 1px solid var(--card-border);
     border-radius: 16px;
-    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--shade) 15%, transparent);
     transition: var(--transition-smooth);
 }
 
 #coderWorkspace .panel:hover {
     border-color: var(--card-hover-border);
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--shade) 20%, transparent);
 }
 
 /* Enhanced generator workspaces */
@@ -247,10 +259,14 @@ textarea:focus {
 #totpWorkspace .panel,
 #sqlWorkspace .panel,
 #sshWorkspace .panel {
-    background: linear-gradient(135deg, rgb(255 255 255 / 5%) 0%, rgb(255 255 255 / 2%) 100%);
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--overlay) 5%, transparent) 0%,
+        color-mix(in srgb, var(--overlay) 2%, transparent) 100%
+    );
     border: 1px solid var(--card-border);
     border-radius: 16px;
-    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--shade) 15%, transparent);
     transition: var(--transition-smooth);
 }
 
@@ -263,5 +279,5 @@ textarea:focus {
 #sshWorkspace .panel:hover {
     border-color: var(--card-hover-border);
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--shade) 20%, transparent);
 }

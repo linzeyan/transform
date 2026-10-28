@@ -11,7 +11,7 @@ button {
     border-radius: 10px;
     font: inherit;
     color: var(--fg);
-    background: rgb(255 255 255 / 4%);
+    background: color-mix(in srgb, var(--overlay) 4%, transparent);
     cursor: pointer;
     transition:
         background 0.2s,
@@ -27,28 +27,28 @@ button:focus {
 button {
     background: var(--accent);
     border-color: transparent;
-    color: #05060a;
+    color: var(--on-accent);
     font-weight: 600;
 }
 
 button.ghost-btn {
-    background: rgb(255 255 255 / 8%);
+    background: color-mix(in srgb, var(--overlay) 8%, transparent);
     color: var(--fg);
     border: 1px solid var(--border);
     font-weight: 500;
 }
 
 button.ghost-btn:hover {
-    background: rgb(255 255 255 / 14%);
+    background: color-mix(in srgb, var(--overlay) 14%, transparent);
 }
 
 button#clear {
-    background: rgb(255 255 255 / 8%);
+    background: color-mix(in srgb, var(--overlay) 8%, transparent);
     color: var(--fg);
 }
 
 button#swap {
-    background: rgb(255 255 255 / 8%);
+    background: color-mix(in srgb, var(--overlay) 8%, transparent);
     color: var(--fg);
     font-size: 18px;
     line-height: 1;
@@ -70,7 +70,7 @@ button::before {
     width: 0;
     height: 0;
     border-radius: 50%;
-    background: rgb(255 255 255 / 20%);
+    background: color-mix(in srgb, var(--overlay) 20%, transparent);
     transform: translate(-50%, -50%);
     transition:
         width 0.6s,
@@ -87,7 +87,7 @@ button:active {
 }
 
 button:hover {
-    box-shadow: 0 4px 12px rgb(0 0 0 / 30%);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--shade) 30%, transparent);
 }
 
 /* Copy button improvements */
@@ -104,7 +104,7 @@ button:hover {
     width: 0;
     height: 0;
     border-radius: 50%;
-    background: rgb(255 255 255 / 20%);
+    background: color-mix(in srgb, var(--overlay) 20%, transparent);
     transform: translate(-50%, -50%);
     transition:
         width 0.6s,
@@ -124,8 +124,8 @@ button:hover {
     width: 20px;
     height: 20px;
     border-radius: 4px;
-    background: rgb(255 255 255 / 10%);
-    border: 1px solid rgb(255 255 255 / 20%);
+    background: color-mix(in srgb, var(--overlay) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--overlay) 20%, transparent);
     color: var(--muted);
     font-size: 12px;
     cursor: pointer;
@@ -138,7 +138,7 @@ button:hover {
 .copy-icon:hover {
     background: var(--accent);
     border-color: var(--accent);
-    color: #05060a;
+    color: var(--on-accent);
     transform: scale(1.1);
 }
 
@@ -152,12 +152,12 @@ button:hover {
     left: 50%;
     transform: translate(-50%, -50%);
     background: var(--success);
-    color: #05060a;
+    color: var(--on-accent);
     padding: 12px 24px;
     border-radius: 8px;
     font-size: 14px;
     font-weight: 600;
-    box-shadow: 0 4px 16px rgb(0 0 0 / 30%);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--shade) 30%, transparent);
     z-index: 10000;
     pointer-events: none;
     animation: copy-feedback-fade 2s ease-out;
@@ -183,4 +183,10 @@ button:hover {
         opacity: 0;
         transform: translate(-50%, -50%) scale(0.8);
     }
+}
+
+/* Toggled with .hidden; inline-flex is what these showed as when JS set it inline. */
+#fingerprintCopyAll,
+#randomCopyAll {
+    display: inline-flex;
 }

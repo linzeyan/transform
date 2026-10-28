@@ -19,7 +19,7 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 12px 14px;
-    background: rgb(255 255 255 / 2%);
+    background: color-mix(in srgb, var(--overlay) 2%, transparent);
     cursor: pointer;
     transition:
         background 0.2s,
@@ -27,8 +27,8 @@
 }
 
 .uuid-row:hover {
-    background: rgb(255 255 255 / 5%);
-    border-color: rgb(122 162 247 / 30%);
+    background: color-mix(in srgb, var(--overlay) 5%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .uuid-row code {
@@ -65,8 +65,8 @@
 }
 
 #uuidWorkspace .uuid-results {
-    background: rgb(0 0 0 / 20%);
+    background: color-mix(in srgb, var(--shade) 20%, transparent);
     border-radius: 12px;
     padding: 20px;
-    border: 1px solid rgb(255 255 255 / 8%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 8%, transparent);
 }

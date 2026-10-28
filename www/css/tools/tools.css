@@ -47,10 +47,10 @@
 }
 
 .random-basic-field input {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 10px 12px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
     font-size: 14px;
@@ -77,15 +77,15 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 14px;
-    background: rgb(255 255 255 / 2%);
+    background: color-mix(in srgb, var(--overlay) 2%, transparent);
     transition:
         border-color 0.2s,
         background 0.2s;
 }
 
 .random-charset-card:hover {
-    border-color: rgb(255 255 255 / 15%);
-    background: rgb(255 255 255 / 3%);
+    border-color: color-mix(in srgb, var(--overlay) 15%, transparent);
+    background: color-mix(in srgb, var(--overlay) 3%, transparent);
 }
 
 /* QR Parse workspace */
@@ -100,13 +100,13 @@
     border-radius: 10px;
     padding: 18px;
     text-align: center;
-    background: rgb(255 255 255 / 3%);
+    background: color-mix(in srgb, var(--overlay) 3%, transparent);
     cursor: pointer;
 }
 
 .qr-parse-drop.dragging {
     border-color: var(--accent);
-    background: rgb(255 255 255 / 6%);
+    background: color-mix(in srgb, var(--overlay) 6%, transparent);
 }
 
 .qr-parse-drop p {
@@ -128,7 +128,7 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 12px;
-    background: rgb(255 255 255 / 4%);
+    background: color-mix(in srgb, var(--overlay) 4%, transparent);
 }
 
 .qr-parse-card header {
@@ -143,7 +143,7 @@
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 12px;
-    background: rgb(255 255 255 / 4%);
+    background: color-mix(in srgb, var(--overlay) 4%, transparent);
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -172,7 +172,7 @@
 }
 
 .qr-parse-error {
-    color: #ff7878;
+    color: var(--danger-2);
     font-size: 13px;
 }
 
@@ -189,7 +189,7 @@
 .random-charset-header {
     margin-bottom: 12px;
     padding-bottom: 10px;
-    border-bottom: 1px solid rgb(255 255 255 / 8%);
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay) 8%, transparent);
 }
 
 .random-charset-toggle {
@@ -229,10 +229,10 @@
 
 .random-option-row .min-count {
     width: 100px;
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 6px;
     padding: 6px 8px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
     font-size: 12px;
@@ -264,10 +264,10 @@
 }
 
 .random-exclude input {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 10px 12px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
     font-size: 13px;
@@ -328,7 +328,7 @@
 
 .tabular-controls select {
     padding: 10px 12px;
-    background: rgb(255 255 255 / 6%);
+    background: color-mix(in srgb, var(--overlay) 6%, transparent);
     border: 1px solid var(--border);
     border-radius: 8px;
     color: var(--fg);
@@ -350,7 +350,7 @@
 }
 
 .tabular-meta {
-    background: rgb(255 255 255 / 3%);
+    background: color-mix(in srgb, var(--overlay) 3%, transparent);
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 12px 14px;
@@ -382,7 +382,7 @@
     word-break: break-all;
     cursor: pointer;
     user-select: text;
-    background: rgb(255 255 255 / 2%);
+    background: color-mix(in srgb, var(--overlay) 2%, transparent);
     transition: all 0.2s;
     display: flex;
     align-items: center;
@@ -393,7 +393,7 @@
 
 .random-result-item:hover {
     border-color: var(--accent);
-    background: rgb(122 162 247 / 8%);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
     transform: translateX(2px);
 }
 
@@ -421,7 +421,7 @@
     color: var(--muted);
     font-size: 14px;
     text-align: center;
-    background: rgb(255 255 255 / 2%);
+    background: color-mix(in srgb, var(--overlay) 2%, transparent);
 }
 
 /* Legacy styles for backward compatibility */
@@ -442,10 +442,10 @@
 }
 
 .random-controls input[type='number'] {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 8px 10px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
     width: 120px;
@@ -470,10 +470,10 @@
     width: 80px;
     min-width: 80px;
     flex: 0 0 80px;
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 4px 6px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
 }
@@ -504,10 +504,10 @@
 }
 
 .range-field input {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 8px 10px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
     width: 150px;
@@ -536,10 +536,10 @@
 }
 
 .symbol-toggle-grid button {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 999px;
     padding: 6px 12px;
-    background: rgb(255 255 255 / 5%);
+    background: color-mix(in srgb, var(--overlay) 5%, transparent);
     color: var(--fg);
     font: inherit;
     cursor: pointer;
@@ -551,10 +551,10 @@
 
 /* JWT controls */
 .jwt-controls {
-    background: rgb(122 162 247 / 5%);
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
     padding: 16px;
     border-radius: 10px;
-    border: 1px solid rgb(122 162 247 / 15%);
+    border: 1px solid color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 .jwt-controls label {
@@ -581,8 +581,12 @@
 
 /* URL query editor */
 .query-panel {
-    background: linear-gradient(135deg, rgb(122 162 247 / 5%) 0%, rgb(122 162 247 / 2%) 100%);
-    border: 1px solid rgb(122 162 247 / 20%);
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--accent) 5%, transparent) 0%,
+        color-mix(in srgb, var(--accent) 2%, transparent) 100%
+    );
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
     border-radius: 12px;
     padding: 18px;
     margin: 0 18px 18px;
@@ -622,7 +626,7 @@
     padding: 8px 10px;
     border: 1px solid var(--border);
     border-radius: 10px;
-    background: rgb(255 255 255 / 3%);
+    background: color-mix(in srgb, var(--overlay) 3%, transparent);
     transition: var(--transition-smooth);
 }
 
@@ -687,7 +691,7 @@
 }
 
 .ascii-output {
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 12px;
@@ -699,7 +703,7 @@
 
 .query-row:hover {
     border-color: var(--card-hover-border);
-    background: rgb(255 255 255 / 6%);
+    background: color-mix(in srgb, var(--overlay) 6%, transparent);
     transform: translateX(2px);
 }
 
@@ -716,10 +720,10 @@
 
 .query-row input {
     width: 100%;
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 8px 10px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
 }
@@ -737,28 +741,28 @@
 .query-row-actions button {
     padding: 6px 8px;
     min-width: 32px;
-    background: rgb(255 255 255 / 8%);
+    background: color-mix(in srgb, var(--overlay) 8%, transparent);
     border: 1px solid var(--border);
     color: var(--fg);
 }
 
 .query-row-actions .danger {
-    background: rgb(255 123 123 / 12%);
-    color: #ff9d9d;
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--danger-5);
 }
 
 .query-empty {
     padding: 10px;
     border: 1px dashed var(--border);
     border-radius: 10px;
-    background: rgb(255 255 255 / 2%);
+    background: color-mix(in srgb, var(--overlay) 2%, transparent);
     text-align: center;
     margin-top: 4px;
 }
 
 /* Hash controls */
 .hash-controls {
-    background: rgb(255 255 255 / 3%);
+    background: color-mix(in srgb, var(--overlay) 3%, transparent);
     padding: 16px;
     border-radius: 10px;
     border: 1px solid var(--card-border);
@@ -785,8 +789,8 @@
 }
 
 #hashHmacSecret {
-    background: rgb(255 123 123 / 8%);
-    border: 1px solid rgb(255 123 123 / 20%);
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
 }
 
 /* Coder workspace styles */
@@ -823,7 +827,11 @@
 }
 
 .coder-output-block {
-    background: linear-gradient(135deg, rgb(255 255 255 / 5%) 0%, rgb(255 255 255 / 2%) 100%);
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--overlay) 5%, transparent) 0%,
+        color-mix(in srgb, var(--overlay) 2%, transparent) 100%
+    );
     border: 1px solid var(--card-border);
     border-radius: 14px;
     padding: 18px;
@@ -831,13 +839,13 @@
     flex-direction: column;
     gap: 14px;
     transition: var(--transition-smooth);
-    box-shadow: 0 2px 8px rgb(0 0 0 / 10%);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--shade) 10%, transparent);
 }
 
 .coder-output-block:hover {
     border-color: var(--card-hover-border);
     transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgb(0 0 0 / 20%);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--shade) 20%, transparent);
 }
 
 .coder-output-block > header {
@@ -847,18 +855,18 @@
     letter-spacing: 0.08em;
     color: var(--fg);
     padding-bottom: 10px;
-    border-bottom: 1px solid rgb(255 255 255 / 8%);
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay) 8%, transparent);
 }
 
 .coder-entry {
-    background: rgb(0 0 0 / 20%);
+    background: color-mix(in srgb, var(--shade) 20%, transparent);
     border-radius: 10px;
     padding: 12px;
     transition: var(--transition-smooth);
 }
 
 .coder-entry:hover {
-    background: rgb(0 0 0 / 30%);
+    background: color-mix(in srgb, var(--shade) 30%, transparent);
 }
 
 .coder-entry.click-copy {
@@ -880,8 +888,8 @@
 }
 
 .coder-entry-meta button {
-    background: rgb(122 162 247 / 15%);
-    border: 1px solid rgb(122 162 247 / 30%);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
     padding: 4px 10px;
     font-size: 11px;
     border-radius: 6px;
@@ -889,7 +897,7 @@
 }
 
 .coder-entry-meta button:hover {
-    background: rgb(122 162 247 / 25%);
+    background: color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .copy-hint {
@@ -902,9 +910,9 @@
 .coder-entry textarea {
     width: 100%;
     min-height: 80px;
-    border: 1px solid rgb(255 255 255 / 8%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 8%, transparent);
     border-radius: 8px;
-    background: rgb(0 0 0 / 30%);
+    background: color-mix(in srgb, var(--shade) 30%, transparent);
     color: var(--fg);
     font: inherit;
     padding: 10px;
@@ -1016,10 +1024,10 @@ body.tool-generator .converter-only {
 
 .ssh-config-field input,
 .ssh-config-field select {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 10px 12px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
     font-size: 13px;
@@ -1059,10 +1067,10 @@ body.tool-generator .converter-only {
 }
 
 .ssh-comment-field input {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 10px 12px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
     font-size: 13px;
@@ -1091,7 +1099,7 @@ body.tool-generator .converter-only {
     padding: 12px;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: rgb(255 255 255 / 2%);
+    background: color-mix(in srgb, var(--overlay) 2%, transparent);
     cursor: pointer;
     transition:
         border-color 0.2s,
@@ -1099,8 +1107,8 @@ body.tool-generator .converter-only {
 }
 
 .ssh-checkbox-option:hover {
-    border-color: rgb(255 255 255 / 15%);
-    background: rgb(255 255 255 / 3%);
+    border-color: color-mix(in srgb, var(--overlay) 15%, transparent);
+    background: color-mix(in srgb, var(--overlay) 3%, transparent);
 }
 
 .ssh-checkbox-option input[type='checkbox'] {
@@ -1162,10 +1170,7 @@ body.tool-generator .converter-only {
 
 .ssh-key-display textarea {
     min-height: 120px;
-    font-family:
-        JetBrains Mono,
-        SFMono-Regular,
-        monospace;
+    font-family: var(--mono, JetBrains Mono, SFMono-Regular, monospace);
     font-size: 12px;
     line-height: 1.6;
 }
@@ -1176,15 +1181,15 @@ body.tool-generator .converter-only {
     gap: 8px;
     padding: 10px 12px;
     border-radius: 6px;
-    background: rgb(255 255 255 / 3%);
+    background: color-mix(in srgb, var(--overlay) 3%, transparent);
     font-size: 12px;
     color: var(--muted);
 }
 
 .ssh-key-warning {
-    background: rgb(255 123 123 / 8%);
-    border: 1px solid rgb(255 123 123 / 20%);
-    color: #ff9d9d;
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
+    color: var(--danger-5);
 }
 
 .ssh-key-hint span:first-child {
@@ -1211,10 +1216,10 @@ body.tool-generator .converter-only {
 .ssh-grid input,
 .ssh-grid select,
 .ssh-comment input {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 8px 10px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
 }
@@ -1257,10 +1262,10 @@ body.tool-generator .converter-only {
 }
 
 .ua-filter-field select {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 10px 12px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
     font-size: 13px;
@@ -1306,14 +1311,14 @@ body.tool-generator .converter-only {
     font-size: 14px;
     border: 1px dashed var(--border);
     border-radius: 10px;
-    background: rgb(255 255 255 / 2%);
+    background: color-mix(in srgb, var(--overlay) 2%, transparent);
 }
 
 .ua-card {
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 14px 16px;
-    background: rgb(255 255 255 / 2%);
+    background: color-mix(in srgb, var(--overlay) 2%, transparent);
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -1324,7 +1329,7 @@ body.tool-generator .converter-only {
 
 .ua-card:hover {
     border-color: var(--accent);
-    background: rgb(122 162 247 / 8%);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
     transform: translateX(2px);
 }
 
@@ -1347,10 +1352,7 @@ body.tool-generator .converter-only {
     word-break: break-all;
     line-height: 1.5;
     color: var(--fg);
-    font-family:
-        JetBrains Mono,
-        SFMono-Regular,
-        monospace;
+    font-family: var(--mono, JetBrains Mono, SFMono-Regular, monospace);
 }
 
 .ua-meta {
@@ -1360,7 +1362,7 @@ body.tool-generator .converter-only {
     flex-wrap: wrap;
     gap: 12px;
     padding-top: 8px;
-    border-top: 1px solid rgb(255 255 255 / 8%);
+    border-top: 1px solid color-mix(in srgb, var(--overlay) 8%, transparent);
 }
 
 .ua-meta span {
@@ -1386,18 +1388,22 @@ body.tool-generator .converter-only {
 }
 
 .cert-card {
-    background: linear-gradient(135deg, rgb(255 255 255 / 5%) 0%, rgb(255 255 255 / 2%) 100%);
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--overlay) 5%, transparent) 0%,
+        color-mix(in srgb, var(--overlay) 2%, transparent) 100%
+    );
     border: 1px solid var(--card-border);
     border-radius: 14px;
     padding: 20px;
     transition: var(--transition-smooth);
-    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--shade) 15%, transparent);
 }
 
 .cert-card:hover {
     border-color: var(--card-hover-border);
     transform: translateY(-2px);
-    box-shadow: 0 6px 24px rgb(0 0 0 / 25%);
+    box-shadow: 0 6px 24px color-mix(in srgb, var(--shade) 25%, transparent);
 }
 
 .cert-card-head {
@@ -1469,18 +1475,18 @@ body.tool-generator .converter-only {
     border: 1px solid var(--border);
     border-radius: 999px;
     padding: 4px 10px;
-    background: rgb(255 255 255 / 6%);
+    background: color-mix(in srgb, var(--overlay) 6%, transparent);
     color: var(--fg);
     font-size: 12px;
 }
 
 .cert-badge:hover {
-    background: rgb(255 255 255 / 12%);
+    background: color-mix(in srgb, var(--overlay) 12%, transparent);
     border-color: var(--accent);
 }
 
 .cert-fingerprints {
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     border-radius: 10px;
     padding: 14px;
     margin-top: 12px;
@@ -1535,10 +1541,10 @@ body.tool-generator .converter-only {
 
 .fingerprint-search input {
     width: 100%;
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 10px 12px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
     font-size: 13px;
@@ -1565,15 +1571,15 @@ body.tool-generator .converter-only {
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 14px 16px;
-    background: rgb(255 255 255 / 2%);
+    background: color-mix(in srgb, var(--overlay) 2%, transparent);
     transition:
         border-color 0.2s,
         background 0.2s;
 }
 
 .fingerprint-group:hover {
-    border-color: rgb(255 255 255 / 15%);
-    background: rgb(255 255 255 / 3%);
+    border-color: color-mix(in srgb, var(--overlay) 15%, transparent);
+    background: color-mix(in srgb, var(--overlay) 3%, transparent);
 }
 
 .fingerprint-group.hidden {
@@ -1586,7 +1592,7 @@ body.tool-generator .converter-only {
     align-items: center;
     margin-bottom: 12px;
     padding-bottom: 10px;
-    border-bottom: 1px solid rgb(255 255 255 / 8%);
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay) 8%, transparent);
 }
 
 .fingerprint-group h3 {
@@ -1601,7 +1607,7 @@ body.tool-generator .converter-only {
 .fingerprint-group-count {
     font-size: 11px;
     color: var(--muted);
-    background: rgb(255 255 255 / 8%);
+    background: color-mix(in srgb, var(--overlay) 8%, transparent);
     padding: 2px 8px;
     border-radius: 999px;
 }
@@ -1621,14 +1627,14 @@ body.tool-generator .converter-only {
     gap: 6px;
     padding: 10px 12px;
     border-radius: 6px;
-    background: rgb(0 0 0 / 15%);
+    background: color-mix(in srgb, var(--shade) 15%, transparent);
     transition: background 0.2s;
     cursor: pointer;
     position: relative;
 }
 
 .fingerprint-list li:hover {
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
 }
 
 .fingerprint-list li.hidden {
@@ -1696,10 +1702,10 @@ body.tool-generator .converter-only {
 
 .input-with-action input {
     flex: 1;
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 10px 12px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
 }
@@ -1791,13 +1797,13 @@ body.tool-generator .converter-only {
     padding: 4px 10px;
     font-size: 12px;
     backdrop-filter: blur(4px);
-    background: rgb(0 0 0 / 40%);
-    border-color: rgb(255 255 255 / 10%);
+    background: color-mix(in srgb, var(--shade) 40%, transparent);
+    border-color: color-mix(in srgb, var(--overlay) 10%, transparent);
 }
 
 .copy-overlay:hover {
     background: var(--accent);
-    color: #000;
+    color: var(--shade);
     border-color: var(--accent);
 }
 
@@ -1812,8 +1818,8 @@ body.tool-generator .converter-only {
 
 /* KDF workspace */
 .kdf-note {
-    background: rgb(122 162 247 / 8%);
-    border: 1px solid rgb(122 162 247 / 20%);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
     border-radius: 10px;
     padding: 14px 18px;
     margin: 0 18px 18px;
@@ -1829,7 +1835,11 @@ body.tool-generator .converter-only {
 }
 
 .kdf-card {
-    background: linear-gradient(135deg, rgb(255 255 255 / 4%) 0%, rgb(255 255 255 / 2%) 100%);
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--overlay) 4%, transparent) 0%,
+        color-mix(in srgb, var(--overlay) 2%, transparent) 100%
+    );
     border: 1px solid var(--card-border);
     border-radius: 16px;
     padding: 26px;
@@ -1837,7 +1847,7 @@ body.tool-generator .converter-only {
     flex-direction: column;
     gap: 22px;
     transition: var(--transition-smooth);
-    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--shade) 15%, transparent);
 }
 
 .kdf-card:hover {
@@ -1845,14 +1855,14 @@ body.tool-generator .converter-only {
     transform: translateY(-3px);
     box-shadow:
         var(--accent-glow),
-        0 8px 24px rgb(0 0 0 / 25%);
+        0 8px 24px color-mix(in srgb, var(--shade) 25%, transparent);
 }
 
 .kdf-card-head {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    border-bottom: 1px solid rgb(255 255 255 / 10%);
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     padding-bottom: 18px;
 }
 
@@ -1860,7 +1870,7 @@ body.tool-generator .converter-only {
     margin: 0;
     font-size: 19px;
     font-weight: 700;
-    background: linear-gradient(135deg, var(--accent) 0%, #9db4ff 100%);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
@@ -1875,11 +1885,11 @@ body.tool-generator .converter-only {
     font-size: 10px;
     padding: 5px 10px;
     border-radius: 14px;
-    background: rgb(255 255 255 / 8%);
+    background: color-mix(in srgb, var(--overlay) 8%, transparent);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
 }
 
 .kdf-inline {
@@ -1933,7 +1943,7 @@ body.tool-generator .converter-only {
 }
 
 .kdf-status.ok {
-    color: #86e1a8;
+    color: var(--success-2);
 }
 
 .kdf-status.error {
@@ -1962,10 +1972,10 @@ body.tool-generator .converter-only {
 
 .totp-form input,
 .totp-form select {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 8px 10px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
 }
@@ -1975,9 +1985,9 @@ body.tool-generator .converter-only {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 10px;
-    background: rgb(255 255 255 / 3%);
+    background: color-mix(in srgb, var(--overlay) 3%, transparent);
 }
 
 .totp-result code {
@@ -1996,14 +2006,18 @@ body.tool-generator .converter-only {
 }
 
 .totp-error {
-    color: #ff8585;
+    color: var(--danger-3);
     min-height: 1.2em;
 }
 
 /* Timestamp Converter Sections */
 .timestamp-section {
     margin: 0 18px 24px;
-    background: linear-gradient(135deg, rgb(255 255 255 / 4%) 0%, rgb(255 255 255 / 1%) 100%);
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--overlay) 4%, transparent) 0%,
+        color-mix(in srgb, var(--overlay) 1%, transparent) 100%
+    );
     border: 1px solid var(--card-border);
     border-radius: 14px;
     padding: 20px;
@@ -2012,7 +2026,7 @@ body.tool-generator .converter-only {
 
 .timestamp-section:hover {
     border-color: var(--card-hover-border);
-    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--shade) 15%, transparent);
 }
 
 .timestamp-section-header {
@@ -2021,7 +2035,7 @@ body.tool-generator .converter-only {
     align-items: center;
     margin-bottom: 18px;
     padding-bottom: 12px;
-    border-bottom: 2px solid rgb(255 255 255 / 8%);
+    border-bottom: 2px solid color-mix(in srgb, var(--overlay) 8%, transparent);
 }
 
 .timestamp-section-header h3 {
@@ -2041,21 +2055,33 @@ body.tool-generator .converter-only {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    background: linear-gradient(135deg, rgb(255 193 7 / 20%) 0%, rgb(255 193 7 / 10%) 100%);
-    border: 1px solid rgb(255 193 7 / 30%);
-    color: rgb(255 193 7);
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--warning-2) 20%, transparent) 0%,
+        color-mix(in srgb, var(--warning-2) 10%, transparent) 100%
+    );
+    border: 1px solid color-mix(in srgb, var(--warning-2) 30%, transparent);
+    color: var(--warning-2);
 }
 
 .timestamp-section-badge.utc {
-    background: linear-gradient(135deg, rgb(122 162 247 / 20%) 0%, rgb(122 162 247 / 10%) 100%);
-    border: 1px solid rgb(122 162 247 / 30%);
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--accent) 20%, transparent) 0%,
+        color-mix(in srgb, var(--accent) 10%, transparent) 100%
+    );
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
     color: var(--accent);
 }
 
 .timestamp-section-badge.local {
-    background: linear-gradient(135deg, rgb(125 207 182 / 20%) 0%, rgb(125 207 182 / 10%) 100%);
-    border: 1px solid rgb(125 207 182 / 30%);
-    color: rgb(125 207 182);
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--success) 20%, transparent) 0%,
+        color-mix(in srgb, var(--success) 10%, transparent) 100%
+    );
+    border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+    color: var(--success);
 }
 
 /* Unix Timestamps Grid */
@@ -2080,23 +2106,21 @@ body.tool-generator .converter-only {
 }
 
 .timestamp-unix-grid input {
-    font-family:
-        JetBrains Mono,
-        monospace;
+    font-family: var(--mono, JetBrains Mono, monospace);
     font-size: 14px;
     font-weight: 500;
     padding: 14px 16px;
     border-radius: 10px;
-    background: rgb(0 0 0 / 25%);
-    border: 1px solid rgb(255 193 7 / 20%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning-2) 20%, transparent);
     transition: var(--transition-smooth);
-    color: rgb(255 193 7);
+    color: var(--warning-2);
 }
 
 .timestamp-unix-grid input:focus {
-    background: rgb(0 0 0 / 35%);
-    border-color: rgb(255 193 7 / 50%);
-    box-shadow: 0 0 0 3px rgb(255 193 7 / 15%);
+    background: color-mix(in srgb, var(--shade) 35%, transparent);
+    border-color: color-mix(in srgb, var(--warning-2) 50%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning-2) 15%, transparent);
 }
 
 /* Formats Grid */
@@ -2121,36 +2145,34 @@ body.tool-generator .converter-only {
 }
 
 .timestamp-formats-grid input {
-    font-family:
-        JetBrains Mono,
-        monospace;
+    font-family: var(--mono, JetBrains Mono, monospace);
     font-size: 13px;
     padding: 12px 14px;
     border-radius: 10px;
-    background: rgb(0 0 0 / 20%);
-    border: 1px solid rgb(255 255 255 / 10%);
+    background: color-mix(in srgb, var(--shade) 20%, transparent);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     transition: var(--transition-smooth);
     color: var(--fg);
 }
 
 .timestamp-formats-grid input:focus {
-    background: rgb(0 0 0 / 30%);
+    background: color-mix(in srgb, var(--shade) 30%, transparent);
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgb(122 162 247 / 15%);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
     color: var(--fg);
 }
 
 .timestamp-formats-grid input[readonly] {
-    background: rgb(125 207 182 / 8%);
-    border-color: rgb(125 207 182 / 20%);
+    background: color-mix(in srgb, var(--success) 8%, transparent);
+    border-color: color-mix(in srgb, var(--success) 20%, transparent);
     cursor: default;
-    color: rgb(125 207 182);
+    color: var(--success);
 }
 
 .timestamp-formats-grid input[readonly]:focus {
-    background: rgb(125 207 182 / 12%);
-    border-color: rgb(125 207 182 / 30%);
-    box-shadow: 0 0 0 2px rgb(125 207 182 / 15%);
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+    border-color: color-mix(in srgb, var(--success) 30%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 15%, transparent);
 }
 
 /* Legacy timestamp-grid override */
@@ -2175,10 +2197,10 @@ body.tool-generator .converter-only {
 }
 
 .number-grid input {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 10px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
 }
@@ -2197,7 +2219,7 @@ body.tool-generator .converter-only {
 }
 
 .ipv4-stats .stat {
-    border-bottom: 1px solid rgb(255 255 255 / 8%);
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay) 8%, transparent);
     padding-bottom: 6px;
 }
 
@@ -2205,7 +2227,7 @@ body.tool-generator .converter-only {
     display: flex;
     justify-content: space-between;
     gap: 12px;
-    border-bottom: 1px solid rgb(255 255 255 / 8%);
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay) 8%, transparent);
     padding-bottom: 6px;
 }
 
@@ -2221,7 +2243,7 @@ body.tool-generator .converter-only {
     justify-content: space-between;
     align-items: center;
     padding: 8px 0;
-    border-bottom: 1px solid rgb(255 255 255 / 5%);
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay) 5%, transparent);
 }
 
 .ipv4-results .ipv4-results .result-item:last-child {
@@ -2237,9 +2259,7 @@ body.tool-generator .converter-only {
 }
 
 .ipv4-results .ipv4-results .result-value {
-    font-family:
-        JetBrains Mono,
-        monospace;
+    font-family: var(--mono, JetBrains Mono, monospace);
     color: var(--accent);
     font-weight: 600;
 }
@@ -2291,17 +2311,17 @@ body.tool-generator .converter-only {
 
 .image-options input,
 .image-options select {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 8px 10px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
 }
 
 .image-option-note {
     padding: 10px 12px;
-    border: 1px dashed rgb(255 255 255 / 25%);
+    border: 1px dashed color-mix(in srgb, var(--overlay) 25%, transparent);
     border-radius: 10px;
     color: var(--muted);
     font-size: 13px;
@@ -2315,14 +2335,18 @@ body.tool-generator .converter-only {
 }
 
 .image-card {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 12px;
     padding: 12px;
-    background: linear-gradient(135deg, rgb(255 255 255 / 5%), rgb(0 0 0 / 12%));
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--overlay) 5%, transparent),
+        color-mix(in srgb, var(--shade) 12%, transparent)
+    );
     display: flex;
     flex-direction: column;
     gap: 10px;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--shade) 20%, transparent);
 }
 
 .image-card-head {
@@ -2336,16 +2360,28 @@ body.tool-generator .converter-only {
 }
 
 .image-frame {
-    border: 1px dashed rgb(255 255 255 / 20%);
+    border: 1px dashed color-mix(in srgb, var(--overlay) 20%, transparent);
     border-radius: 10px;
     min-height: 220px;
     display: grid;
     place-items: center;
     padding: 8px;
     background:
-        radial-gradient(circle at 20% 20%, rgb(255 255 255 / 6%), transparent 45%),
-        radial-gradient(circle at 80% 30%, rgb(255 255 255 / 5%), transparent 50%),
-        linear-gradient(180deg, rgb(255 255 255 / 3%), rgb(0 0 0 / 25%));
+        radial-gradient(
+            circle at 20% 20% in srgb,
+            color-mix(in srgb, var(--overlay) 6%, transparent),
+            transparent 45%
+        ),
+        radial-gradient(
+            circle at 80% 30% in srgb,
+            color-mix(in srgb, var(--overlay) 5%, transparent),
+            transparent 50%
+        ),
+        linear-gradient(
+            180deg in srgb,
+            color-mix(in srgb, var(--overlay) 3%, transparent),
+            color-mix(in srgb, var(--shade) 25%, transparent)
+        );
     overflow: hidden;
 }
 
@@ -2353,7 +2389,7 @@ body.tool-generator .converter-only {
     max-width: 100%;
     max-height: 320px;
     border-radius: 8px;
-    box-shadow: 0 6px 18px rgb(0 0 0 / 35%);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--shade) 35%, transparent);
     display: block;
 }
 
@@ -2373,10 +2409,10 @@ body.tool-generator .converter-only {
 
 .image-batch {
     margin-top: 12px;
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 12px;
     padding: 12px;
-    background: rgb(255 255 255 / 3%);
+    background: color-mix(in srgb, var(--overlay) 3%, transparent);
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -2392,14 +2428,18 @@ body.tool-generator .converter-only {
     flex: 1;
     height: 10px;
     border-radius: 999px;
-    background: rgb(255 255 255 / 12%);
+    background: color-mix(in srgb, var(--overlay) 12%, transparent);
     overflow: hidden;
 }
 
 .progress-bar-fill {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, var(--accent), rgb(255 255 255 / 80%));
+    background: linear-gradient(
+        90deg in srgb,
+        var(--accent),
+        color-mix(in srgb, var(--overlay) 80%, transparent)
+    );
     transition: width 0.2s ease-out;
 }
 
@@ -2420,7 +2460,7 @@ body.tool-generator .converter-only {
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 10px;
-    background: rgb(0 0 0 / 12%);
+    background: color-mix(in srgb, var(--shade) 12%, transparent);
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 8px;
@@ -2438,13 +2478,13 @@ body.tool-generator .converter-only {
 }
 
 .image-batch-error {
-    color: #ff7878;
+    color: var(--danger-2);
     font-size: 12px;
     grid-column: 1 / -1;
 }
 
 .image-error {
-    color: #ff8585;
+    color: var(--danger-3);
     min-height: 1.2em;
     font-size: 13px;
 }
@@ -2476,10 +2516,10 @@ body.tool-generator .converter-only {
 }
 
 .watermark-grid input[type='text'] {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 8px 10px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
 }
@@ -2487,16 +2527,16 @@ body.tool-generator .converter-only {
 /* Color input with visual indicator */
 .watermark-grid input[type='color'] {
     height: 40px;
-    border: 2px solid rgb(255 255 255 / 10%);
+    border: 2px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 4px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     cursor: pointer;
     transition: var(--transition-smooth);
 }
 
 .watermark-grid input[type='color']:hover {
-    border-color: rgb(255 255 255 / 20%);
+    border-color: color-mix(in srgb, var(--overlay) 20%, transparent);
     transform: translateY(-1px);
 }
 
@@ -2563,10 +2603,10 @@ body.tool-generator .converter-only {
 
 .qr-row input,
 .qr-row select {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 8px 10px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
 }
@@ -2589,21 +2629,22 @@ body.tool-generator .converter-only {
 }
 
 .qr-preview {
-    border: 1px dashed rgb(255 255 255 / 20%);
+    border: 1px dashed color-mix(in srgb, var(--overlay) 20%, transparent);
     border-radius: 12px;
     padding: 10px;
     min-height: 280px;
     display: grid;
     place-items: center;
-    background: rgb(255 255 255 / 4%);
+    background: color-mix(in srgb, var(--overlay) 4%, transparent);
     width: 100%;
 }
 
 .qr-image-frame {
+    /* Not themed: scanners need the light quiet zone around the code. */
     background: #fff;
     padding: 8px;
     border-radius: 10px;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--shade) 20%, transparent);
 }
 
 .qr-preview img {
@@ -2627,7 +2668,7 @@ body.tool-generator .converter-only {
 }
 
 .qr-error {
-    color: #ff8585;
+    color: var(--danger-3);
     min-height: 1.2em;
     width: 100%;
     text-align: center;
@@ -2663,7 +2704,7 @@ body.tool-generator .converter-only {
 
 .line-numbers {
     width: 60px;
-    background: rgb(255 255 255 / 2%);
+    background: color-mix(in srgb, var(--overlay) 2%, transparent);
     color: var(--muted);
     font-size: 12px;
     line-height: 1.5;
@@ -2716,13 +2757,13 @@ body.tool-generator .converter-only {
 }
 
 .diff-output .addition {
-    background: rgb(40 167 69 / 15%);
-    border-left: 3px solid #28a745;
+    background: color-mix(in srgb, var(--diff-add) 15%, transparent);
+    border-left: 3px solid var(--diff-add);
 }
 
 .diff-output .deletion {
-    background: rgb(220 53 69 / 15%);
-    border-left: 3px solid #dc3545;
+    background: color-mix(in srgb, var(--diff-del) 15%, transparent);
+    border-left: 3px solid var(--diff-del);
 }
 
 .diff-output .context {
@@ -2738,17 +2779,17 @@ body.tool-generator .converter-only {
 }
 
 .data-column-group {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 10px;
     padding: 12px;
-    background: rgb(255 255 255 / 2%);
+    background: color-mix(in srgb, var(--overlay) 2%, transparent);
 }
 
 .data-column-card {
-    border: 1px solid rgb(255 255 255 / 8%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 8%, transparent);
     border-radius: 8px;
     padding: 10px;
-    background: rgb(0 0 0 / 20%);
+    background: color-mix(in srgb, var(--shade) 20%, transparent);
     margin-top: 10px;
 }
 
@@ -2805,10 +2846,10 @@ body.tool-generator .converter-only {
 }
 
 .data-override-row input {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 6px 8px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
 }
@@ -2822,8 +2863,8 @@ body.tool-generator .converter-only {
 }
 
 .timestamp-presets button {
-    border: 1px solid rgb(255 255 255 / 15%);
-    background: rgb(255 255 255 / 4%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 15%, transparent);
+    background: color-mix(in srgb, var(--overlay) 4%, transparent);
     color: var(--fg);
     border-radius: 999px;
     padding: 4px 12px;
@@ -2847,17 +2888,21 @@ body.tool-generator .converter-only {
 }
 
 .timestamp-grid input {
-    border: 1px solid rgb(255 255 255 / 10%);
+    border: 1px solid color-mix(in srgb, var(--overlay) 10%, transparent);
     border-radius: 8px;
     padding: 8px 10px;
-    background: rgb(0 0 0 / 25%);
+    background: color-mix(in srgb, var(--shade) 25%, transparent);
     color: var(--fg);
     font: inherit;
 }
 
 /* Pair workspace */
 #pairWorkspace .panel {
-    background: linear-gradient(135deg, rgb(255 255 255 / 4%) 0%, rgb(255 255 255 / 1%) 100%);
+    background: linear-gradient(
+        135deg in srgb,
+        color-mix(in srgb, var(--overlay) 4%, transparent) 0%,
+        color-mix(in srgb, var(--overlay) 1%, transparent) 100%
+    );
 }
 
 /* TOTP Code Copy Enhancement */
@@ -2867,7 +2912,7 @@ body.tool-generator .converter-only {
 }
 
 .totp-result code:hover {
-    background: rgb(122 162 247 / 10%);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
     border-radius: 8px;
     padding: 8px 16px;
     margin: -8px -16px;
@@ -2893,7 +2938,7 @@ body.tool-generator .converter-only {
 }
 
 .click-copy:hover {
-    background: rgb(122 162 247 / 5%);
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
     border-radius: 6px;
 }
 
@@ -2906,10 +2951,10 @@ body.tool-generator .converter-only {
     font-size: 14px;
     color: var(--accent);
     opacity: 0.8;
-    background: rgb(255 255 255 / 90%);
+    background: color-mix(in srgb, var(--overlay) 90%, transparent);
     border-radius: 4px;
     padding: 2px 6px;
-    box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--shade) 15%, transparent);
 }
 
 /* IP value copy enhancement */
@@ -2919,7 +2964,7 @@ body.tool-generator .converter-only {
 }
 
 [data-copy-value]:hover {
-    background: rgb(122 162 247 / 5%);
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
     border-radius: 4px;
 }
 
@@ -2932,10 +2977,10 @@ body.tool-generator .converter-only {
     font-size: 12px;
     color: var(--accent);
     opacity: 0.8;
-    background: rgb(255 255 255 / 90%);
+    background: color-mix(in srgb, var(--overlay) 90%, transparent);
     border-radius: 3px;
     padding: 1px 4px;
-    box-shadow: 0 2px 6px rgb(0 0 0 / 15%);
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--shade) 15%, transparent);
 }
 
 /* Copy areas */

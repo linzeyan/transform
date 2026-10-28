@@ -982,6 +982,47 @@ function syncToolFromHash(initial = false) {
     }
 }
 
+// Embed mode (VSCode's tool tabs): a host serves <html class="embed">; ?embed=1 does the
+// same in a plain browser for debugging.
+if (new URLSearchParams(location.search).get('embed') === '1') {
+    document.documentElement.classList.add('embed');
+}
+const embedded = document.documentElement.classList.contains('embed');
+// Webviews ignore <a download>, so embedded saves go to the host. acquireVsCodeApi may be
+// called only once per page, and is missing when ?embed=1 is opened in a plain browser.
+const host = embedded && typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
+
+// Saves a Blob or a data: URL as `name`: a download on the website, the host's save dialog
+// when embedded.
+async function saveFile(data, name) {
+    if (!host) {
+        const url = typeof data === 'string' ? data : URL.createObjectURL(data);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        if (url !== data) setTimeout(() => URL.revokeObjectURL(url), 0);
+        return;
+    }
+    let mime;
+    let bytes;
+    if (typeof data === 'string') {
+        const comma = data.indexOf(',');
+        const meta = data.slice('data:'.length, comma);
+        const body = data.slice(comma + 1);
+        mime = meta.split(';')[0];
+        bytes = meta.endsWith(';base64')
+            ? Uint8Array.from(atob(body), (c) => c.charCodeAt(0))
+            : new TextEncoder().encode(decodeURIComponent(body));
+    } else {
+        mime = data.type;
+        bytes = new Uint8Array(await data.arrayBuffer());
+    }
+    host.postMessage({ type: 'transform.save', name, mime, bytes });
+}
+
 boot();
 
 async function boot() {
@@ -2035,26 +2076,10 @@ function handleTabularDownload() {
     const results = state.tabular.results;
     if (results.length === 1) {
         const single = results[0];
-        const url = URL.createObjectURL(single.blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = single.name || 'converted';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 0);
+        saveFile(single.blob, single.name || 'converted');
         return;
     }
-    results.forEach((result, idx) => {
-        const url = URL.createObjectURL(result.blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = result.name || `converted-${idx + 1}`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 0);
-    });
+    results.forEach((result, idx) => saveFile(result.blob, result.name || `converted-${idx + 1}`));
     setTabularStatus(`Started downloads for ${results.length} files`);
 }
 
@@ -2634,14 +2659,7 @@ function downloadDecodedFile() {
         return;
     }
     const blob = new Blob([bytes], { type: 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = state.coder.decodedFileName || 'decoded.bin';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+    saveFile(blob, state.coder.decodedFileName || 'decoded.bin');
     setStatus('Saved decoded file', false);
 }
 
@@ -3978,12 +3996,7 @@ function handleImageDownload() {
         setStatus('No converted image to download', true);
         return;
     }
-    const link = document.createElement('a');
-    link.href = result.dataUrl;
-    link.download = result.downloadName || `converted.${result.format || 'png'}`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    saveFile(result.dataUrl, result.downloadName || `converted.${result.format || 'png'}`);
     setStatus('Download ready', false);
 }
 
@@ -3998,12 +4011,7 @@ function handleImageBatchListClick(event) {
         return;
     }
     const res = item.result;
-    const link = document.createElement('a');
-    link.href = res.dataUrl;
-    link.download = res.downloadName || `converted.${res.format || 'png'}`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    saveFile(res.dataUrl, res.downloadName || `converted.${res.format || 'png'}`);
     setStatus(`Downloaded ${res.downloadName || 'image'}`, false);
 }
 
@@ -4549,7 +4557,7 @@ function renderFingerprintFacts(facts = []) {
 
     // Show/hide Copy All button
     if (elements.fingerprintCopyAll) {
-        elements.fingerprintCopyAll.style.display = total > 0 ? 'inline-flex' : 'none';
+        elements.fingerprintCopyAll.classList.toggle('hidden', total === 0);
     }
 
     if (!elements.fingerprintGrid) return;
@@ -5676,14 +5684,7 @@ function handleAsciiDownload() {
         return;
     }
     const blob = new Blob([state.ascii.output], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = 'ascii-art.txt';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+    saveFile(blob, 'ascii-art.txt');
     setStatus('Downloaded ascii-art.txt', false);
 }
 
@@ -5699,11 +5700,7 @@ function updateRandomResults(values) {
 
     // Show/hide "Copy All" button
     if (elements.randomCopyAll) {
-        if (state.randomResults.length > 0) {
-            elements.randomCopyAll.style.display = 'inline-flex';
-        } else {
-            elements.randomCopyAll.style.display = 'none';
-        }
+        elements.randomCopyAll.classList.toggle('hidden', state.randomResults.length === 0);
     }
 
     if (!state.randomResults.length) {
@@ -5971,12 +5968,7 @@ function downloadQrImage() {
         setStatus('No QR code to download', true);
         return;
     }
-    const link = document.createElement('a');
-    link.href = result.dataUrl;
-    link.download = result.downloadName || `qr-code.${result.format || 'png'}`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    saveFile(result.dataUrl, result.downloadName || `qr-code.${result.format || 'png'}`);
     setStatus('QR downloaded', false);
 }
 
@@ -7665,30 +7657,14 @@ function handleCryptoDownload() {
 
     if (results.length === 1) {
         const single = results[0];
-        const url = URL.createObjectURL(single.blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = single.name || 'encrypted';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 0);
+        saveFile(single.blob, single.name || 'encrypted');
         setStatus('Downloaded', false);
         return;
     }
 
     // Batch download
     results.forEach((result, idx) => {
-        setTimeout(() => {
-            const url = URL.createObjectURL(result.blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = result.name || `encrypted-${idx + 1}`;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            setTimeout(() => URL.revokeObjectURL(url), 0);
-        }, idx * 100);
+        setTimeout(() => saveFile(result.blob, result.name || `encrypted-${idx + 1}`), idx * 100);
     });
     setStatus(`${results.length} file(s) downloaded`, false);
 }
