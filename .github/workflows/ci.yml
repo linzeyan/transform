@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*.*.*"]
   pull_request:
 
 env:
@@ -45,10 +46,26 @@ jobs:
       - name: Build project
         run: make build && rm -f www/pkg/.gitignore
 
+      # A tag may sit on an older commit; deploying it would roll the site back.
       - name: Deploy to gh-pages
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./www
           publish_branch: gh-pages
           force_orphan: true
+
+      # The page as built, for hosts that ship it instead of serving it: poly's
+      # VSCode toolbox pins this asset by sha256. The wasm and its glue travel
+      # together, so a host never pairs them across wasm-bindgen versions.
+      - name: Release the built page
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar -czf transform-www.tar.gz \
+            --exclude='./*.cjs' --exclude='./*.json' --exclude='./pkg/*.d.ts' \
+            -C www . -C "$GITHUB_WORKSPACE" LICENSE
+          tar -tzf transform-www.tar.gz
+          gh release create "$GITHUB_REF_NAME" --generate-notes transform-www.tar.gz
