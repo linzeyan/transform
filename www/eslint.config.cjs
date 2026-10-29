@@ -42,6 +42,7 @@ const browserGlobals = {
     HTMLInputElement: 'readonly',
     HTMLTextAreaElement: 'readonly',
     HTMLSelectElement: 'readonly',
+    Event: 'readonly',
     Image: 'readonly',
     Audio: 'readonly',
     structuredClone: 'readonly',

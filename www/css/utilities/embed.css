@@ -75,6 +75,16 @@
 }
 
 /*
+ * Native controls (an unchecked radio, a checkbox, a scrollbar) are drawn in the
+ * page's colour scheme, which the webview leaves light: in a dark theme they came
+ * out white. VSCode names the theme kind on <body>; high contrast light carries
+ * both of its classes.
+ */
+:root.embed body:is(.vscode-dark, .vscode-high-contrast):not(.vscode-high-contrast-light) {
+    color-scheme: dark;
+}
+
+/*
  * Typed input and diffs are code. On the website every textarea inherits the
  * page's monospace font; here the page font is the UI font, so say it.
  */

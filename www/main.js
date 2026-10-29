@@ -1023,6 +1023,83 @@ async function saveFile(data, name) {
     host.postMessage({ type: 'transform.save', name, mime, bytes });
 }
 
+// Where a host's selection goes when it opens a tool with one (`transform.input`), and
+// which field `Replace Selection` sends back. A pair tool converts either way, so the
+// text goes to the side it looks like; a tool whose answer is a list of results, or
+// that reads the text rather than rewrites it, has no `output`.
+const pairSides = (encoded) =>
+    encoded
+        ? { input: 'pairOutput', output: 'pairInput' }
+        : { input: 'pairInput', output: 'pairOutput' };
+const embedFields = {
+    format: () => ({ input: 'input', output: 'output' }),
+    'converter-html-md': (text) => pairSides(/^\s*</.test(text)),
+    'coder-url': (text) => pairSides(/%[0-9A-Fa-f]{2}/.test(text)),
+    'coder-jwt': () => ({ input: 'pairOutput' }),
+    'coder-encode': () => ({ input: 'coderInput' }),
+    'coder-decode': () => ({ input: 'coderInput' }),
+    'coder-hash': () => ({ input: 'coderInput' }),
+    'converter-ipv4': () => ({ input: 'ipv4Input' }),
+    // Rendering waits for the Generate button rather than for typing.
+    'generator-ascii': () => ({
+        input: 'asciiInput',
+        output: 'asciiOutput',
+        run: runAsciiGenerator,
+    }),
+    'security-ssl': () => ({ input: 'certInput' }),
+    'generator-sql': () => ({ input: 'dataSchema' }),
+};
+
+let replaceSlot = null;
+
+// One button, in the header of whichever panel holds the result: the selection it
+// replaces is one place in one file, so it goes after one use.
+function offerReplace(output) {
+    replaceSlot?.remove();
+    replaceSlot = null;
+    const header = output?.closest('section, .ascii-output-card')?.querySelector('.panel-header');
+    if (!header) return;
+    // Among the header's own buttons, so it wraps and is styled with them;
+    // a header without any gets a group of its own, removed with the button.
+    let actions = header.querySelector('.panel-actions');
+    if (!actions) {
+        actions = document.createElement('div');
+        actions.className = 'panel-actions';
+        header.appendChild(actions);
+    }
+    const replaceButton = document.createElement('button');
+    replaceButton.type = 'button';
+    replaceButton.className = 'ghost-btn';
+    replaceButton.textContent = 'Replace Selection';
+    replaceButton.addEventListener('click', () => {
+        const text = 'value' in output ? output.value : output.textContent;
+        host.postMessage({ type: 'transform.replace', text });
+        offerReplace(null);
+    });
+    actions.appendChild(replaceButton);
+    replaceSlot = actions.childElementCount > 1 ? replaceButton : actions;
+}
+
+function receiveHostInput({ text, format, replace }) {
+    const fields = embedFields[state.currentTool]?.(text);
+    const input = fields && document.getElementById(fields.input);
+    if (!input) return;
+    if (format && elements.from && [...elements.from.options].some((o) => o.value === format)) {
+        elements.from.value = format;
+        elements.from.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    input.value = text;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    fields.run?.();
+    offerReplace(replace && fields.output ? document.getElementById(fields.output) : null);
+}
+
+if (host) {
+    window.addEventListener('message', (event) => {
+        if (event.data?.type === 'transform.input') receiveHostInput(event.data);
+    });
+}
+
 boot();
 
 async function boot() {
@@ -1090,6 +1167,8 @@ async function boot() {
         if (isDataTool(state.currentTool)) {
             activateDataTool();
         }
+        // Before this a host's text would only meet "Waiting for WebAssembly...".
+        host?.postMessage({ type: 'transform.ready' });
     } catch (err) {
         console.error(err);
         setStatus(`Failed to load WebAssembly: ${err.message}`, true);
