@@ -1,0 +1,114 @@
+{
+  "automated": [
+    {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "browserName": "chrome",
+      "browserVersion": "156.0.0.0",
+      "osName": "windows",
+      "osVersion": "10",
+      "engineName": "Blink",
+      "engineVersion": "156.0.0.0"
+    },
+    {
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "browserName": "chrome",
+      "browserVersion": "156.0.0.0",
+      "osName": "macos",
+      "osVersion": "10.15.7",
+      "engineName": "Blink",
+      "engineVersion": "156.0.0.0"
+    },
+    {
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "browserName": "chrome",
+      "browserVersion": "156.0.0.0",
+      "osName": "linux",
+      "osVersion": "x86_64",
+      "engineName": "Blink",
+      "engineVersion": "156.0.0.0"
+    },
+    {
+      "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Mobile Safari/537.36",
+      "browserName": "chrome",
+      "browserVersion": "156.0.0.0",
+      "osName": "android",
+      "osVersion": "10",
+      "engineName": "Blink",
+      "engineVersion": "156.0.0.0"
+    },
+    {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:159.0) Gecko/20100101 Firefox/159.0",
+      "browserName": "firefox",
+      "browserVersion": "159.0",
+      "osName": "windows",
+      "osVersion": "10",
+      "engineName": "Gecko",
+      "engineVersion": "159.0"
+    },
+    {
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:159.0) Gecko/20100101 Firefox/159.0",
+      "browserName": "firefox",
+      "browserVersion": "159.0",
+      "osName": "macos",
+      "osVersion": "10.15",
+      "engineName": "Gecko",
+      "engineVersion": "159.0"
+    },
+    {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0",
+      "browserName": "edge",
+      "browserVersion": "156.0.0.0",
+      "osName": "windows",
+      "osVersion": "10",
+      "engineName": "Blink",
+      "engineVersion": "156.0.0.0"
+    },
+    {
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0",
+      "browserName": "edge",
+      "browserVersion": "156.0.0.0",
+      "osName": "macos",
+      "osVersion": "10.15.7",
+      "engineName": "Blink",
+      "engineVersion": "156.0.0.0"
+    }
+  ],
+  "manual": [
+    {
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15",
+      "browserName": "safari",
+      "browserVersion": "27.2",
+      "osName": "macos",
+      "osVersion": "10.15.7",
+      "engineName": "WebKit",
+      "engineVersion": "605.1.15"
+    },
+    {
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Mobile/15E148 Safari/604.1",
+      "browserName": "safari",
+      "browserVersion": "27.2",
+      "osName": "ios",
+      "osVersion": "18.7",
+      "engineName": "WebKit",
+      "engineVersion": "605.1.15"
+    },
+    {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Vivaldi/8.2.4133.96",
+      "browserName": "vivaldi",
+      "browserVersion": "8.2.4133.96",
+      "osName": "windows",
+      "osVersion": "10",
+      "engineName": "Blink",
+      "engineVersion": "152.0.0.0"
+    },
+    {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 YaBrowser/26.10.0.1860 Yowser/2.5 Safari/537.36",
+      "browserName": "yandex",
+      "browserVersion": "26.10.0.1860",
+      "osName": "windows",
+      "osVersion": "10",
+      "engineName": "Blink",
+      "engineVersion": "152.0.0.0"
+    }
+  ]
+}

@@ -53,6 +53,21 @@ const js = require('@eslint/js');
 module.exports = [
     { ignores: ['node_modules/**', 'dist/**', 'build/**', 'www/pkg/**'] },
     js.configs.recommended,
+    // CI-run maintenance scripts execute under Node, not in the page.
+    {
+        files: ['scripts/**/*.mjs'],
+        languageOptions: {
+            ecmaVersion: 'latest',
+            sourceType: 'module',
+            globals: {
+                console: 'readonly',
+                process: 'readonly',
+                fetch: 'readonly',
+                URL: 'readonly',
+                AbortSignal: 'readonly',
+            },
+        },
+    },
     {
         files: ['www/**/*.js'],
         languageOptions: {

@@ -561,6 +561,48 @@ fn generate_user_agents_filters_and_limits_results() {
     }
 }
 
+// The UI prints browserVersion/engineVersion beside the string it copies. A hand
+// edit of user_agents.json that bumps one and not the other would hand out a UA
+// that contradicts its own label, so every entry must carry both in the string.
+#[test]
+fn user_agent_strings_contain_their_declared_versions() {
+    let entries = user_agents();
+    assert!(!entries.is_empty(), "user_agents.json has no entries");
+    for e in entries {
+        let browser_token = match e.browser_name.as_str() {
+            "chrome" => "Chrome/",
+            "firefox" => "Firefox/",
+            "edge" => "Edg/",
+            "safari" => "Version/",
+            "vivaldi" => "Vivaldi/",
+            "yandex" => "YaBrowser/",
+            other => panic!("no version token known for browser {other:?}"),
+        };
+        let browser_needle = format!("{browser_token}{}", e.browser_version);
+        assert!(
+            e.user_agent.split(' ').any(|part| part == browser_needle),
+            "{} {}: {:?} lacks {browser_needle:?}",
+            e.browser_name,
+            e.os_name,
+            e.user_agent
+        );
+
+        let engine_needle = match e.engine_name.as_str() {
+            "Blink" => format!("Chrome/{} ", e.engine_version),
+            "Gecko" => format!("rv:{})", e.engine_version),
+            "WebKit" => format!("AppleWebKit/{} ", e.engine_version),
+            other => panic!("no version token known for engine {other:?}"),
+        };
+        assert!(
+            e.user_agent.contains(&engine_needle),
+            "{} {}: {:?} lacks {engine_needle:?}",
+            e.browser_name,
+            e.os_name,
+            e.user_agent
+        );
+    }
+}
+
 #[test]
 fn hash_content_map_produces_known_digests() {
     let map = hash_content_map(b"abc");

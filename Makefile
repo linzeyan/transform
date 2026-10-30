@@ -9,7 +9,7 @@ export CC_wasm32_unknown_unknown := $(LLVM_BIN)/clang
 export AR_wasm32_unknown_unknown := $(LLVM_BIN)/llvm-ar
 endif
 
-.PHONY: all build fmt lint test serve clean frontend-fmt frontend-lint test-all wasm-cc
+.PHONY: all build fmt lint test serve clean frontend-fmt frontend-lint test-all wasm-cc update-user-agents
 
 all: frontend-lint build serve
 
@@ -44,6 +44,10 @@ build: lint test
 
 serve:
 	npx serve www
+
+# Rewrites wasm_core/data/user_agents.json from vendor release feeds; CI runs it weekly.
+update-user-agents:
+	node scripts/update-user-agents.mjs
 
 clean:
 	cargo clean $(WASM_CORE)

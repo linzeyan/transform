@@ -1,0 +1,99 @@
+name: Update User Agents
+
+# Keeps the User-Agent tool's Chrome/Firefox/Edge strings on the current stable
+# major (scripts/update-user-agents.mjs) and opens a PR when one moves.
+#
+# gh pr create rather than peter-evans/create-pull-request: gh is on the runner
+# already, so no third-party action holds a write token, and the same
+# push-then-create/edit steps are what the other repos' sync workflows use.
+#
+# PRs opened with GITHUB_TOKEN do not trigger CI, and ci.yml has no
+# workflow_dispatch, so the user-agent tests run here before the PR exists; for
+# the full CI, close and reopen the PR.
+on:
+  schedule:
+    # Saturday: Chrome and Firefox ship a new major on Tuesday and Edge follows
+    # within days, so one run after both catches them in a single PR.
+    - cron: "0 6 * * 6"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Fetch current stable versions
+        # An explicit `shell: bash` runs with pipefail, so tee cannot hide a
+        # failed fetch.
+        shell: bash
+        run: make update-user-agents | tee /tmp/update.log
+
+      - name: Detect changes
+        id: diff
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --stat
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.diff.outputs.changed == 'true'
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.diff.outputs.changed == 'true'
+        with:
+          workspaces: wasm_core
+
+      # --lib: the e2e tests in tests/ need a browser; the data contract lives in
+      # the unit tests.
+      - name: User-agent tests
+        if: steps.diff.outputs.changed == 'true'
+        run: cargo test --manifest-path wasm_core/Cargo.toml --lib user_agent
+
+      # One fixed branch: a PR nobody merged yet is refreshed in place instead
+      # of a new one piling up every week.
+      - name: Open PR
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="update-user-agents"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add wasm_core/data/user_agents.json
+          git commit -m "chore: update user agents to current stable versions"
+          if ! git push -f origin "$BRANCH"; then
+            echo "::error title=push rejected::GITHUB_TOKEN could not push $BRANCH — check Settings > Actions > General > Workflow permissions"
+            exit 1
+          fi
+          {
+            echo "Automated weekly refresh from the vendors' stable feeds."
+            echo
+            echo '```'
+            cat /tmp/update.log
+            echo '```'
+            echo
+            echo "User-agent unit tests passed on this runner. CI does not auto-run on token-created PRs — close/reopen to trigger it."
+          } > /tmp/pr-body.md
+          if ! gh pr create --title "chore: update user agents" \
+               --body-file /tmp/pr-body.md --base main --head "$BRANCH"; then
+            if ! gh pr edit "$BRANCH" --body-file /tmp/pr-body.md; then
+              echo "::error title=pr create failed::Branch $BRANCH is pushed, but opening the PR failed — 'Allow GitHub Actions to create and approve pull requests' defaults to off in Settings > Actions > General"
+              exit 1
+            fi
+          fi

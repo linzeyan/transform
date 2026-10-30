@@ -249,128 +249,37 @@ pub fn generate_uuids() -> JsValue {
     serde_wasm_bindgen::to_value(&map).unwrap()
 }
 
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UserAgentEntry {
-    user_agent: &'static str,
-    browser_name: &'static str,
-    browser_version: &'static str,
-    os_name: &'static str,
-    os_version: &'static str,
-    engine_name: &'static str,
-    engine_version: &'static str,
+    user_agent: String,
+    browser_name: String,
+    browser_version: String,
+    os_name: String,
+    os_version: String,
+    engine_name: String,
+    engine_version: String,
 }
 
-static USER_AGENTS: &[UserAgentEntry] = &[
-    UserAgentEntry {
-        user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.7444.136 Safari/537.36",
-        browser_name: "chrome",
-        browser_version: "142.0.7444.136",
-        os_name: "windows",
-        os_version: "10",
-        engine_name: "Blink",
-        engine_version: "142.0.7444.136",
-    },
-    UserAgentEntry {
-        user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.7444.134 Safari/537.36",
-        browser_name: "chrome",
-        browser_version: "142.0.7444.134",
-        os_name: "macos",
-        os_version: "13.6.5",
-        engine_name: "Blink",
-        engine_version: "142.0.7444.134",
-    },
-    UserAgentEntry {
-        user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.7444.162 Safari/537.36",
-        browser_name: "chrome",
-        browser_version: "142.0.7444.162",
-        os_name: "linux",
-        os_version: "x86_64",
-        engine_name: "Blink",
-        engine_version: "142.0.7444.162",
-    },
-    UserAgentEntry {
-        user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
-        browser_name: "safari",
-        browser_version: "26.0",
-        os_name: "macos",
-        os_version: "14.2",
-        engine_name: "WebKit",
-        engine_version: "605.1.15",
-    },
-    UserAgentEntry {
-        user_agent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1",
-        browser_name: "safari",
-        browser_version: "26.0",
-        os_name: "ios",
-        os_version: "18.7.2",
-        engine_name: "WebKit",
-        engine_version: "605.1.15",
-    },
-    UserAgentEntry {
-        user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0",
-        browser_name: "firefox",
-        browser_version: "145.0",
-        os_name: "windows",
-        os_version: "10",
-        engine_name: "Gecko",
-        engine_version: "145.0",
-    },
-    UserAgentEntry {
-        user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.2; rv:145.0) Gecko/20100101 Firefox/145.0",
-        browser_name: "firefox",
-        browser_version: "145.0",
-        os_name: "macos",
-        os_version: "14.2",
-        engine_name: "Gecko",
-        engine_version: "145.0",
-    },
-    UserAgentEntry {
-        user_agent: "Mozilla/5.0 (Linux; Android 16; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.7444.139 Mobile Safari/537.36",
-        browser_name: "chrome",
-        browser_version: "142.0.7444.139",
-        os_name: "android",
-        os_version: "16",
-        engine_name: "Blink",
-        engine_version: "142.0.7444.139",
-    },
-    UserAgentEntry {
-        user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edg/142.0.3595.80 Safari/537.36",
-        browser_name: "edge",
-        browser_version: "142.0.3595.80",
-        os_name: "windows",
-        os_version: "10",
-        engine_name: "Blink",
-        engine_version: "142.0.3595.80",
-    },
-    UserAgentEntry {
-        user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2) AppleWebKit/537.36 (KHTML, like Gecko) Edg/142.0.3595.80 Safari/537.36",
-        browser_name: "edge",
-        browser_version: "142.0.3595.80",
-        os_name: "macos",
-        os_version: "14.2",
-        engine_name: "Blink",
-        engine_version: "142.0.3595.80",
-    },
-    UserAgentEntry {
-        user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Vivaldi/7.6.3797.63 Chrome/142.0.7444.136 Safari/537.36",
-        browser_name: "vivaldi",
-        browser_version: "7.6.3797.63",
-        os_name: "windows",
-        os_version: "10",
-        engine_name: "Blink",
-        engine_version: "142.0.7444.136",
-    },
-    UserAgentEntry {
-        user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) YaBrowser/25.10.0.2516 Chrome/142.0.7444.136 Safari/537.36",
-        browser_name: "yandex",
-        browser_version: "25.10.0.2516",
-        os_name: "windows",
-        os_version: "10",
-        engine_name: "Blink",
-        engine_version: "142.0.7444.136",
-    },
-];
+// Two arrays so scripts/update-user-agents.mjs can rebuild "automated" from
+// vendor feeds while leaving hand-maintained browsers alone.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UserAgentData {
+    automated: Vec<UserAgentEntry>,
+    manual: Vec<UserAgentEntry>,
+}
+
+// The table is data, not code, so the weekly update workflow can bump versions
+// without touching Rust.
+fn user_agents() -> &'static [UserAgentEntry] {
+    static USER_AGENTS: OnceLock<Vec<UserAgentEntry>> = OnceLock::new();
+    USER_AGENTS.get_or_init(|| {
+        let data: UserAgentData = serde_json::from_str(include_str!("../data/user_agents.json"))
+            .expect("data/user_agents.json must match UserAgentEntry");
+        data.automated.into_iter().chain(data.manual).collect()
+    })
+}
 
 /// Returns up to ten fixture user-agent strings filtered by browser and OS names (case-insensitive),
 /// e.g., `generate_user_agents("chrome", "macos")` yields the latest Chrome-on-macOS entries.
@@ -378,8 +287,9 @@ fn filter_user_agents(browser: &str, os: &str) -> Vec<UserAgentEntry> {
     let browser = browser.trim().to_lowercase();
     let os = os.trim().to_lowercase();
 
-    let mut results = Vec::with_capacity(USER_AGENTS.len());
-    for entry in USER_AGENTS.iter() {
+    let entries = user_agents();
+    let mut results = Vec::with_capacity(entries.len());
+    for entry in entries {
         if !browser.is_empty() && entry.browser_name != browser {
             continue;
         }
