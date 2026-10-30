@@ -64,7 +64,9 @@ import initWasm, {
     generate_insert_statements,
     generate_qr_code,
     inspect_schema,
-    convert_timestamp,
+    read_timestamp,
+    format_timestamp,
+    timestamp_formats,
     totp_token,
     bcrypt_hash,
     bcrypt_verify,
@@ -130,23 +132,22 @@ const imageFormatOptions = {
             min: 1,
             max: 100,
             label: 'Quality',
-            hint: '100 = lossless (default)',
+            hint: '100 = lossless; lower reduces the colours first',
             defaultValue: 100,
-        },
-        {
-            type: 'note',
-            text: 'Lower quality applies RGB quantization before encoding to avoid libwebp bindings.',
         },
     ],
     avif: [
         { key: 'quality', type: 'range', min: 1, max: 100, label: 'Quality', defaultValue: 80 },
-        { key: 'speed', type: 'range', min: 1, max: 10, label: 'Speed (1=best)', defaultValue: 4 },
         {
-            key: 'lossless',
-            type: 'checkbox',
-            label: 'Force lossless (quality=100)',
-            defaultValue: false,
+            key: 'speed',
+            type: 'range',
+            min: 1,
+            max: 10,
+            label: 'Speed',
+            hint: '1 = smallest file, 10 = fastest',
+            defaultValue: 4,
         },
+        { key: 'lossless', type: 'checkbox', label: 'Lossless', defaultValue: false },
     ],
 };
 
@@ -235,27 +236,23 @@ const unitKeys = [
     'terabyte',
 ];
 
-const timestampFields = [
-    { key: 'iso8601', id: 'timestampIso' },
-    { key: 'rfc3339', id: 'timestampRfc3339' },
-    { key: 'rfc2822', id: 'timestampRfc' },
-    { key: 'iso9075', id: 'timestampIso9075' },
-    { key: 'rfc7231', id: 'timestampRfc7231' },
-    { key: 'sql_datetime', id: 'timestampSql' },
-    { key: 'sql_date', id: 'timestampSqlDate' },
-    { key: 'timestamp_seconds', id: 'timestampSeconds' },
-    { key: 'timestamp_milliseconds', id: 'timestampMillis' },
-    { key: 'timestamp_microseconds', id: 'timestampMicros' },
-    { key: 'timestamp_nanoseconds', id: 'timestampNanos' },
-    // Browser timezone fields (readonly)
-    { key: 'browser_iso8601', id: 'browserIso8601', readonly: true },
-    { key: 'browser_rfc3339', id: 'browserRfc3339', readonly: true },
-    { key: 'browser_rfc2822', id: 'browserRfc2822', readonly: true },
-    { key: 'browser_iso9075', id: 'browserIso9075', readonly: true },
-    { key: 'browser_rfc7231', id: 'browserRfc7231', readonly: true },
-    { key: 'browser_sql_datetime', id: 'browserSqlDatetime', readonly: true },
-    { key: 'browser_sql_date', id: 'browserSqlDate', readonly: true },
+// Rows of the Timestamp tool: [label, key in format_timestamp's result].
+const timestampUnixRows = [
+    ['Seconds', 'seconds'],
+    ['Milliseconds', 'milliseconds'],
+    ['Microseconds', 'microseconds'],
+    ['Nanoseconds', 'nanoseconds'],
 ];
+const timestampTextRows = [
+    ['ISO 8601', 'iso8601'],
+    ['RFC 3339 (ns)', 'rfc3339'],
+    ['RFC 2822', 'rfc2822'],
+    ['ISO 9075 (SQL)', 'iso9075'],
+    ['SQL datetime', 'sql_datetime'],
+    ['SQL date', 'sql_date'],
+];
+const timestampFormatsKey = 'transform.timestamp.formats';
+const timestampDefaultFormats = ['%Y/%m/%d %H:%M', '%d.%m.%y'];
 
 const digitCharacters = '0123456789';
 const specialCharacters = [
@@ -502,83 +499,81 @@ const coderPlaceholders = {
 const pairToolConfigs = {
     'coder-url': {
         type: 'url',
-        inputLabel: 'URL Encode',
-        inputHint: 'Enter original text to URL-encode.',
+        inputLabel: 'Text',
+        inputHint: 'encodes as you type',
         inputPlaceholder: 'https://example.com/search?q=Taipei 101',
-        outputLabel: 'URL Decode',
-        outputHint: 'Paste encoded text to decode automatically.',
+        outputLabel: 'Encoded',
+        outputHint: 'or paste here to decode',
         outputPlaceholder: 'https%3A%2F%2Fexample.com%2Fsearch%3Fq%3DTaipei101',
     },
     'coder-jwt': {
         type: 'jwt',
-        inputLabel: 'JWT Payload (JSON)',
-        inputHint: 'Enter payload JSON; token is generated using the selected algorithm.',
+        inputLabel: 'Payload (JSON)',
+        inputHint: 'signed with the algorithm and secret above',
         inputPlaceholder: '{\n  "sub": "1234567890",\n  "name": "John Doe"\n}',
-        outputLabel: 'JWT Token',
-        outputHint: 'Paste a JWT token to decode.',
+        outputLabel: 'Token',
+        outputHint: 'or paste a token to decode',
         outputPlaceholder: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....',
     },
     'converter-html-md': {
         type: 'markdown',
-        inputLabel: 'Markdown → HTML',
-        inputHint: 'Enter Markdown to render HTML on the right.',
+        inputLabel: 'Markdown',
+        inputHint: 'renders HTML as you type',
         inputPlaceholder: '# Title\n\n- item 1\n- item 2',
-        outputLabel: 'HTML → Markdown',
-        outputHint: 'Paste HTML to convert back to Markdown.',
+        outputLabel: 'HTML',
+        outputHint: 'or paste HTML to get Markdown',
         outputPlaceholder: '<h1>Title</h1>',
     },
 };
 
 const toolGroups = [
     {
-        name: 'Converter',
-        icon: '🔄',
+        name: 'Convert',
         tools: [
             {
                 id: 'format',
                 label: 'Format Converter',
-                description: 'Convert between structured data formats.',
+                description: 'JSON, YAML, TOML, XML, Go, Protobuf, GraphQL and more, either way',
             },
             {
                 id: 'converter-image',
                 label: 'Image Converter',
-                description: 'JPG/PNG/WebP/AVIF with alpha preservation.',
+                description: 'JPG, PNG, WebP and AVIF, keeping transparency',
             },
             {
                 id: 'converter-html-md',
                 label: 'HTML ↔ Markdown',
-                description: 'Convert between Markdown and HTML.',
+                description: 'Markdown to HTML and back',
             },
             {
                 id: 'converter-number-bases',
                 label: 'Number Bases',
-                description: 'Binary / Octal / Decimal / Hex conversions.',
+                description: 'Binary, octal, decimal and hex',
             },
             {
                 id: 'converter-units',
                 label: 'Unit Converter',
-                description: 'Bits, Bytes, and binary multiples.',
+                description: 'Bits, bytes and their binary multiples',
             },
             {
                 id: 'converter-timestamp',
-                label: 'Timestamp Converter',
-                description: 'Convert Unix timestamps and date formats.',
+                label: 'Timestamp',
+                description: 'Unix time and date formats, either way',
             },
             {
                 id: 'converter-ipv4',
                 label: 'IP Tools',
-                description: 'IPv4/IPv6 helpers for CIDR, ranges, and formats.',
+                description: 'IPv4 and IPv6 addresses, CIDR blocks and ranges',
             },
             {
                 id: 'converter-diff',
                 label: 'Text Diff',
-                description: 'Compare texts using patience diff algorithm.',
+                description: 'Two texts compared line by line (patience diff, as git does)',
             },
         ],
     },
     {
-        name: 'Coder',
-        icon: '🔐',
+        name: 'Encode & secure',
         tools: coderTools.map((tool) => ({
             id: tool.id,
             label: tool.label,
@@ -586,8 +581,7 @@ const toolGroups = [
         })),
     },
     {
-        name: 'Generator',
-        icon: '🎲',
+        name: 'Generate',
         tools: [
             {
                 id: 'generator-uuid',
@@ -638,8 +632,7 @@ const toolGroups = [
         ],
     },
     {
-        name: 'Fingerprint',
-        icon: '👆',
+        name: 'Inspect',
         tools: [
             {
                 id: 'fingerprint-browser',
@@ -687,17 +680,6 @@ const numberTools = new Set(['converter-number-bases']);
 const unitTools = new Set(['converter-units']);
 const timestampTools = new Set(['converter-timestamp']);
 const ipv4Tools = new Set(['converter-ipv4']);
-const generatorTools = new Set([
-    'generator-uuid',
-    'generator-useragent',
-    'generator-random',
-    'generator-ascii',
-    'generator-qr',
-    'generator-qr-parse',
-    'generator-totp',
-    'generator-sql',
-    'generator-ssh',
-]);
 const fingerprintTools = new Set(['fingerprint-browser']);
 const certTools = new Set(['security-ssl']);
 const cryptoToolSet = new Set(['security-crypto']);
@@ -822,7 +804,6 @@ const state = {
         previewUrl: '',
         result: null,
         batchResults: [],
-        progress: { completed: 0, total: 0 },
         optionsByFormat: {
             jpg: { quality: 85 },
             png: { compression: 6 },
@@ -890,8 +871,8 @@ const state = {
     sshResident: false,
     sshVerify: false,
     sshLastKey: null,
-    timestampUpdating: false,
-    timestampActiveField: null,
+    // Ticks while the input is relative to now ("now - 3d").
+    timestampTimer: null,
     totpSecret: '',
     totpAlgorithm: 'SHA256',
     totpPeriod: 30,
@@ -909,8 +890,6 @@ const state = {
         files: [],
         from: 'JSON',
         to: 'Parquet',
-        results: [],
-        totalRows: 0,
     },
     qrParse: {
         files: [],
@@ -1052,31 +1031,42 @@ const embedFields = {
 
 let replaceSlot = null;
 
-// One button, in the header of whichever panel holds the result: the selection it
+// One button, in the header of whichever pane holds the result: the selection it
 // replaces is one place in one file, so it goes after one use.
 function offerReplace(output) {
     replaceSlot?.remove();
     replaceSlot = null;
-    const header = output?.closest('section, .ascii-output-card')?.querySelector('.panel-header');
+    // .panel-header: a tool not yet moved to the new layout (ASCII Art).
+    const header = output
+        ?.closest('.pane, section, .ascii-output-card')
+        ?.querySelector('.pane-head, .panel-header');
     if (!header) return;
+    const pane = header.classList.contains('pane-head');
     // Among the header's own buttons, so it wraps and is styled with them;
     // a header without any gets a group of its own, removed with the button.
-    let actions = header.querySelector('.panel-actions');
+    let actions = header.querySelector('.pane-actions, .panel-actions');
     if (!actions) {
         actions = document.createElement('div');
-        actions.className = 'panel-actions';
+        actions.className = pane ? 'pane-actions' : 'panel-actions';
         header.appendChild(actions);
     }
     const replaceButton = document.createElement('button');
     replaceButton.type = 'button';
-    replaceButton.className = 'ghost-btn';
-    replaceButton.textContent = 'Replace Selection';
+    if (pane) {
+        // The reason the tab was opened, so it is the pane's primary action and comes first.
+        replaceButton.className = 'btn primary';
+        replaceButton.innerHTML = '<svg class="i"><use href="#i-replace" /></svg>Replace Selection';
+    } else {
+        replaceButton.className = 'ghost-btn';
+        replaceButton.textContent = 'Replace Selection';
+    }
     replaceButton.addEventListener('click', () => {
         const text = 'value' in output ? output.value : output.textContent;
         host.postMessage({ type: 'transform.replace', text });
         offerReplace(null);
     });
-    actions.appendChild(replaceButton);
+    if (pane) actions.prepend(replaceButton);
+    else actions.appendChild(replaceButton);
     replaceSlot = actions.childElementCount > 1 ? replaceButton : actions;
 }
 
@@ -1100,6 +1090,42 @@ if (host) {
     });
 }
 
+const isMac = /mac|iphone|ipad/i.test(navigator.userAgentData?.platform ?? navigator.platform);
+
+// Where Save puts the output, and which format a dropped file is in.
+const formatExtensions = {
+    JSON: 'json',
+    'Go Struct': 'go',
+    YAML: 'yaml',
+    TOML: 'toml',
+    XML: 'xml',
+    'JSON Schema': 'schema.json',
+    'GraphQL Schema': 'graphql',
+    Protobuf: 'proto',
+    TOON: 'toon',
+};
+
+const formatByExtension = {
+    json: 'JSON',
+    yaml: 'YAML',
+    yml: 'YAML',
+    toml: 'TOML',
+    xml: 'XML',
+    go: 'Go Struct',
+    graphql: 'GraphQL Schema',
+    gql: 'GraphQL Schema',
+    proto: 'Protobuf',
+    toon: 'TOON',
+};
+
+// Success shows as the result itself, so the header only carries what needs reading.
+const quietStatuses = new Set(['Ready', 'Done', 'Cleared']);
+
+// Timestamp: one input read by wasm, which knows the formats; zones by name come
+// from the browser's tz database (Intl), which the wasm build doesn't carry.
+const timestampHelp =
+    'Unix time in s, ms, µs or ns · ISO 8601 · RFC 2822 · SQL · log lines · UUID, ULID, ObjectId · now - 3d';
+
 boot();
 
 async function boot() {
@@ -1110,10 +1136,12 @@ async function boot() {
 
     cacheElements();
     initTabularControls();
+    initTimestampControls();
     renderSymbolButtons();
     initCoderControls();
     renderSidebar();
     bindUI();
+    labelShortcuts();
     syncToolFromHash(true);
     renderCoderEmpty();
     updateCoderTexts();
@@ -1150,13 +1178,9 @@ async function boot() {
         if (isIPv4Tool(state.currentTool) && elements.ipv4Input?.value.trim()) {
             runIPv4Conversion();
         }
-        if (isTimestampTool(state.currentTool) && elements.timestampInputs?.length) {
-            const filled = Array.from(elements.timestampInputs).find((input) =>
-                input?.value?.trim()
-            );
-            if (filled && filled.dataset.field) {
-                runTimestampConversion(filled.dataset.field, filled.value, true);
-            }
+        renderTimestampFormats();
+        if (isTimestampTool(state.currentTool)) {
+            runTimestamp();
         }
         if (isQrTool(state.currentTool)) {
             activateQrTool();
@@ -1176,14 +1200,26 @@ async function boot() {
 }
 
 function cacheElements() {
-    elements.sidebar = document.getElementById('sidebar');
-    elements.sidebarToggle = document.getElementById('sidebarToggle');
-    elements.sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
-    elements.sidebarBackdrop = document.getElementById('sidebarBackdrop');
+    elements.app = document.getElementById('app');
+    elements.navToggle = document.getElementById('navToggle');
+    elements.toolSearch = document.getElementById('toolSearch');
     elements.toolGroups = document.getElementById('toolGroups');
     elements.toolName = document.getElementById('toolName');
     elements.toolDesc = document.getElementById('toolDesc');
-    elements.converterControls = document.getElementById('converterControls');
+    elements.formatModeText = document.getElementById('formatModeText');
+    elements.formatModeFiles = document.getElementById('formatModeFiles');
+    elements.textFormats = document.getElementById('textFormats');
+    elements.fileFormats = document.getElementById('fileFormats');
+    elements.fileActions = document.getElementById('fileActions');
+    elements.formatText = document.getElementById('formatText');
+    elements.formatFiles = document.getElementById('formatFiles');
+    elements.inputLabel = document.getElementById('inputLabel');
+    elements.outputLabel = document.getElementById('outputLabel');
+    elements.inputMeta = document.getElementById('inputMeta');
+    elements.outputMeta = document.getElementById('outputMeta');
+    elements.outputEmpty = document.getElementById('outputEmpty');
+    elements.outputEmptyTitle = document.getElementById('outputEmptyTitle');
+    elements.saveOutput = document.getElementById('saveOutput');
     elements.from = document.getElementById('fromSelect');
     elements.to = document.getElementById('toSelect');
     elements.swap = document.getElementById('swap');
@@ -1196,17 +1232,15 @@ function cacheElements() {
     elements.formatOutput = document.getElementById('formatOutput');
     elements.minifyOutput = document.getElementById('minifyOutput');
     elements.status = document.getElementById('status');
-    elements.tabularSection = document.getElementById('tabularSection');
+    elements.tabularDrop = document.getElementById('tabularDrop');
     elements.tabularFile = document.getElementById('tabularFile');
     elements.tabularFrom = document.getElementById('tabularFrom');
     elements.tabularTo = document.getElementById('tabularTo');
     elements.tabularConvert = document.getElementById('tabularConvert');
     elements.tabularDownload = document.getElementById('tabularDownload');
-    elements.tabularProgress = document.getElementById('tabularProgress');
     elements.tabularStatus = document.getElementById('tabularStatus');
-    elements.tabularFileName = document.getElementById('tabularFileName');
-    elements.tabularRowCount = document.getElementById('tabularRowCount');
-    elements.tabularOutputName = document.getElementById('tabularOutputName');
+    elements.tabularFiles = document.getElementById('tabularFiles');
+    elements.tabularFileList = document.getElementById('tabularFileList');
 
     // Defensive fix for Cursor IDE extension compatibility
     // Ensure form elements have expected properties to prevent extension errors
@@ -1223,20 +1257,22 @@ function cacheElements() {
         });
     }, 100);
     elements.imageWorkspace = document.getElementById('imageWorkspace');
+    elements.imageDrop = document.getElementById('imageDrop');
     elements.imageFile = document.getElementById('imageFile');
     elements.imageTargetFormat = document.getElementById('imageTargetFormat');
     elements.imageConvert = document.getElementById('imageConvert');
     elements.imageDownload = document.getElementById('imageDownload');
     elements.imageInputMeta = document.getElementById('imageInputMeta');
+    elements.imagePreviews = document.getElementById('imagePreviews');
     elements.imageOriginalPreview = document.getElementById('imageOriginalPreview');
+    elements.imageOriginalMeta = document.getElementById('imageOriginalMeta');
     elements.imageOutputPreview = document.getElementById('imageOutputPreview');
     elements.imageOutputMeta = document.getElementById('imageOutputMeta');
     elements.imageError = document.getElementById('imageError');
     elements.imageOptions = document.getElementById('imageOptions');
+    elements.imageBatchTable = document.getElementById('imageBatchTable');
     elements.imageBatchList = document.getElementById('imageBatchList');
-    elements.imageProgress = document.getElementById('imageProgress');
-    elements.imageProgressFill = document.getElementById('imageProgressFill');
-    elements.imageProgressLabel = document.getElementById('imageProgressLabel');
+    elements.imageWatermarkControls = document.getElementById('imageWatermarkControls');
     elements.watermarkText = document.getElementById('watermarkText');
     elements.watermarkOpacity = document.getElementById('watermarkOpacity');
     elements.watermarkRotation = document.getElementById('watermarkRotation');
@@ -1244,7 +1280,7 @@ function cacheElements() {
     elements.watermarkFontSize = document.getElementById('watermarkFontSize');
     elements.watermarkColor = document.getElementById('watermarkColor');
     elements.watermarkToggle = document.getElementById('watermarkToggle');
-    elements.watermarkDirection = document.getElementsByName('watermarkDirection');
+    elements.watermarkDirection = document.getElementById('watermarkDirection');
     elements.watermarkOpacityValue = document.getElementById('watermarkOpacityValue');
     elements.watermarkRotationValue = document.getElementById('watermarkRotationValue');
     elements.watermarkSpacingValue = document.getElementById('watermarkSpacingValue');
@@ -1407,12 +1443,25 @@ function cacheElements() {
     elements.sshResident = document.getElementById('sshResident');
     elements.sshVerify = document.getElementById('sshVerify');
     elements.sshSkOptions = document.getElementById('sshSkOptions');
-    elements.timestampInputs = document.querySelectorAll('#timestampWorkspace input[data-field]');
+    elements.timestampFormat = document.getElementById('timestampFormat');
+    elements.timestampPattern = document.getElementById('timestampPattern');
+    elements.timestampInput = document.getElementById('timestampInput');
+    elements.timestampZone = document.getElementById('timestampZone');
+    elements.timestampNow = document.getElementById('timestampNow');
+    elements.timestampKind = document.getElementById('timestampKind');
+    elements.timestampWords = document.getElementById('timestampWords');
+    elements.timestampHelp = document.getElementById('timestampHelp');
+    elements.timestampUnix = document.getElementById('timestampUnix');
+    elements.timestampRelative = document.getElementById('timestampRelative');
+    elements.timestampCustom = document.getElementById('timestampCustom');
+    elements.timestampAddFormat = document.getElementById('timestampAddFormat');
+    elements.timestampUtc = document.getElementById('timestampUtc');
+    elements.timestampLocal = document.getElementById('timestampLocal');
+    elements.timestampZoneLabel = document.getElementById('timestampZoneLabel');
     elements.hashEncoding = document.getElementById('hashEncoding');
     elements.hashControls = document.getElementById('hashControls');
     elements.hashUseHmac = document.getElementById('hashUseHmac');
     elements.hashHmacSecret = document.getElementById('hashHmacSecret');
-    elements.timestampPresets = document.getElementById('timestampPresets');
     elements.totpSecret = document.getElementById('totpSecret');
     elements.totpAlgorithm = document.getElementById('totpAlgorithm');
     elements.totpPeriod = document.getElementById('totpPeriod');
@@ -1429,17 +1478,12 @@ function cacheElements() {
     elements.dataColumnEditor = document.getElementById('dataColumnEditor');
     elements.diffLeftInput = document.getElementById('diffLeftInput');
     elements.diffRightInput = document.getElementById('diffRightInput');
-    elements.diffLeftLineNumbers = document.getElementById('diffLeftLineNumbers');
-    elements.diffRightLineNumbers = document.getElementById('diffRightLineNumbers');
     elements.diffLeftLabel = document.getElementById('diffLeftLabel');
     elements.diffRightLabel = document.getElementById('diffRightLabel');
     elements.diffOutput = document.getElementById('diffOutput');
     elements.diffSummary = document.getElementById('diffSummary');
     elements.diffClear = document.getElementById('diffClear');
     elements.diffSwap = document.getElementById('diffSwap');
-    elements.diffCopyOutput = document.getElementById('diffCopyOutput');
-    elements.diffCopyLeft = document.getElementById('diffCopyLeft');
-    elements.diffCopyRight = document.getElementById('diffCopyRight');
     elements.cryptoAlgorithm = document.getElementById('cryptoAlgorithm');
     elements.cryptoKey = document.getElementById('cryptoKey');
     elements.cryptoNonce = document.getElementById('cryptoNonce');
@@ -1457,7 +1501,6 @@ function cacheElements() {
     elements.cryptoFile = document.getElementById('cryptoFile');
     elements.cryptoFileMeta = document.getElementById('cryptoFileMeta');
     elements.cryptoDownload = document.getElementById('cryptoDownload');
-    elements.appShell = document.querySelector('.app-shell');
     elements.fingerprintGrid = document.getElementById('fingerprintGrid');
     elements.fingerprintSummary = document.getElementById('fingerprintSummary');
     elements.fingerprintRefresh = document.getElementById('fingerprintRefresh');
@@ -1471,39 +1514,115 @@ function cacheElements() {
     elements.certSample = document.getElementById('certSample');
 }
 
+// Links rather than buttons: the address is the route, so a tool also opens in a new tab.
 function renderSidebar() {
     if (!elements.toolGroups) return;
-    elements.toolGroups.innerHTML = '';
-    toolGroups.forEach((group) => {
-        const details = document.createElement('details');
-        details.open = true;
-        const summary = document.createElement('summary');
-        const iconSpan = document.createElement('span');
-        iconSpan.className = 'group-icon';
-        iconSpan.textContent = group.icon;
-        const textSpan = document.createElement('span');
-        textSpan.className = 'group-text';
-        textSpan.textContent = group.name;
-        summary.appendChild(iconSpan);
-        summary.appendChild(textSpan);
-        details.appendChild(summary);
-        const wrapper = document.createElement('div');
-        wrapper.className = 'tool-buttons';
-        group.tools.forEach((tool) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.dataset.toolId = tool.id;
-            btn.textContent = tool.label;
-            btn.addEventListener('click', () => {
-                selectTool(tool.id);
-                closeSidebar();
+    elements.toolGroups.replaceChildren(
+        ...toolGroups.flatMap((group) => {
+            const title = document.createElement('h2');
+            title.className = 'group-title';
+            title.textContent = group.name;
+            const links = group.tools.map((tool) => {
+                const link = document.createElement('a');
+                link.className = 'nav-item';
+                link.href = hashForTool(tool.id);
+                link.dataset.toolId = tool.id;
+                link.textContent = tool.label;
+                return link;
             });
-            wrapper.appendChild(btn);
-        });
-        details.appendChild(wrapper);
-        elements.toolGroups.appendChild(details);
-    });
+            return [title, ...links];
+        })
+    );
     updateToolButtons();
+}
+
+// Every word must appear in a tool's name or description; a heading stays while any of its tools do.
+function filterTools(query) {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    let title = null;
+    let titleKept = false;
+    const closeGroup = () => {
+        if (title) title.hidden = !titleKept;
+    };
+    for (const node of elements.toolGroups?.children || []) {
+        if (node.classList.contains('group-title')) {
+            closeGroup();
+            title = node;
+            titleKept = false;
+            continue;
+        }
+        const meta = toolInfo[node.dataset.toolId];
+        const text = `${meta.label} ${meta.description || ''}`.toLowerCase();
+        node.hidden = !words.every((word) => text.includes(word));
+        titleKept ||= !node.hidden;
+    }
+    closeGroup();
+}
+
+function setNavOpen(open) {
+    elements.app?.classList.toggle('nav-open', open);
+    elements.navToggle?.setAttribute('aria-expanded', String(open));
+}
+
+// The run shortcut as this keyboard writes it.
+function labelShortcuts() {
+    document.querySelectorAll('kbd[data-keys="run"]').forEach((kbd) => {
+        kbd.textContent = isMac ? '⌘↵' : 'Ctrl+↵';
+    });
+}
+
+function isTyping(target) {
+    return (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+    );
+}
+
+function handleGlobalKeys(event) {
+    // ⌘/Ctrl+Enter runs the visible tool's one slow or repeatable action.
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        const run = document.querySelector('.tool-body:not([hidden]) [data-run]');
+        if (run && !run.disabled) {
+            event.preventDefault();
+            run.click();
+        }
+        return;
+    }
+    if (event.key === '/' && !embedded && !isTyping(event.target)) {
+        event.preventDefault();
+        setNavOpen(true);
+        elements.toolSearch?.focus();
+        return;
+    }
+    if (event.key === 'Escape') setNavOpen(false);
+}
+
+function handleSearchKeys(event) {
+    if (event.key === 'Enter') {
+        const first = elements.toolGroups?.querySelector('.nav-item:not([hidden])');
+        if (first) {
+            location.hash = first.getAttribute('href');
+            elements.toolSearch.blur();
+        }
+    } else if (event.key === 'Escape') {
+        elements.toolSearch.value = '';
+        filterTools('');
+        elements.toolSearch.blur();
+    }
+}
+
+// Any button with data-copy-from copies that field; data-copy-text copies itself.
+function handleCopyButtons(event) {
+    const button = event.target.closest('[data-copy-from], [data-copy-text]');
+    if (!button) return;
+    const source = button.dataset.copyFrom && document.getElementById(button.dataset.copyFrom);
+    // innerText, not textContent: a diff is a div per line, and only layout adds the breaks.
+    const value = source
+        ? 'value' in source
+            ? source.value
+            : source.innerText
+        : button.dataset.copyText;
+    if (value) copyText(value);
 }
 
 function initCoderControls() {
@@ -1524,9 +1643,17 @@ function initCoderControls() {
 }
 
 function bindUI() {
-    elements.sidebarToggle?.addEventListener('click', toggleSidebar);
-    elements.sidebarCollapseBtn?.addEventListener('click', toggleSidebarCollapse);
-    elements.sidebarBackdrop?.addEventListener('click', closeSidebar);
+    elements.navToggle?.addEventListener('click', () =>
+        setNavOpen(!elements.app?.classList.contains('nav-open'))
+    );
+    // A click on the dimmed page beside the open list lands on .app itself.
+    elements.app?.addEventListener('click', (event) => {
+        if (event.target === elements.app) setNavOpen(false);
+    });
+    elements.toolSearch?.addEventListener('input', () => filterTools(elements.toolSearch.value));
+    elements.toolSearch?.addEventListener('keydown', handleSearchKeys);
+    document.addEventListener('keydown', handleGlobalKeys);
+    document.addEventListener('click', handleCopyButtons);
     elements.swap?.addEventListener('click', () => {
         if (state.currentTool !== 'format') return;
         const from = elements.from?.value || '';
@@ -1542,17 +1669,18 @@ function bindUI() {
         scheduleConvert(true);
     });
     elements.copy?.addEventListener('click', () => {
-        const value = elements.output?.value?.trim();
-        if (!value) {
-            setStatus('No output to copy', true);
-            return;
-        }
-        copyText(value, 'output');
+        if (elements.output?.value) copyText(elements.output.value);
+    });
+    elements.saveOutput?.addEventListener('click', () => {
+        const value = elements.output?.value;
+        if (!value) return;
+        const ext = formatExtensions[elements.to?.value] || 'txt';
+        saveFile(new Blob([value], { type: 'text/plain' }), `converted.${ext}`);
     });
     elements.clear?.addEventListener('click', () => {
         if (elements.input) elements.input.value = '';
-        if (elements.output) elements.output.value = '';
-        setStatus('Cleared input/output', false);
+        convert();
+        elements.input?.focus();
     });
     elements.from?.addEventListener('change', () => {
         updateConverterLabels(elements.from?.value || '', elements.to?.value || '');
@@ -1565,6 +1693,7 @@ function bindUI() {
         scheduleConvert(true);
     });
     elements.input?.addEventListener('input', () => scheduleConvert());
+    bindFileDrop(elements.input, ([file]) => readFileIntoInput(file));
     elements.formatInput?.addEventListener('click', () =>
         handleFormatField(elements.input, elements.from?.value, false)
     );
@@ -1577,19 +1706,34 @@ function bindUI() {
     elements.minifyOutput?.addEventListener('click', () =>
         handleFormatField(elements.output, elements.to?.value, true)
     );
-    elements.tabularFile?.addEventListener('change', handleTabularFileChange);
+    elements.formatModeText?.addEventListener('click', () => setFormatMode('text'));
+    elements.formatModeFiles?.addEventListener('click', () => setFormatMode('files'));
+    elements.tabularFile?.addEventListener('change', (event) => {
+        handleTabularFiles(Array.from(event.target.files || []));
+        // Choosing the same file again still fires change.
+        event.target.value = '';
+    });
+    bindFileDrop(elements.tabularDrop, handleTabularFiles);
     elements.tabularFrom?.addEventListener('change', (event) => {
         state.tabular.from = event.target.value;
+        clearTabularResults();
     });
     elements.tabularTo?.addEventListener('change', (event) => {
         state.tabular.to = event.target.value;
-        if (state.tabular.files && state.tabular.files.length) {
-            setTabularOutputPreview(state.tabular.files, state.tabular.to);
-        }
+        clearTabularResults();
     });
     elements.tabularConvert?.addEventListener('click', handleTabularConvert);
     elements.tabularDownload?.addEventListener('click', handleTabularDownload);
-    elements.imageFile?.addEventListener('change', handleImageFileChange);
+    elements.tabularFileList?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-save-index]');
+        const result = button && state.tabular.files[Number(button.dataset.saveIndex)]?.result;
+        if (result) saveFile(result.blob, result.name);
+    });
+    elements.imageFile?.addEventListener('change', (event) => {
+        handleImageFiles(Array.from(event.target.files || []));
+        event.target.value = '';
+    });
+    bindFileDrop(elements.imageDrop, handleImageFiles);
     elements.imageTargetFormat?.addEventListener('change', (event) => {
         state.image.targetFormat = (event.target.value || 'webp').trim().toLowerCase();
         renderImageOptions(state.image.targetFormat);
@@ -1605,9 +1749,7 @@ function bindUI() {
     elements.watermarkSpacing?.addEventListener('input', handleWatermarkRangeChange);
     elements.watermarkFontSize?.addEventListener('input', handleWatermarkRangeChange);
     elements.watermarkColor?.addEventListener('input', handleWatermarkChange);
-    elements.watermarkDirection?.forEach?.((input) =>
-        input.addEventListener('change', handleWatermarkChange)
-    );
+    elements.watermarkDirection?.addEventListener('change', handleWatermarkChange);
     elements.qrParseFile?.addEventListener('change', handleQrParseFileChange);
     elements.qrParseDrop?.addEventListener('dragover', (event) => {
         event.preventDefault();
@@ -1707,16 +1849,6 @@ function bindUI() {
         elements[id]?.addEventListener('input', () => handleUnitInput(key));
     });
     elements.ipv4Input?.addEventListener('input', () => runIPv4Conversion());
-    elements.ipv4Results?.addEventListener('click', (event) => {
-        const target = event.target.closest('[data-copy-value]');
-        if (target) {
-            const toCopy = target.dataset.copyValue || '';
-            if (toCopy) {
-                copyText(toCopy, 'IP value');
-                setStatus('Copied', false);
-            }
-        }
-    });
     elements.uuidToggleCase?.addEventListener('click', () => {
         state.uuidUppercase = !state.uuidUppercase;
         if (elements.uuidToggleCase) {
@@ -1839,10 +1971,24 @@ function bindUI() {
     elements.hashEncoding?.addEventListener('change', handleHashEncodingChange);
     elements.hashUseHmac?.addEventListener('change', handleHashModeToggle);
     elements.hashHmacSecret?.addEventListener('input', handleHashSecretInput);
-    elements.timestampInputs?.forEach((input) =>
-        input.addEventListener('input', handleTimestampInput)
-    );
-    elements.timestampPresets?.addEventListener('click', handleTimestampPreset);
+    elements.timestampInput?.addEventListener('input', () => runTimestamp());
+    elements.timestampFormat?.addEventListener('change', () => {
+        const custom = elements.timestampFormat.value === 'custom';
+        elements.timestampPattern.hidden = !custom;
+        if (custom) elements.timestampPattern.focus();
+        runTimestamp();
+    });
+    elements.timestampPattern?.addEventListener('input', () => runTimestamp());
+    elements.timestampZone?.addEventListener('change', () => runTimestamp());
+    elements.timestampNow?.addEventListener('click', () => {
+        elements.timestampInput.value = 'now';
+        elements.timestampFormat.value = 'auto';
+        elements.timestampPattern.hidden = true;
+        runTimestamp();
+    });
+    elements.timestampAddFormat?.addEventListener('click', addTimestampFormat);
+    elements.timestampCustom?.addEventListener('input', handleTimestampFormatEdit);
+    elements.timestampCustom?.addEventListener('click', handleTimestampFormatRemove);
     elements.totpSecret?.addEventListener('input', handleTotpFieldChange);
     elements.totpAlgorithm?.addEventListener('change', handleTotpFieldChange);
     elements.totpPeriod?.addEventListener('input', handleTotpFieldChange);
@@ -1860,9 +2006,6 @@ function bindUI() {
     elements.diffRightInput?.addEventListener('input', handleDiffInput);
     elements.diffClear?.addEventListener('click', handleDiffClear);
     elements.diffSwap?.addEventListener('click', handleDiffSwap);
-    elements.diffCopyOutput?.addEventListener('click', handleDiffCopyOutput);
-    elements.diffCopyLeft?.addEventListener('click', () => handleDiffCopy('left'));
-    elements.diffCopyRight?.addEventListener('click', () => handleDiffCopy('right'));
 
     elements.certInput?.addEventListener('input', () => scheduleCertInspector());
     elements.certParse?.addEventListener('click', () => runCertInspector(true));
@@ -1872,41 +2015,6 @@ function bindUI() {
         runCertInspector(true);
     });
 }
-
-function toggleSidebar() {
-    document.body.classList.toggle('sidebar-open');
-}
-
-function closeSidebar() {
-    document.body.classList.remove('sidebar-open');
-}
-
-function toggleSidebarCollapse() {
-    document.body.classList.toggle('sidebar-collapsed');
-    const isCollapsed = document.body.classList.contains('sidebar-collapsed');
-    if (elements.sidebarCollapseBtn) {
-        elements.sidebarCollapseBtn.setAttribute(
-            'aria-label',
-            isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
-        );
-        elements.sidebarCollapseBtn.setAttribute(
-            'title',
-            isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
-        );
-    }
-}
-
-function closeSidebarOnMobile() {
-    if (window.matchMedia('(max-width: 900px)').matches) {
-        closeSidebar();
-    }
-}
-
-window.addEventListener('resize', () => {
-    if (window.innerWidth > 900) {
-        closeSidebar();
-    }
-});
 
 function ensureConverterMode() {
     if (state.currentTool !== 'format') return false;
@@ -1924,9 +2032,58 @@ function ensureConverterMode() {
 function updateConverterLabels(from, to) {
     if (elements.inputLabel) elements.inputLabel.textContent = from || 'Input';
     if (elements.outputLabel) elements.outputLabel.textContent = to || 'Output';
+    if (elements.outputEmptyTitle) {
+        elements.outputEmptyTitle.textContent = `${to || 'The result'} appears here as you type`;
+    }
     if (elements.input) {
         elements.input.placeholder = samples[from] || elements.input.placeholder;
     }
+}
+
+// Text and Files are one tool: the same From/To idea, typed text or whole data files.
+function setFormatMode(mode) {
+    const files = mode === 'files';
+    elements.formatModeText?.setAttribute('aria-pressed', String(!files));
+    elements.formatModeFiles?.setAttribute('aria-pressed', String(files));
+    for (const el of [elements.textFormats, elements.formatText]) if (el) el.hidden = files;
+    for (const el of [elements.fileFormats, elements.fileActions, elements.formatFiles]) {
+        if (el) el.hidden = !files;
+    }
+    if (elements.toolDesc && state.currentTool === 'format') {
+        elements.toolDesc.textContent = files
+            ? 'Parquet, Avro, Arrow IPC, CSV, TSV and JSON files, converted in the browser'
+            : toolInfo.format.description;
+    }
+}
+
+// Files dropped on a zone (or an editor) go where choosing them would; left alone,
+// the browser would open the file in place of the page.
+function bindFileDrop(target, onFiles) {
+    if (!target) return;
+    target.addEventListener('dragover', (event) => {
+        if (!event.dataTransfer?.types.includes('Files')) return;
+        event.preventDefault();
+        target.classList.add('dragging');
+    });
+    target.addEventListener('dragleave', () => target.classList.remove('dragging'));
+    target.addEventListener('drop', (event) => {
+        target.classList.remove('dragging');
+        const files = Array.from(event.dataTransfer?.files || []);
+        if (!files.length) return;
+        event.preventDefault();
+        onFiles(files);
+    });
+}
+
+async function readFileIntoInput(file) {
+    if (!file || !elements.input) return;
+    const format = formatByExtension[file.name.split('.').pop()?.toLowerCase()];
+    if (format && elements.from && elements.from.value !== format) {
+        elements.from.value = format;
+        updateConverterLabels(format, elements.to?.value || '');
+    }
+    elements.input.value = await file.text();
+    scheduleConvert(true);
 }
 
 function initTabularControls() {
@@ -1936,8 +2093,6 @@ function initTabularControls() {
     elements.tabularTo.innerHTML = options;
     elements.tabularFrom.value = state.tabular.from;
     elements.tabularTo.value = state.tabular.to;
-    setTabularProgress(0, false);
-    setTabularStatus('No files selected');
 }
 
 function scheduleConvert(immediate = false) {
@@ -1951,6 +2106,21 @@ function scheduleConvert(immediate = false) {
     convertTimer = setTimeout(() => convert(), 250);
 }
 
+function lineCount(text) {
+    const lines = text ? text.split('\n').length : 0;
+    return lines === 1 ? '1 line' : lines ? `${lines} lines` : '';
+}
+
+function showConverterOutput(text) {
+    if (elements.output) {
+        elements.output.value = text;
+        elements.output.hidden = !text;
+    }
+    if (elements.outputEmpty) elements.outputEmpty.hidden = Boolean(text);
+    if (elements.outputMeta) elements.outputMeta.textContent = lineCount(text);
+    if (elements.inputMeta) elements.inputMeta.textContent = lineCount(elements.input?.value || '');
+}
+
 function convert() {
     if (state.currentTool !== 'format') return;
     if (!state.wasmReady) {
@@ -1961,19 +2131,16 @@ function convert() {
     const to = elements.to?.value || '';
     const text = elements.input?.value || '';
     if (!text.trim()) {
-        if (elements.output) elements.output.value = '';
-        setStatus('Input is empty');
+        showConverterOutput('');
+        setStatus('');
         return;
     }
     try {
-        const result = transform_format(from, to, text);
-        if (elements.output) {
-            elements.output.value = result || '';
-        }
-        setStatus('Done', false);
+        showConverterOutput(transform_format(from, to, text) || '');
+        setStatus('');
     } catch (err) {
-        if (elements.output) elements.output.value = '';
-        setStatus(`⚠️ ${err?.message || err}`, true);
+        showConverterOutput('');
+        setStatus(`${err?.message || err}`, true);
     }
 }
 
@@ -2000,66 +2167,35 @@ function readFileAsBytes(file) {
     });
 }
 
-async function handleTabularFileChange(event) {
-    const files = Array.from(event.target.files || []);
-    if (!files.length) {
-        state.tabular.files = [];
-        state.tabular.results = [];
-        state.tabular.totalRows = 0;
-        setTabularProgress(0, false);
-        setTabularStatus('No files selected');
-        if (elements.tabularDownload) elements.tabularDownload.disabled = true;
-        if (elements.tabularFileName) elements.tabularFileName.textContent = '(none)';
-        if (elements.tabularRowCount) elements.tabularRowCount.textContent = '0';
-        setTabularOutputLabel([]);
-        return;
-    }
+async function handleTabularFiles(files) {
+    if (!files.length) return;
     try {
-        setTabularStatus(`Loading ${files.length} file(s)...`);
         const buffers = await Promise.all(files.map((file) => readFileAsBytes(file)));
         state.tabular.files = files.map((file, idx) => ({
             name: file.name,
+            size: file.size,
             bytes: buffers[idx],
+            result: null,
+            error: '',
         }));
-        state.tabular.results = [];
-        state.tabular.totalRows = 0;
-        const label =
-            files.length === 1 ? files[0].name : `${files.length} files selected for batch`;
-        if (elements.tabularFileName) elements.tabularFileName.textContent = label;
         const guess = guessTabularFormat(files[0]?.name || '');
         if (guess && elements.tabularFrom) {
             elements.tabularFrom.value = guess;
             state.tabular.from = guess;
         }
-        setTabularStatus('Files loaded, choose a target format and convert');
-        const targetFormat = elements.tabularTo?.value || state.tabular.to;
-        setTabularOutputPreview(state.tabular.files, targetFormat);
-        if (elements.tabularDownload) elements.tabularDownload.disabled = true;
+        setTabularStatus('');
     } catch (err) {
         console.error(err);
         state.tabular.files = [];
-        state.tabular.results = [];
-        state.tabular.totalRows = 0;
-        setTabularProgress(0, false, true);
-        setTabularStatus(`Failed to read files: ${err?.message || err}`, true);
-        if (elements.tabularDownload) elements.tabularDownload.disabled = true;
+        setTabularStatus(`Couldn't read the files: ${err?.message || err}`);
     }
+    renderTabularFiles();
 }
 
-function setTabularProgress(percent, animated = false, isError = false) {
-    const bar =
-        elements.tabularProgress?.querySelector('.progress-bar') || elements.tabularProgress;
-    if (!bar) return;
-    bar.style.setProperty('--progress', `${Math.min(Math.max(percent, 0), 100)}%`);
-    bar.dataset.animated = animated ? 'true' : 'false';
-    bar.classList.toggle('error', Boolean(isError));
-}
-
-function setTabularStatus(message, isError = false) {
-    if (elements.tabularStatus) {
-        elements.tabularStatus.textContent = message;
-        elements.tabularStatus.classList.toggle('error', Boolean(isError));
-    }
+function setTabularStatus(message) {
+    if (!elements.tabularStatus) return;
+    elements.tabularStatus.textContent = message;
+    elements.tabularStatus.hidden = !message;
 }
 
 function normalizeRowCount(value) {
@@ -2076,90 +2212,79 @@ function deriveOutputName(inputName, targetFormat) {
     return `${base}.${ext}`;
 }
 
-function setTabularOutputPreview(files, targetFormat) {
-    if (!files || !files.length) {
-        setTabularOutputLabel([]);
-        return;
-    }
-    const preview = files.map((file) => ({ name: deriveOutputName(file.name, targetFormat) }));
-    setTabularOutputLabel(preview);
+function clearTabularResults() {
+    state.tabular.files.forEach((file) => {
+        file.result = null;
+        file.error = '';
+    });
+    renderTabularFiles();
 }
 
-function setTabularOutputLabel(results) {
-    if (!elements.tabularOutputName) return;
-    if (!results || !results.length) {
-        elements.tabularOutputName.textContent = 'converted';
-        return;
+function renderTabularFiles() {
+    const files = state.tabular.files || [];
+    const converted = files.filter((file) => file.result).length;
+    if (elements.tabularFiles) elements.tabularFiles.hidden = !files.length;
+    elements.tabularDrop?.classList.toggle('compact', files.length > 0);
+    if (elements.tabularConvert) {
+        elements.tabularConvert.disabled = !files.length;
+        elements.tabularConvert.firstChild.textContent =
+            files.length > 1 ? `Convert ${files.length} files ` : 'Convert ';
     }
-    if (results.length === 1) {
-        elements.tabularOutputName.textContent = results[0].name || 'converted';
-        return;
+    if (elements.tabularDownload) {
+        // One file is saved from its row; Save all is for a batch.
+        elements.tabularDownload.hidden = files.length < 2;
+        elements.tabularDownload.disabled = !converted;
     }
-    const first = results[0].name || 'converted';
-    elements.tabularOutputName.textContent = `${first} (+${results.length - 1} more)`;
+    if (!elements.tabularFileList) return;
+    elements.tabularFileList.innerHTML = files
+        .map((file, index) => {
+            const { result, error } = file;
+            let outcome = '<td class="meta">Ready</td>';
+            if (error) outcome = `<td class="error">${escapeHTML(error)}</td>`;
+            else if (result) {
+                outcome = `<td class="ok">${escapeHTML(result.name)} · ${formatByteSize(result.blob.size)}</td>`;
+            }
+            const save = result
+                ? `<button class="icon-btn" type="button" title="Save" data-save-index="${index}"><svg class="i"><use href="#i-save" /></svg></button>`
+                : '';
+            const rows = result ? result.rowCount.toLocaleString() : '';
+            return `<tr><td>${escapeHTML(file.name)}</td><td>${rows}</td><td>${formatByteSize(file.size)}</td>${outcome}<td>${save}</td></tr>`;
+        })
+        .join('');
 }
 
+// Each file stands alone: one that fails says why in its row and the rest still convert.
 function handleTabularConvert() {
     if (!state.wasmReady) {
-        setTabularStatus('WebAssembly is not ready yet', true);
-        return;
-    }
-    const files = state.tabular.files || [];
-    if (!files.length) {
-        setTabularStatus('Select file(s) first', true);
+        setTabularStatus('WebAssembly is not ready yet');
         return;
     }
     const from = elements.tabularFrom?.value || state.tabular.from;
     const to = elements.tabularTo?.value || state.tabular.to;
-    // Stage the pseudo-progress bar so users see responsive feedback even on large files.
-    setTabularProgress(15, true, false);
-    setTabularStatus(`Converting ${files.length} file(s)...`);
-    state.tabular.results = [];
-    state.tabular.totalRows = 0;
-    try {
-        const results = [];
-        files.forEach((file, idx) => {
-            const progress = Math.min(90, 15 + Math.round(((idx + 1) / files.length) * 70));
-            setTabularStatus(`Converting ${file.name} (${idx + 1}/${files.length})...`);
+    state.tabular.files.forEach((file) => {
+        try {
             const result = convert_tabular_format(from, to, file.bytes);
             const bytes = result?.bytes ? new Uint8Array(result.bytes) : new Uint8Array();
             const mime = result?.mime_type || result?.mimeType || 'application/octet-stream';
-            const outName = deriveOutputName(file.name, to);
-            const rowCount = normalizeRowCount(result?.row_count ?? result?.rowCount ?? 0);
-            results.push({
+            file.result = {
                 blob: new Blob([bytes], { type: mime }),
-                name: outName,
-                rowCount,
-            });
-            state.tabular.totalRows += rowCount;
-            setTabularProgress(progress, true, false);
-        });
-        state.tabular.results = results;
-        setTabularOutputLabel(results);
-        if (elements.tabularRowCount)
-            elements.tabularRowCount.textContent = String(state.tabular.totalRows);
-        if (elements.tabularDownload) elements.tabularDownload.disabled = false;
-        setTabularProgress(100, false, false);
-        setTabularStatus('Conversion complete');
-    } catch (err) {
-        setTabularProgress(0, false, true);
-        setTabularStatus(`Error: ${err?.message || err}`, true);
-        if (elements.tabularDownload) elements.tabularDownload.disabled = true;
-        state.tabular.results = [];
-        state.tabular.totalRows = 0;
-    }
+                name: deriveOutputName(file.name, to),
+                rowCount: normalizeRowCount(result?.row_count ?? result?.rowCount ?? 0),
+            };
+            file.error = '';
+        } catch (err) {
+            file.result = null;
+            file.error = `${err?.message || err}`;
+        }
+    });
+    setTabularStatus('');
+    renderTabularFiles();
 }
 
 function handleTabularDownload() {
-    if (!state.tabular.results || !state.tabular.results.length) return;
-    const results = state.tabular.results;
-    if (results.length === 1) {
-        const single = results[0];
-        saveFile(single.blob, single.name || 'converted');
-        return;
-    }
-    results.forEach((result, idx) => saveFile(result.blob, result.name || `converted-${idx + 1}`));
-    setTabularStatus(`Started downloads for ${results.length} files`);
+    state.tabular.files
+        .filter((file) => file.result)
+        .forEach(({ result }) => saveFile(result.blob, result.name));
 }
 
 function handleFormatField(target, formatName, minify) {
@@ -2168,10 +2293,7 @@ function handleFormatField(target, formatName, minify) {
         setStatus('Unsupported format', true);
         return;
     }
-    if (!target.value.trim()) {
-        setStatus('Nothing to process', true);
-        return;
-    }
+    if (!target.value.trim()) return;
     if (!state.wasmReady) {
         setStatus('Waiting for WebAssembly...', true);
         return;
@@ -2179,9 +2301,10 @@ function handleFormatField(target, formatName, minify) {
     try {
         const updated = format_content_text(formatName, target.value, Boolean(minify));
         target.value = updated || '';
-        setStatus(minify ? 'Minified' : 'Formatted', false);
+        showConverterOutput(elements.output?.value || '');
+        setStatus('');
     } catch (err) {
-        setStatus(`⚠️ ${err?.message || err}`, true);
+        setStatus(`${err?.message || err}`, true);
     }
 }
 
@@ -2191,19 +2314,16 @@ function selectTool(toolId) {
     const previousTool = state.currentTool;
     state.currentTool = toolId;
 
-    // Stop timestamp updates when switching away from timestamp tool
     if (previousTool === 'converter-timestamp' && toolId !== 'converter-timestamp') {
-        stopTimestampUpdates();
+        stopTimestampTicker();
     }
 
     elements.toolName && (elements.toolName.textContent = meta.label);
     elements.toolDesc && (elements.toolDesc.textContent = meta.description || '');
-    updateBodyClasses(toolId);
     const workspaceId = meta.workspace;
     showWorkspace(workspaceId);
-    toggleConverterControls(toolId === 'format');
     updateToolButtons();
-    closeSidebarOnMobile();
+    setNavOpen(false);
     if (previousTool && isTotpTool(previousTool) && !isTotpTool(toolId)) {
         stopTotpTimer();
     }
@@ -2214,6 +2334,9 @@ function selectTool(toolId) {
     }
     updateHashForTool(toolId);
     if (toolId === 'format') {
+        setFormatMode(
+            elements.formatModeFiles?.getAttribute('aria-pressed') === 'true' ? 'files' : 'text'
+        );
         ensureConverterMode();
         scheduleConvert(true);
         return;
@@ -2284,51 +2407,24 @@ function selectTool(toolId) {
     }
 }
 
-function updateBodyClasses(toolId) {
-    document.body.classList.toggle('tool-format', toolId === 'format');
-    document.body.classList.toggle('tool-image', isImageTool(toolId));
-    document.body.classList.toggle('tool-coder', coderMainTools.has(toolId));
-    document.body.classList.toggle('tool-pair', pairTools.has(toolId));
-    document.body.classList.toggle('tool-kdf', isKdfTool(toolId));
-    document.body.classList.toggle('tool-number', numberTools.has(toolId));
-    document.body.classList.toggle('tool-unit', unitTools.has(toolId));
-    document.body.classList.toggle('tool-ipv4', ipv4Tools.has(toolId));
-    document.body.classList.toggle('tool-generator', generatorTools.has(toolId));
-    document.body.classList.toggle('tool-fingerprint', isFingerprintTool(toolId));
-    document.body.classList.toggle('tool-uuid', isUUIDTool(toolId));
-    document.body.classList.toggle('tool-useragent', isUserAgentTool(toolId));
-    document.body.classList.toggle('tool-random', isRandomTool(toolId));
-    document.body.classList.toggle('tool-ascii', isAsciiTool(toolId));
-    document.body.classList.toggle('tool-qr', isQrTool(toolId));
-    document.body.classList.toggle('tool-cert', isCertTool(toolId));
-    document.body.classList.toggle('tool-crypto', isCryptoTool(toolId));
-    document.body.classList.toggle('tool-diff', isDiffTool(toolId));
-}
-
-function toggleConverterControls(show) {
-    if (elements.converterControls) {
-        elements.converterControls.classList.toggle('hidden', !show);
-    }
-}
-
 function showWorkspace(workspaceId) {
     workspaceIds.forEach((id) => {
         const el = document.getElementById(id);
-        if (el) {
-            el.classList.toggle('hidden', id !== workspaceId);
-        }
+        if (el) el.hidden = id !== workspaceId;
     });
 }
 
 function updateToolButtons() {
-    document
-        .querySelectorAll('#toolGroups button')
-        .forEach((btn) => btn.classList.toggle('active', btn.dataset.toolId === state.currentTool));
+    elements.toolGroups?.querySelectorAll('.nav-item').forEach((link) => {
+        if (link.dataset.toolId === state.currentTool) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+    });
 }
 
 function setStatus(message, isError) {
     if (!elements.status) return;
-    elements.status.textContent = message || 'Ready';
+    const text = (message || '').replace(/^⚠️\s*/, '');
+    elements.status.textContent = !isError && quietStatuses.has(text) ? '' : text;
     elements.status.classList.toggle('error', Boolean(isError));
 }
 
@@ -2923,16 +3019,20 @@ function activatePairTool(toolId) {
     if (elements.pairOutputHint) {
         elements.pairOutputHint.textContent = config.outputHint || '';
     }
+    // Tokens and encoded URLs are one long line: wrap them rather than scroll sideways.
+    const wrap = config.type !== 'markdown';
     if (elements.pairInput) {
         elements.pairInput.placeholder = config.inputPlaceholder || '';
         elements.pairInput.value = '';
+        elements.pairInput.classList.toggle('wrap', wrap);
     }
     if (elements.pairOutput) {
         elements.pairOutput.placeholder = config.outputPlaceholder || '';
         elements.pairOutput.value = '';
+        elements.pairOutput.classList.toggle('wrap', wrap);
     }
     const showJWT = config.type === 'jwt';
-    elements.jwtControls?.classList.toggle('hidden', !showJWT);
+    if (elements.jwtControls) elements.jwtControls.hidden = !showJWT;
     if (!showJWT) {
         if (elements.jwtSecret) {
             elements.jwtSecret.value = '';
@@ -2942,7 +3042,7 @@ function activatePairTool(toolId) {
         elements.jwtAlgorithm.value = 'HS256';
     }
     const showQueryEditor = config.type === 'url';
-    elements.urlQuerySection?.classList.toggle('hidden', !showQueryEditor);
+    if (elements.urlQuerySection) elements.urlQuerySection.hidden = !showQueryEditor;
     if (showQueryEditor) {
         syncUrlParamsFromInput(elements.pairInput?.value || '', true);
     } else {
@@ -3188,70 +3288,20 @@ function applyUrlQueryStateChange({ renderTable = false } = {}) {
 function renderUrlQueryTable() {
     if (!elements.urlQueryTable) return;
     const params = state.urlQueryParams || [];
-    elements.urlQueryTable.innerHTML = '';
-    if (!params.length) {
-        if (elements.urlQueryEmpty) elements.urlQueryEmpty.classList.remove('hidden');
-        return;
-    }
-    if (elements.urlQueryEmpty) elements.urlQueryEmpty.classList.add('hidden');
-    params.forEach((param, index) => {
-        const row = document.createElement('div');
-        row.className = 'query-row';
-        row.dataset.index = String(index);
-
-        const handle = document.createElement('span');
-        handle.className = 'query-handle';
-        handle.title = 'Reorder';
-        handle.textContent = '≡';
-        row.appendChild(handle);
-
-        const keyInput = document.createElement('input');
-        keyInput.placeholder = 'key';
-        keyInput.value = param?.key || '';
-        keyInput.dataset.field = 'key';
-        row.appendChild(keyInput);
-
-        const equals = document.createElement('span');
-        equals.className = 'query-equals';
-        equals.textContent = '=';
-        row.appendChild(equals);
-
-        const valueInput = document.createElement('input');
-        valueInput.placeholder = 'value';
-        valueInput.value = param?.value || '';
-        valueInput.dataset.field = 'value';
-        row.appendChild(valueInput);
-
-        const actions = document.createElement('div');
-        actions.className = 'query-row-actions';
-
-        const upBtn = document.createElement('button');
-        upBtn.type = 'button';
-        upBtn.dataset.action = 'up';
-        upBtn.title = 'Move up';
-        upBtn.textContent = '↑';
-        upBtn.disabled = index === 0;
-        actions.appendChild(upBtn);
-
-        const downBtn = document.createElement('button');
-        downBtn.type = 'button';
-        downBtn.dataset.action = 'down';
-        downBtn.title = 'Move down';
-        downBtn.textContent = '↓';
-        downBtn.disabled = index === params.length - 1;
-        actions.appendChild(downBtn);
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.type = 'button';
-        deleteBtn.dataset.action = 'delete';
-        deleteBtn.classList.add('danger');
-        deleteBtn.title = 'Remove';
-        deleteBtn.textContent = '✕';
-        actions.appendChild(deleteBtn);
-
-        row.appendChild(actions);
-        elements.urlQueryTable.appendChild(row);
-    });
+    if (elements.urlQueryEmpty) elements.urlQueryEmpty.hidden = params.length > 0;
+    const icon = (name) => `<svg class="i"><use href="#i-${name}" /></svg>`;
+    elements.urlQueryTable.innerHTML = params
+        .map(
+            (param, index) => `<div class="param" data-index="${index}">
+    <input class="input mono" data-field="key" placeholder="key" aria-label="Name" value="${escapeAttr(param?.key || '')}" />
+    <span class="meta">=</span>
+    <input class="input mono" data-field="value" placeholder="value" aria-label="Value" value="${escapeAttr(param?.value || '')}" />
+    <button class="icon-btn" type="button" data-action="up" title="Move up"${index === 0 ? ' disabled' : ''}>${icon('up')}</button>
+    <button class="icon-btn" type="button" data-action="down" title="Move down"${index === params.length - 1 ? ' disabled' : ''}>${icon('down')}</button>
+    <button class="icon-btn" type="button" data-action="delete" title="Remove">${icon('clear')}</button>
+</div>`
+        )
+        .join('');
 }
 
 function addUrlQueryRow() {
@@ -3265,7 +3315,7 @@ function handleUrlQueryTableInput(event) {
     if (!isUrlTool(state.currentTool)) return;
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
-    const row = target.closest('.query-row');
+    const row = target.closest('.param');
     const field = target.dataset.field;
     if (!row || !field) return;
     const index = Number(row.dataset.index);
@@ -3281,7 +3331,7 @@ function handleUrlQueryTableClick(event) {
     if (!isUrlTool(state.currentTool)) return;
     const button = event.target.closest('button[data-action]');
     if (!button) return;
-    const row = button.closest('.query-row');
+    const row = button.closest('.param');
     if (!row) return;
     const index = Number(row.dataset.index);
     if (Number.isNaN(index)) return;
@@ -3327,7 +3377,7 @@ function setPairField(target, value) {
 function updatePairMeta(info) {
     if (!elements.pairOutputMeta) return;
     if (!info || state.currentTool !== 'coder-jwt') {
-        elements.pairOutputMeta.classList.add('hidden');
+        elements.pairOutputMeta.hidden = true;
         elements.pairOutputMeta.textContent = '';
         return;
     }
@@ -3339,7 +3389,7 @@ function updatePairMeta(info) {
         sections.push(`Signature:\n${info.signature}`);
     }
     elements.pairOutputMeta.textContent = sections.join('\n\n');
-    elements.pairOutputMeta.classList.toggle('hidden', sections.length === 0);
+    elements.pairOutputMeta.hidden = sections.length === 0;
 }
 
 function activateNumberTool() {
@@ -3459,14 +3509,17 @@ function clearUnitFields() {
 }
 
 function activateIPv4Tool() {
-    if (elements.ipv4Results) {
-        elements.ipv4Results.innerHTML =
-            '<div class="muted">Enter an IP address (IPv4/IPv6), CIDR block, or range to see details</div>';
-    }
-    if (elements.ipv4Input) {
-        elements.ipv4Input.value = '';
-    }
-    setStatus('Ready', false);
+    if (elements.ipv4Input) elements.ipv4Input.value = '';
+    renderIPv4Empty();
+    setStatus('');
+    elements.ipv4Input?.focus();
+}
+
+function renderIPv4Empty(message) {
+    if (!elements.ipv4Results) return;
+    elements.ipv4Results.innerHTML = message
+        ? `<p class="notice">${escapeHTML(message)}</p>`
+        : `<div class="empty"><strong>Type an address, a block or a range</strong><span>192.168.0.1 · 10.0.0.0/8 · 10.0.0.1-10.0.0.9 · 2001:db8::/32</span></div>`;
 }
 
 function runIPv4Conversion() {
@@ -3477,264 +3530,168 @@ function runIPv4Conversion() {
     }
     const value = elements.ipv4Input?.value.trim() || '';
     if (!value) {
-        if (elements.ipv4Results) {
-            elements.ipv4Results.innerHTML =
-                '<div class="muted">Enter an IP address (IPv4/IPv6), CIDR block, or range to see details</div>';
-        }
-        setStatus('Cleared');
+        renderIPv4Empty();
         return;
     }
     try {
-        const data = ipv4_info(value) || {};
-        renderIPv4Results(data);
-        setStatus('Done', false);
+        renderIPv4Results(ipv4_info(value) || {});
     } catch (err) {
-        setStatus(`⚠️ ${err?.message || err}`, true);
+        renderIPv4Empty(`${err?.message || err}`);
     }
 }
 
+// What the input is, beside what it spans; every value copies on its own.
 function renderIPv4Results(data) {
     if (!elements.ipv4Results) return;
-    const stats = [];
-    const addRow = (label, value) => {
-        if (!value) return;
-        stats.push(renderIPv4Row(label, value));
-    };
-    addRow('Version', data.version);
-    addRow('Type', data.type);
-    addRow('Standard', data.standard);
-    addRow('CIDR', data.cidr);
-    addRow('Mask', data.mask);
-    addRow('Mask (binary)', data.maskBinary);
-    addRow('IPv6 mapped', data.ipv6Mapped);
-    if (data.rangeStart || data.rangeEnd) {
-        addRow('Range', `${data.rangeStart || '?'} → ${data.rangeEnd || '?'}`);
-    }
-    addRow('Network', data.network);
-    addRow('Broadcast', data.broadcast);
-    addRow('Total IPs', data.total);
-    addRow('3-part', data.threePart);
-    addRow('2-part', data.twoPart);
-    addRow('Integer', data.integer);
-    addRow('Expanded', data.expanded);
-    addRow('Compressed', data.compressed);
-    addRow('Binary', data.binary);
-    addRow('Host bits', data.hostBits);
-    if (!stats.length) {
-        elements.ipv4Results.innerHTML = '<div class="muted">Unable to parse input</div>';
+    const rows = (pairs) =>
+        pairs
+            .filter(([, value]) => value)
+            .map(([label, value]) => renderIPv4Row(label, value))
+            .join('');
+    const address = rows([
+        ['Version', data.version],
+        ['Type', data.type],
+        ['Standard', data.standard],
+        ['Integer', data.integer],
+        ['Expanded', data.expanded],
+        ['Compressed', data.compressed],
+        ['IPv6 mapped', data.ipv6Mapped],
+        ['3-part', data.threePart],
+        ['2-part', data.twoPart],
+        ['Binary', data.binary],
+    ]);
+    const range =
+        data.rangeStart || data.rangeEnd
+            ? `${data.rangeStart || '?'} – ${data.rangeEnd || '?'}`
+            : '';
+    const network = rows([
+        ['CIDR', data.cidr],
+        ['Mask', data.mask],
+        ['Mask (binary)', data.maskBinary],
+        ['Network', data.network],
+        ['Broadcast', data.broadcast],
+        ['Range', range],
+        ['Addresses', data.total],
+        ['Host bits', data.hostBits],
+    ]);
+    if (!address && !network) {
+        renderIPv4Empty('Not an address, block or range this tool can read');
         return;
     }
-    elements.ipv4Results.innerHTML = `<div class="ipv4-stats">${stats.join('')}</div>`;
+    const group = (title, body) =>
+        body ? `<div><h2 class="group-title">${title}</h2><ul class="kv">${body}</ul></div>` : '';
+    elements.ipv4Results.innerHTML = `<div class="groups">${group('Address', address)}${group('Network', network)}</div>`;
 }
 
 function renderIPv4Row(label, value) {
-    const safeLabel = escapeHTML(label || '');
-    const safeValue = escapeHTML(value || '');
-    const attrValue = escapeAttr(value || '');
-    return `
-    <div class="stat">
-      <span>${safeLabel}</span>
-      <span class="click-copy" data-copy-value="${attrValue}">${safeValue}</span>
-    </div>
-  `;
+    const text = String(value);
+    return `<li><span class="k">${escapeHTML(label)}</span><span class="v" title="${escapeAttr(text)}">${escapeHTML(text)}</span><button class="icon-btn" type="button" title="Copy ${escapeAttr(label)}" data-copy-text="${escapeAttr(text)}"><svg class="i"><use href="#i-copy" /></svg></button></li>`;
 }
 
 function renderWatermarkControls() {
     if (!isImageTool(state.currentTool)) return;
-    if (elements.watermarkToggle) {
-        elements.watermarkToggle.checked = Boolean(state.image.watermark.enabled);
-    }
-    const panel = document.getElementById('imageWatermarkControls');
-    if (panel) {
-        if (state.image.watermark.enabled) {
-            panel.classList.remove('hidden');
-        } else {
-            panel.classList.add('hidden');
-        }
-    }
-    if (!state.image.watermark.enabled) {
-        return;
-    }
-    if (elements.watermarkText) {
-        elements.watermarkText.value = state.image.watermark.text || '';
-    }
-    const syncRange = (input, valueEl, value) => {
+    const mark = state.image.watermark;
+    if (elements.watermarkToggle) elements.watermarkToggle.checked = Boolean(mark.enabled);
+    if (elements.imageWatermarkControls) elements.imageWatermarkControls.hidden = !mark.enabled;
+    if (!mark.enabled) return;
+    if (elements.watermarkText) elements.watermarkText.value = mark.text || '';
+    const syncRange = (input, output, value) => {
         if (input) input.value = String(value);
-        if (valueEl) valueEl.textContent = String(value);
+        if (output) output.textContent = String(value);
     };
-    syncRange(
-        elements.watermarkOpacity,
-        elements.watermarkOpacityValue,
-        state.image.watermark.opacity
-    );
-    syncRange(
-        elements.watermarkRotation,
-        elements.watermarkRotationValue,
-        state.image.watermark.rotation
-    );
-    syncRange(
-        elements.watermarkSpacing,
-        elements.watermarkSpacingValue,
-        state.image.watermark.spacing
-    );
-    syncRange(
-        elements.watermarkFontSize,
-        elements.watermarkFontSizeValue,
-        state.image.watermark.fontSize
-    );
-    if (elements.watermarkColor) {
-        elements.watermarkColor.value = state.image.watermark.color || '#ffffff';
-    }
-    if (elements.watermarkDirection && elements.watermarkDirection.forEach) {
-        elements.watermarkDirection.forEach((input) => {
-            input.checked = input.value === state.image.watermark.direction;
-        });
-    }
+    syncRange(elements.watermarkOpacity, elements.watermarkOpacityValue, mark.opacity);
+    syncRange(elements.watermarkRotation, elements.watermarkRotationValue, mark.rotation);
+    syncRange(elements.watermarkSpacing, elements.watermarkSpacingValue, mark.spacing);
+    syncRange(elements.watermarkFontSize, elements.watermarkFontSizeValue, mark.fontSize);
+    if (elements.watermarkColor) elements.watermarkColor.value = mark.color || '#ffffff';
+    if (elements.watermarkDirection) elements.watermarkDirection.value = mark.direction || 'both';
 }
 
 function handleWatermarkToggle(event) {
-    const enabled = Boolean(event?.target?.checked);
-    state.image.watermark.enabled = enabled;
+    state.image.watermark.enabled = Boolean(event?.target?.checked);
     renderWatermarkControls();
 }
 
 function handleWatermarkChange() {
-    if (!state.image.watermark.enabled) return;
-    state.image.watermark.text = elements.watermarkText?.value || state.image.watermark.text;
-    state.image.watermark.color = elements.watermarkColor?.value || state.image.watermark.color;
-    if (elements.watermarkDirection && elements.watermarkDirection.forEach) {
-        elements.watermarkDirection.forEach((input) => {
-            if (input.checked) {
-                state.image.watermark.direction = input.value || state.image.watermark.direction;
-            }
-        });
-    }
+    const mark = state.image.watermark;
+    if (!mark.enabled) return;
+    mark.text = elements.watermarkText?.value ?? mark.text;
+    mark.color = elements.watermarkColor?.value || mark.color;
+    mark.direction = elements.watermarkDirection?.value || mark.direction;
 }
 
 function handleWatermarkRangeChange(event) {
     const target = event.target;
-    if (!target) return;
-    if (!state.image.watermark.enabled) return;
+    const mark = state.image.watermark;
+    if (!target || !mark.enabled) return;
     const raw = Number(target.value);
     const value = Number.isFinite(raw) ? raw : 0;
-    switch (target.id) {
-        case 'watermarkOpacity':
-            state.image.watermark.opacity = Math.min(100, Math.max(0, value));
-            if (elements.watermarkOpacityValue) {
-                elements.watermarkOpacityValue.textContent = String(state.image.watermark.opacity);
-            }
-            break;
-        case 'watermarkRotation':
-            state.image.watermark.rotation = Math.min(90, Math.max(-90, value));
-            if (elements.watermarkRotationValue) {
-                elements.watermarkRotationValue.textContent = String(
-                    state.image.watermark.rotation
-                );
-            }
-            break;
-        case 'watermarkSpacing':
-            state.image.watermark.spacing = Math.min(200, Math.max(10, value));
-            if (elements.watermarkSpacingValue) {
-                elements.watermarkSpacingValue.textContent = String(state.image.watermark.spacing);
-            }
-            break;
-        case 'watermarkFontSize':
-            state.image.watermark.fontSize = Math.min(96, Math.max(8, value));
-            if (elements.watermarkFontSizeValue) {
-                elements.watermarkFontSizeValue.textContent = String(
-                    state.image.watermark.fontSize
-                );
-            }
-            break;
-        default:
-            break;
-    }
+    const clamp = (min, max) => Math.min(max, Math.max(min, value));
+    const ranges = {
+        watermarkOpacity: ['opacity', 0, 100],
+        watermarkRotation: ['rotation', -90, 90],
+        watermarkSpacing: ['spacing', 10, 200],
+        watermarkFontSize: ['fontSize', 8, 96],
+    };
+    const range = ranges[target.id];
+    if (!range) return;
+    const [key, min, max] = range;
+    mark[key] = clamp(min, max);
+    const output = elements[`${target.id}Value`];
+    if (output) output.textContent = String(mark[key]);
 }
 
 function buildWatermarkPayload() {
-    if (!state.image.watermark.enabled) {
-        return null;
-    }
-    const text = (elements.watermarkText?.value || state.image.watermark.text || '').trim();
-    if (!text) {
-        throw new Error('Enter watermark text first');
-    }
-    const direction =
-        Array.from(elements.watermarkDirection || []).find((el) => el.checked)?.value ||
-        state.image.watermark.direction ||
-        'both';
+    const mark = state.image.watermark;
+    if (!mark.enabled) return null;
+    const text = (elements.watermarkText?.value || '').trim();
+    if (!text) throw new Error('Type the watermark text first');
     return {
         text,
-        opacity: (state.image.watermark.opacity || 0) / 100,
-        rotationDeg: state.image.watermark.rotation || 0,
-        spacing: state.image.watermark.spacing || 32,
-        fontSize: state.image.watermark.fontSize || 32,
-        color: elements.watermarkColor?.value || state.image.watermark.color || '#ffffff',
-        direction,
+        opacity: (mark.opacity || 0) / 100,
+        rotationDeg: mark.rotation || 0,
+        spacing: mark.spacing || 32,
+        fontSize: mark.fontSize || 32,
+        color: elements.watermarkColor?.value || mark.color || '#ffffff',
+        direction: elements.watermarkDirection?.value || mark.direction || 'both',
     };
 }
 
 // Image converter: reads uploads, calls wasm for transcoding, and keeps preview/download in sync.
 function activateImageTool() {
     renderImageFormatSelect();
-    renderImageOptions(state.image.targetFormat || 'webp');
     renderWatermarkControls();
-    renderImageInputMeta();
-    renderImageOriginalPreview();
-    renderImageOutput(state.image.result);
-    renderImageError('');
-    renderImageBatchList();
-    renderImageProgress();
-    setStatus('Ready', false);
+    renderImageFiles();
 }
 
-async function handleImageFileChange(event) {
-    const files = Array.from(event?.target?.files || []);
-    if (!files.length) {
-        resetImageState();
-        renderImageInputMeta();
-        renderImageOriginalPreview();
-        renderImageOutput(null);
-        renderImageBatchList();
-        renderImageProgress();
-        return;
-    }
+async function handleImageFiles(files) {
+    if (!files.length) return;
     try {
         const loaded = await Promise.all(
             files.map(async (file) => {
-                const buffer = await file.arrayBuffer();
-                const bytes = new Uint8Array(buffer);
+                const bytes = new Uint8Array(await file.arrayBuffer());
                 return {
                     name: file.name,
                     size: file.size,
                     bytes,
                     detectedFormat: detectImageFormat(bytes, file.name),
-                    result: null,
-                    error: '',
                 };
             })
         );
+        resetImageState();
         state.image.files = loaded;
         const first = loaded[0];
         state.image.fileBytes = first.bytes;
         state.image.fileName = first.name;
         state.image.fileSize = first.size;
-        state.image.detectedFormat = first.detectedFormat || state.image.detectedFormat;
-        state.image.result = null;
-        state.image.batchResults = [];
-        state.image.progress = { completed: 0, total: loaded.length };
-        renderImageInputMeta();
-        renderImageOriginalPreview();
+        state.image.detectedFormat = first.detectedFormat;
+        renderImageError('');
         renderImageOptions(state.image.targetFormat || elements.imageTargetFormat?.value || 'webp');
-        renderImageOutput(null);
-        renderImageBatchList();
-        renderImageProgress();
-        setStatus('Images loaded', false);
     } catch (err) {
         console.error(err);
-        renderImageError(err?.message || String(err));
-        setStatus(`⚠️ ${err?.message || err}`, true);
+        renderImageError(`Couldn't read the files: ${err?.message || err}`);
     }
+    renderImageFiles();
 }
 
 function renderImageFormatSelect() {
@@ -3752,136 +3709,122 @@ function renderImageFormatSelect() {
     renderImageOptions(next);
 }
 
-function renderImageInputMeta() {
-    if (!elements.imageInputMeta) return;
-    if (!(state.image.files && state.image.files.length)) {
-        elements.imageInputMeta.textContent = 'No image selected';
-        if (elements.imageConvert) elements.imageConvert.setAttribute('disabled', 'disabled');
-        if (elements.imageDownload) elements.imageDownload.setAttribute('disabled', 'disabled');
-        return;
-    }
-    if (state.image.files.length === 1) {
-        const format = (state.image.detectedFormat || '').toUpperCase() || 'UNKNOWN';
-        const sizeLabel = formatByteSize(state.image.fileSize || state.image.fileBytes.length);
-        const name = state.image.fileName || 'Image';
-        elements.imageInputMeta.textContent = `${name} • ${sizeLabel} • ${format}`;
-    } else {
-        const totalSize = state.image.files.reduce((sum, f) => sum + (f.size || 0), 0);
-        elements.imageInputMeta.textContent = `${state.image.files.length} files • ${formatByteSize(
-            totalSize
-        )}`;
-    }
-    if (elements.imageConvert) elements.imageConvert.removeAttribute('disabled');
+function renderImageFiles() {
+    renderImageInputMeta();
+    renderImageOriginalPreview();
+    renderImageOutput();
+    renderImageBatchList();
 }
 
+function renderImageInputMeta() {
+    const files = state.image.files || [];
+    const converted = (state.image.batchResults || []).filter((item) => item?.result).length;
+    elements.imageDrop?.classList.toggle('compact', files.length > 0);
+    if (elements.imageConvert) {
+        elements.imageConvert.disabled = !files.length;
+        elements.imageConvert.firstChild.textContent =
+            files.length > 1 ? `Convert ${files.length} images ` : 'Convert ';
+    }
+    if (elements.imageDownload) {
+        // One image is saved from its row; Save all is for a batch.
+        elements.imageDownload.hidden = files.length < 2;
+        elements.imageDownload.disabled = !converted;
+    }
+    if (!elements.imageInputMeta) return;
+    if (!files.length) {
+        elements.imageInputMeta.textContent = 'JPG, PNG, WebP or AVIF · nothing leaves this page';
+        return;
+    }
+    const total = files.reduce((sum, file) => sum + (file.size || 0), 0);
+    elements.imageInputMeta.textContent =
+        files.length === 1
+            ? `${files[0].name} · ${formatByteSize(total)} — drop another to replace it`
+            : `${files.length} images · ${formatByteSize(total)} — drop more to replace them`;
+}
+
+// The first image stands for the batch: its original beside its result.
 function renderImageOriginalPreview() {
-    if (!elements.imageOriginalPreview) return;
     if (state.image.previewUrl) {
         URL.revokeObjectURL(state.image.previewUrl);
         state.image.previewUrl = '';
     }
-    if (!(state.image.fileBytes && state.image.fileBytes.length)) {
-        elements.imageOriginalPreview.innerHTML =
-            '<div class="muted">Select an image to preview</div>';
-        return;
-    }
+    const hasFile = Boolean(state.image.fileBytes?.length);
+    if (elements.imagePreviews) elements.imagePreviews.hidden = !hasFile;
+    if (!hasFile || !elements.imageOriginalPreview) return;
     const blob = new Blob([state.image.fileBytes], {
         type: imageMimeFromFormat(state.image.detectedFormat) || 'application/octet-stream',
     });
     const url = URL.createObjectURL(blob);
     state.image.previewUrl = url;
-    elements.imageOriginalPreview.innerHTML = `<img src="${escapeAttr(
-        url
-    )}" alt="Selected image preview" loading="lazy" />`;
+    elements.imageOriginalPreview.innerHTML = `<img src="${escapeAttr(url)}" alt="Original" />`;
+    const img = elements.imageOriginalPreview.querySelector('img');
+    const format = (state.image.detectedFormat || '').toUpperCase() || 'Unknown format';
+    const describe = () => {
+        if (!elements.imageOriginalMeta) return;
+        const size = img.naturalWidth ? `${img.naturalWidth} × ${img.naturalHeight} · ` : '';
+        elements.imageOriginalMeta.textContent = `${size}${format} · ${formatByteSize(state.image.fileSize)}`;
+    };
+    describe();
+    img.addEventListener('load', describe, { once: true });
 }
 
-function renderImageOutput(result) {
-    const target =
-        result ||
-        state.image.result ||
-        (state.image.batchResults || []).find((item) => item?.result)?.result;
+function renderImageOutput() {
     if (!elements.imageOutputPreview) return;
-    if (!target || !target.dataUrl) {
+    const target = state.image.result;
+    if (!target?.dataUrl) {
         elements.imageOutputPreview.innerHTML =
-            '<div class="muted">Run a conversion to see the result</div>';
+            '<span class="meta">Convert to see the result</span>';
         if (elements.imageOutputMeta) elements.imageOutputMeta.textContent = '';
-        if (elements.imageDownload) elements.imageDownload.setAttribute('disabled', 'disabled');
         return;
     }
-    elements.imageOutputPreview.innerHTML = `<img src="${escapeAttr(
-        target.dataUrl
-    )}" alt="Converted preview" loading="lazy" />`;
+    elements.imageOutputPreview.innerHTML = `<img src="${escapeAttr(target.dataUrl)}" alt="Converted" />`;
     if (elements.imageOutputMeta) {
         const bits = [];
-        if (target.width && target.height) {
-            bits.push(`${target.width} × ${target.height}`);
-        }
-        if (target.mime) bits.push(target.mime);
-        if (target.downloadName) bits.push(target.downloadName);
+        if (target.width && target.height) bits.push(`${target.width} × ${target.height}`);
+        bits.push(target.format.toUpperCase());
+        const bytes = base64ByteLength(target.dataBase64);
+        if (bytes) bits.push(formatByteSize(bytes));
         elements.imageOutputMeta.textContent = bits.join(' · ');
     }
-    if (elements.imageDownload) elements.imageDownload.removeAttribute('disabled');
-    if (elements.imageError) elements.imageError.textContent = '';
+}
+
+function base64ByteLength(b64 = '') {
+    if (!b64) return 0;
+    const padding = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
+    return Math.floor((b64.length * 3) / 4) - padding;
 }
 
 function renderImageError(message) {
-    if (elements.imageError) {
-        elements.imageError.textContent = message || '';
-    }
+    if (!elements.imageError) return;
+    elements.imageError.textContent = message || '';
+    elements.imageError.hidden = !message;
 }
 
-// Renders the per-file batch queue so users can download individual outputs.
+// One row per file: each fails or succeeds alone and is saved from its own row.
 function renderImageBatchList() {
+    const files = state.image.files || [];
+    if (elements.imageBatchTable) elements.imageBatchTable.hidden = !files.length;
     if (!elements.imageBatchList) return;
-    const items = state.image.batchResults || [];
-    if (!state.image.files.length) {
-        elements.imageBatchList.innerHTML =
-            '<div class="muted">Select images to build a conversion queue.</div>';
-        return;
-    }
-    if (!items.length) {
-        elements.imageBatchList.innerHTML =
-            '<div class="muted">Ready to convert. Click Convert to start the batch.</div>';
-        return;
-    }
-    elements.imageBatchList.innerHTML = items
-        .map((item, idx) => {
-            const name = escapeHTML(item.fileName || `File #${idx + 1}`);
-            if (item.error) {
-                return `<div class="image-batch-item">
-  <div>
-    <div>${name}</div>
-    <div class="image-batch-meta">Error</div>
-  </div>
-  <div class="image-batch-actions"></div>
-  <div class="image-batch-error">⚠️ ${escapeHTML(item.error)}</div>
-</div>`;
+    const results = state.image.batchResults || [];
+    elements.imageBatchList.innerHTML = files
+        .map((file, idx) => {
+            const item = results[idx];
+            let outcome = '<td class="meta">Ready</td>';
+            if (item?.error) outcome = `<td class="error">${escapeHTML(item.error)}</td>`;
+            else if (item?.result) {
+                const res = item.result;
+                const bits = [escapeHTML(res.downloadName)];
+                if (res.width && res.height) bits.push(`${res.width} × ${res.height}`);
+                const bytes = base64ByteLength(res.dataBase64);
+                if (bytes) bits.push(formatByteSize(bytes));
+                outcome = `<td class="ok">${bits.join(' · ')}</td>`;
             }
-            const res = item.result || {};
-            const metaBits = [];
-            if (res.format) metaBits.push(res.format.toUpperCase());
-            if (res.mime) metaBits.push(res.mime);
-            return `<div class="image-batch-item">
-  <div>
-    <div>${name}</div>
-    <div class="image-batch-meta">${metaBits.join(' · ') || 'Converted'}</div>
-  </div>
-  <div class="image-batch-actions">
-    <button class="ghost-btn" data-image-download="${idx}" ${
-        res.dataUrl ? '' : 'disabled'
-    }>Download</button>
-  </div>
-</div>`;
+            const save = item?.result?.dataUrl
+                ? `<button class="icon-btn" type="button" title="Save" data-image-download="${idx}"><svg class="i"><use href="#i-save" /></svg></button>`
+                : '';
+            return `<tr><td>${escapeHTML(file.name)}</td><td>${formatByteSize(file.size)}</td>${outcome}<td>${save}</td></tr>`;
         })
         .join('');
-}
-
-function renderImageProgress() {
-    if (!elements.imageProgressFill || !elements.imageProgressLabel) return;
-    const { completed = 0, total = 0 } = state.image.progress || {};
-    const percent = total ? Math.min(100, Math.round((completed / total) * 100)) : 0;
-    elements.imageProgressFill.style.width = `${percent}%`;
-    elements.imageProgressLabel.textContent = `${completed} / ${total}`;
 }
 
 function resetImageState() {
@@ -3896,128 +3839,82 @@ function resetImageState() {
     state.image.detectedFormat = '';
     state.image.result = null;
     state.image.batchResults = [];
-    state.image.progress = { completed: 0, total: 0 };
 }
 
-function renderImageOptions(format) {
-    if (!elements.imageOptions) return;
-    const normalizedFormat = (format || elements.imageTargetFormat?.value || 'webp')
+function imageOptionFormat(format) {
+    const normalized = (format || elements.imageTargetFormat?.value || 'webp')
         .toString()
         .trim()
         .toLowerCase();
     const detectedSource =
         normalizeImageExt(state.image.detectedFormat) ||
         normalizeImageExt(state.image.files?.[0]?.detectedFormat || '');
-    const effectiveFormat =
-        normalizedFormat === 'original' ? detectedSource || 'png' : normalizedFormat;
+    return normalized === 'original' ? detectedSource || 'png' : normalized;
+}
+
+function renderImageOptions(format) {
+    if (!elements.imageOptions) return;
+    const effectiveFormat = imageOptionFormat(format);
     const specs = imageFormatOptions[effectiveFormat] || [];
-    const existing = state.image.optionsByFormat[effectiveFormat] || {};
-    const opts = { ...existing };
+    const opts = { ...(state.image.optionsByFormat[effectiveFormat] || {}) };
     specs.forEach((spec) => {
-        if (spec.type === 'note') return;
         if (opts[spec.key] === undefined && spec.defaultValue !== undefined) {
             opts[spec.key] = spec.defaultValue;
         }
     });
     state.image.optionsByFormat[effectiveFormat] = opts;
-    if (!specs.length) {
-        elements.imageOptions.innerHTML =
-            '<div class="image-option-note">No adjustable options for this format.</div>';
-        return;
-    }
+    elements.imageOptions.hidden = !specs.length;
     elements.imageOptions.innerHTML = specs
         .map((spec) => {
-            if (spec.type === 'note') {
-                return `<div class="image-option-note">${escapeHTML(spec.text || '')}</div>`;
-            }
             const value = opts[spec.key] ?? spec.defaultValue ?? '';
+            const label = escapeHTML(spec.label || spec.key);
+            const title = spec.hint ? ` title="${escapeAttr(spec.hint)}"` : '';
             if (spec.type === 'checkbox') {
-                const checked = value ? 'checked' : '';
-                return `<label>
-                    <span>${escapeHTML(spec.label || spec.key)}</span>
-                    <input type="checkbox" data-image-opt="${spec.key}" ${checked} />
-                </label>`;
+                return `<label class="check"${title}><input type="checkbox" data-image-opt="${spec.key}"${value ? ' checked' : ''} />${label}</label>`;
             }
-            // For range inputs, add a wrapper with value display
-            if (spec.type === 'range') {
-                return `<label>
-                    <span>${escapeHTML(spec.label || spec.key)}${spec.hint ? ` — ${escapeHTML(spec.hint)}` : ''}</span>
-                    <div class="range-input-wrapper">
-                        <input type="range" data-image-opt="${spec.key}" min="${spec.min ?? ''}" max="${spec.max ?? ''}" value="${escapeAttr(value)}" />
-                        <span class="range-value">${escapeAttr(value)}</span>
-                    </div>
-                </label>`;
-            }
-            return `<label>
-                <span>${escapeHTML(spec.label || spec.key)}${spec.hint ? ` — ${escapeHTML(spec.hint)}` : ''}</span>
-                <input type="${spec.type}" data-image-opt="${spec.key}" min="${spec.min ?? ''}" max="${spec.max ?? ''}" value="${escapeAttr(value)}" />
-            </label>`;
+            return `<label class="range"${title}><span class="label">${label}</span><input type="range" data-image-opt="${spec.key}" min="${spec.min ?? ''}" max="${spec.max ?? ''}" value="${escapeAttr(value)}" /><output>${escapeHTML(String(value))}</output></label>`;
         })
         .join('');
     elements.imageOptions.querySelectorAll('[data-image-opt]').forEach((input) => {
         input.addEventListener('input', handleImageOptionChange);
-        input.addEventListener('change', handleImageOptionChange);
     });
 }
 
 function handleImageOptionChange(event) {
     const key = event.target?.dataset?.imageOpt;
     if (!key) return;
-    const format = (state.image.targetFormat || elements.imageTargetFormat?.value || 'webp')
-        .toString()
-        .trim()
-        .toLowerCase();
-    const detectedSource =
-        normalizeImageExt(state.image.detectedFormat) ||
-        normalizeImageExt(state.image.files?.[0]?.detectedFormat || '');
-    const effectiveFormat = format === 'original' ? detectedSource || 'png' : format;
+    const effectiveFormat = imageOptionFormat(state.image.targetFormat);
     const current = { ...(state.image.optionsByFormat[effectiveFormat] || {}) };
     if (event.target.type === 'checkbox') {
         current[key] = Boolean(event.target.checked);
     } else {
         const num = Number(event.target.value);
         current[key] = Number.isFinite(num) ? num : event.target.value;
-        // Update the range value display if this is a range input
-        if (event.target.type === 'range') {
-            const valueDisplay = event.target.parentElement?.querySelector('.range-value');
-            if (valueDisplay) {
-                valueDisplay.textContent = event.target.value;
-            }
-        }
+        const output = event.target.parentElement?.querySelector('output');
+        if (output) output.textContent = event.target.value;
     }
     state.image.optionsByFormat[effectiveFormat] = current;
 }
 
 function handleImageConvert() {
-    if (!isImageTool(state.currentTool)) {
-        setStatus('Select the Image Converter tool', true);
-        return;
-    }
+    if (!isImageTool(state.currentTool)) return;
     if (!state.wasmReady) {
         setStatus('Waiting for WebAssembly...', true);
         return;
     }
-    const files = state.image.files && state.image.files.length ? state.image.files : [];
-    if (!files.length) {
-        setStatus('Select an image before converting', true);
-        return;
-    }
+    const files = state.image.files || [];
+    if (!files.length) return;
     const target = elements.imageTargetFormat?.value || state.image.targetFormat || 'webp';
     state.image.targetFormat = (target || '').toString().trim().toLowerCase();
     const applyWatermark = Boolean(state.image.watermark.enabled);
     let watermark = null;
-    if (applyWatermark) {
-        try {
-            watermark = buildWatermarkPayload();
-        } catch (err) {
-            setStatus(err?.message || 'Watermark configuration invalid', true);
-            return;
-        }
+    try {
+        watermark = buildWatermarkPayload();
+    } catch (err) {
+        renderImageError(err?.message || 'Watermark settings are invalid');
+        return;
     }
     try {
-        state.image.progress = { completed: 0, total: files.length };
-        renderImageProgress();
-        setStatus(applyWatermark ? 'Applying watermark...' : 'Converting images...', false);
         // Build batch payload so the wasm helper can process files in one call.
         const payload = files.map((file) => {
             const detected =
@@ -4039,59 +3936,30 @@ function handleImageConvert() {
             ? apply_image_watermark_batch(payload)
             : convert_image_format_batch(payload);
         const items = Array.isArray(raw) ? raw : [];
-        const normalized = items.map(normalizeBatchImageResult);
-        state.image.batchResults = normalized;
-        state.image.progress = { completed: normalized.length, total: files.length };
-        // Keep single-file preview behavior by caching the first successful result.
-        const firstResult = normalized.find((item) => item.result)?.result;
-        if (firstResult) {
-            state.image.result = firstResult;
-            renderImageOutput(firstResult);
-        }
-        renderImageBatchList();
-        renderImageProgress();
-        const failures = normalized.filter((item) => item.error).length;
-        const success = normalized.length - failures;
-        setStatus(
-            failures
-                ? `Converted ${success}/${normalized.length} (some errors)`
-                : 'Batch converted',
-            Boolean(failures)
-        );
+        state.image.batchResults = items.map(normalizeBatchImageResult);
+        state.image.result = state.image.batchResults[0]?.result || null;
+        renderImageError('');
     } catch (err) {
         console.error(err);
         renderImageError(err?.message || String(err));
-        setStatus(`⚠️ ${err?.message || err}`, true);
     }
+    renderImageFiles();
 }
 
 function handleImageDownload() {
-    if (!isImageTool(state.currentTool)) {
-        setStatus('Select the Image Converter tool', true);
-        return;
-    }
-    const result = state.image.result;
-    if (!result || !result.dataUrl) {
-        setStatus('No converted image to download', true);
-        return;
-    }
-    saveFile(result.dataUrl, result.downloadName || `converted.${result.format || 'png'}`);
-    setStatus('Download ready', false);
+    (state.image.batchResults || [])
+        .filter((item) => item?.result?.dataUrl)
+        .forEach(({ result }) =>
+            saveFile(result.dataUrl, result.downloadName || `converted.${result.format || 'png'}`)
+        );
 }
 
-// Allows downloading individual items from the batch queue.
 function handleImageBatchListClick(event) {
     const button = event.target.closest('[data-image-download]');
     if (!button) return;
-    const idx = Number(button.dataset.imageDownload);
-    const item = (state.image.batchResults || [])[idx];
-    if (!item || !item.result || !item.result.dataUrl) {
-        setStatus('No converted image to download', true);
-        return;
-    }
-    const res = item.result;
+    const res = (state.image.batchResults || [])[Number(button.dataset.imageDownload)]?.result;
+    if (!res?.dataUrl) return;
     saveFile(res.dataUrl, res.downloadName || `converted.${res.format || 'png'}`);
-    setStatus(`Downloaded ${res.downloadName || 'image'}`, false);
 }
 
 function normalizeImageResult(result) {
@@ -6309,169 +6177,320 @@ function handleHashSecretInput(event) {
     }
 }
 
-function handleTimestampPreset(event) {
-    const button = event.target.closest('button[data-preset]');
-    if (!button) return;
-    const preset = button.dataset.preset;
+function initTimestampControls() {
+    if (!elements.timestampZone) return;
+    const local = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    const zones =
+        typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
+    elements.timestampZone.innerHTML = [
+        `<option value="">Local · ${escapeHTML(local)}</option>`,
+        '<option value="UTC">UTC</option>',
+        ...zones
+            .filter((zone) => zone !== 'UTC')
+            .map((zone) => `<option>${escapeHTML(zone)}</option>`),
+    ].join('');
+    elements.timestampZone.title = 'Zone for input that names none, and for the Local column';
+}
 
-    // If "Now" is already active, stop updates
-    if (preset === 'now' && timestampUpdateTimer) {
-        stopTimestampUpdates();
+function renderTimestampFormats() {
+    if (!elements.timestampFormat) return;
+    const selected = elements.timestampFormat.value || 'auto';
+    const groups = new Map();
+    (timestamp_formats() || []).forEach(({ id, group, label }) => {
+        if (!groups.has(group)) groups.set(group, []);
+        groups.get(group).push(`<option value="${escapeAttr(id)}">${escapeHTML(label)}</option>`);
+    });
+    elements.timestampFormat.innerHTML = [
+        '<option value="auto">Auto</option>',
+        ...Array.from(
+            groups,
+            ([group, options]) =>
+                `<optgroup label="${escapeAttr(group)}">${options.join('')}</optgroup>`
+        ),
+        '<option value="custom">Custom…</option>',
+    ].join('');
+    elements.timestampFormat.value = selected;
+}
+
+function timestampZone() {
+    return (
+        elements.timestampZone?.value || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    );
+}
+
+// Seconds east of UTC that `zone` keeps at the instant `ms`.
+function zoneOffsetAt(zone, ms) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: zone,
+        hourCycle: 'h23',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
+        era: 'short',
+    }).formatToParts(new Date(ms));
+    const part = (type) => Number(parts.find((p) => p.type === type)?.value || 0);
+    const year =
+        parts.find((p) => p.type === 'era')?.value === 'BC' ? 1 - part('year') : part('year');
+    const wall = new Date(0);
+    wall.setUTCFullYear(year, part('month') - 1, part('day'));
+    wall.setUTCHours(part('hour'), part('minute'), part('second'), 0);
+    return Math.round((wall.getTime() - Math.floor(ms / 1000) * 1000) / 1000);
+}
+
+function formatOffset(seconds) {
+    const sign = seconds < 0 ? '−' : '+';
+    const abs = Math.abs(seconds);
+    const hh = String(Math.floor(abs / 3600)).padStart(2, '0');
+    const mm = String(Math.floor((abs % 3600) / 60)).padStart(2, '0');
+    return `UTC${sign}${hh}:${mm}`;
+}
+
+function loadTimestampPatterns() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(timestampFormatsKey) || 'null');
+        if (Array.isArray(saved)) return saved.map(String);
+    } catch {
+        // A blocked or corrupt store falls back to the examples.
+    }
+    return [...timestampDefaultFormats];
+}
+
+function saveTimestampPatterns(patterns) {
+    try {
+        localStorage.setItem(timestampFormatsKey, JSON.stringify(patterns));
+    } catch {
+        // Storage off (private window, some webviews): the formats last until reload.
+    }
+}
+
+// Updates rows in place when their number is unchanged, so the ticking clock
+// doesn't take focus from a copy button or a pattern being typed.
+function renderTimestampRows(list, rows) {
+    if (!list) return;
+    const copy = (label, value) =>
+        `<button class="icon-btn" type="button" title="Copy ${escapeAttr(label)}" data-copy-text="${escapeAttr(value)}"${value ? '' : ' disabled'}><svg class="i"><use href="#i-copy" /></svg></button>`;
+    if (list.children.length !== rows.length) {
+        list.innerHTML = rows
+            .map(
+                ([label, value]) =>
+                    `<li><span class="k">${escapeHTML(label)}</span><span class="v"></span>${copy(label, value)}</li>`
+            )
+            .join('');
+    }
+    rows.forEach(([, value], index) => {
+        const li = list.children[index];
+        const v = li.querySelector('.v');
+        v.textContent = value;
+        v.title = value;
+        const button = li.querySelector('[data-copy-text]');
+        button.dataset.copyText = value;
+        button.disabled = !value;
+    });
+}
+
+function renderTimestampCustom(patterns, results) {
+    const list = elements.timestampCustom;
+    if (!list) return;
+    if (list.children.length !== patterns.length) {
+        list.innerHTML = patterns
+            .map(
+                (pattern, index) => `<li data-index="${index}">
+    <input class="input mono" aria-label="Pattern" placeholder="%Y-%m-%d" spellcheck="false" value="${escapeAttr(pattern)}" />
+    <span class="v"></span>
+    <span class="row-actions">
+        <button class="icon-btn" type="button" title="Copy" data-copy-text=""><svg class="i"><use href="#i-copy" /></svg></button>
+        <button class="icon-btn" type="button" title="Remove" data-remove><svg class="i"><use href="#i-clear" /></svg></button>
+    </span>
+</li>`
+            )
+            .join('');
+    }
+    patterns.forEach((_, index) => {
+        const li = list.children[index];
+        const result = results[index] || {};
+        const value = result.value ?? '';
+        const v = li.querySelector('.v');
+        v.textContent = result.error || value;
+        v.title = result.error || value;
+        v.classList.toggle('error', Boolean(result.error));
+        const button = li.querySelector('[data-copy-text]');
+        button.dataset.copyText = value;
+        button.disabled = !value;
+    });
+}
+
+function relativeWords(ms) {
+    const diff = (ms - Date.now()) / 1000;
+    const abs = Math.abs(diff);
+    const units = [
+        ['year', 31_556_952],
+        ['month', 2_629_746],
+        ['week', 604_800],
+        ['day', 86_400],
+        ['hour', 3_600],
+        ['minute', 60],
+    ];
+    const [unit, size] = units.find(([, size]) => abs >= size) || ['second', 1];
+    return new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(
+        Math.round(diff / size),
+        unit
+    );
+}
+
+function runTimestamp() {
+    if (!isTimestampTool(state.currentTool) || !state.wasmReady) return;
+    const typed = elements.timestampInput?.value.trim() || '';
+    // An empty input shows the current time, ticking, until something is typed.
+    const input = typed || 'now';
+    const format = typed ? elements.timestampFormat?.value || 'auto' : 'auto';
+    const pattern = elements.timestampPattern?.value || '';
+    const zone = timestampZone();
+    const patterns = loadTimestampPatterns();
+    let reading;
+    try {
+        reading = read_timestamp(input, format, pattern);
+    } catch (err) {
+        stopTimestampTicker();
+        showTimestampError(`${err?.message || err}`);
         return;
     }
-
-    const entry = buildTimestampPreset(preset);
-    if (!entry) return;
-    const target = document.querySelector(`#timestampWorkspace input[data-field="${entry.field}"]`);
-    if (!target) return;
-    target.value = entry.value;
-    runTimestampConversion(entry.field, entry.value);
-
-    // If "Now" preset is selected, start dynamic updates
-    if (preset === 'now') {
-        startTimestampUpdates();
-    } else {
-        stopTimestampUpdates();
-    }
-}
-
-// Global timer for timestamp updates
-let timestampUpdateTimer = null;
-
-function startTimestampUpdates() {
-    // Clear any existing timer
-    stopTimestampUpdates();
-
-    // Update immediately
-    updateAllTimestampFields();
-
-    // Set up timer to update every second
-    timestampUpdateTimer = setInterval(() => {
-        updateAllTimestampFields();
-    }, 1000);
-
-    // Update button state
-    const nowButton = document.querySelector('button[data-preset="now"]');
-    if (nowButton) {
-        nowButton.textContent = 'Stop';
-        nowButton.classList.add('active');
-    }
-}
-
-function stopTimestampUpdates() {
-    if (timestampUpdateTimer) {
-        clearInterval(timestampUpdateTimer);
-        timestampUpdateTimer = null;
-    }
-
-    // Reset button state
-    const nowButton = document.querySelector('button[data-preset="now"]');
-    if (nowButton) {
-        nowButton.textContent = 'Now';
-        nowButton.classList.remove('active');
-    }
-}
-
-function updateAllTimestampFields() {
-    if (!state.wasmReady) return;
-
-    // Use "now" source to get high-precision timestamp from Rust
     try {
-        const record = normalizeMapResult(convert_timestamp('now', ''));
-        state.timestampUpdating = true;
-
-        timestampFields.forEach(({ id, key, readonly }) => {
-            const input = document.getElementById(id);
-            if (!input) return;
-            const value = record[key] ?? '';
-
-            // For readonly fields, always update
-            // For editable fields, only update if they're currently showing "now" time
-            if (readonly || isNowFieldValue(input.value, key)) {
-                input.value = value;
+        let ms = Number(reading.seconds) * 1000;
+        let offset = 0;
+        if (zone !== 'UTC') {
+            if (reading.zoned) {
+                offset = zoneOffsetAt(zone, ms);
+            } else {
+                // Wall-clock input: find the instant whose local time it is. The second
+                // guess settles the hours around a daylight-saving change.
+                const wall = ms;
+                offset = zoneOffsetAt(zone, wall);
+                offset = zoneOffsetAt(zone, wall - offset * 1000);
+                ms = wall - offset * 1000;
             }
-        });
-
-        state.timestampUpdating = false;
+        }
+        const seconds = reading.zoned
+            ? reading.seconds
+            : (BigInt(reading.seconds) - BigInt(offset)).toString();
+        const written = format_timestamp(seconds, reading.nanos, offset, patterns);
+        showTimestamp(reading, written, { ms, offset, zone, typed, patterns });
     } catch (err) {
-        state.timestampUpdating = false;
-        console.error('Timestamp update failed:', err);
+        // Intl's dates end at ±275,760 years; wasm reads further than that.
+        stopTimestampTicker();
+        showTimestampError(
+            `Out of the range this page can place in a zone: ${err?.message || err}`
+        );
+        return;
+    }
+    if (reading.relative) {
+        state.timestampTimer ??= setInterval(runTimestamp, 1000);
+    } else {
+        stopTimestampTicker();
     }
 }
 
-function isNowFieldValue(_value, _field) {
-    // Check if the current value appears to be from a recent "now" update
-    // This is a heuristic - in practice, we'll update all fields when "Now" is active
-    return true;
+function showTimestamp(reading, written, { ms, offset, zone, typed, patterns }) {
+    const zoneName = zone === 'UTC' ? 'UTC' : zone;
+    if (elements.timestampKind) {
+        elements.timestampKind.hidden = false;
+        elements.timestampKind.textContent = reading.label;
+        elements.timestampKind.classList.toggle('live', reading.relative);
+    }
+    if (elements.timestampWords) {
+        elements.timestampWords.classList.remove('error');
+        elements.timestampWords.textContent = new Intl.DateTimeFormat('en', {
+            dateStyle: 'full',
+            timeStyle: 'long',
+            timeZone: zone,
+        }).format(new Date(ms));
+    }
+    if (elements.timestampHelp) {
+        let help = '';
+        if (!typed) help = `Showing the current time. ${timestampHelp}`;
+        else if (!reading.zoned)
+            help = `The input names no zone, so it is read as ${zoneName} time: pick another zone to change that.`;
+        elements.timestampHelp.textContent = help;
+        elements.timestampHelp.hidden = !help;
+    }
+    if (elements.timestampZoneLabel) {
+        elements.timestampZoneLabel.textContent = `${zoneName} · ${formatOffset(offset)}`;
+    }
+    const sheet = elements.timestampUnix?.closest('.sheet');
+    if (sheet) sheet.hidden = false;
+    renderTimestampRows(
+        elements.timestampUnix,
+        timestampUnixRows.map(([label, key]) => [label, written.unix[key]])
+    );
+    renderTimestampRows(elements.timestampRelative, [
+        ['From now', relativeWords(ms)],
+        ['Day', written.day],
+    ]);
+    renderTimestampRows(elements.timestampUtc, [
+        ...timestampTextRows.map(([label, key]) => [label, written.utc[key]]),
+        ['HTTP date', written.http],
+    ]);
+    renderTimestampRows(
+        elements.timestampLocal,
+        timestampTextRows.map(([label, key]) => [label, written.local[key]])
+    );
+    renderTimestampCustom(patterns, written.custom || []);
 }
 
-function buildTimestampPreset(kind) {
-    if (kind !== 'now') {
-        return null;
+function showTimestampError(message) {
+    if (elements.timestampKind) elements.timestampKind.hidden = true;
+    if (elements.timestampWords) {
+        elements.timestampWords.textContent = message;
+        elements.timestampWords.classList.add('error');
     }
-    const iso = new Date().toISOString();
-    return { field: 'iso8601', value: iso };
+    if (elements.timestampHelp) {
+        elements.timestampHelp.textContent = timestampHelp;
+        elements.timestampHelp.hidden = false;
+    }
+    // Rows of blank values would read as an answer: hide them until there is one.
+    const sheet = elements.timestampUnix?.closest('.sheet');
+    if (sheet) sheet.hidden = true;
+}
+
+function stopTimestampTicker() {
+    clearInterval(state.timestampTimer);
+    state.timestampTimer = null;
+}
+
+function addTimestampFormat() {
+    const patterns = loadTimestampPatterns();
+    patterns.push('');
+    saveTimestampPatterns(patterns);
+    runTimestamp();
+    elements.timestampCustom?.lastElementChild?.querySelector('input')?.focus();
+}
+
+function handleTimestampFormatEdit(event) {
+    const li = event.target.closest('li[data-index]');
+    if (!li || event.target.tagName !== 'INPUT') return;
+    const patterns = loadTimestampPatterns();
+    patterns[Number(li.dataset.index)] = event.target.value;
+    saveTimestampPatterns(patterns);
+    runTimestamp();
+}
+
+function handleTimestampFormatRemove(event) {
+    const button = event.target.closest('[data-remove]');
+    if (!button) return;
+    const li = button.closest('li[data-index]');
+    const patterns = loadTimestampPatterns();
+    patterns.splice(Number(li.dataset.index), 1);
+    saveTimestampPatterns(patterns);
+    // Indexes shift: draw the list again rather than patch it.
+    elements.timestampCustom.innerHTML = '';
+    runTimestamp();
 }
 
 function activateTimestampTool() {
-    if (!elements.timestampInputs?.length) return;
-    const filled = Array.from(elements.timestampInputs).find((input) => input?.value?.trim());
-    if (filled && filled.dataset.field) {
-        runTimestampConversion(filled.dataset.field, filled.value, true);
-    } else {
-        clearTimestampOutputs();
-    }
-}
-
-function handleTimestampInput(event) {
-    const target = event.target;
-    if (!target || state.timestampUpdating) return;
-    const field = target.dataset.field;
-    if (!field) return;
-    const value = target.value || '';
-    if (!value.trim()) {
-        clearTimestampOutputs();
-        return;
-    }
-    runTimestampConversion(field, value);
-}
-
-function runTimestampConversion(field, value, silent = false) {
-    if (!state.wasmReady) {
-        if (!silent) setStatus('Waiting for WebAssembly...', true);
-        return;
-    }
-    if (!elements.timestampInputs?.length) return;
-    try {
-        const record = normalizeMapResult(convert_timestamp(field, value));
-        state.timestampUpdating = true;
-        timestampFields.forEach(({ id, key, readonly }) => {
-            const input = document.getElementById(id);
-            if (!input) return;
-            const nextValue = record[key] ?? '';
-            // For readonly fields, always update
-            // For editable fields, update unless it's the current input field
-            if (readonly || key !== field) {
-                input.value = nextValue || (key === field ? value : nextValue);
-            }
-        });
-        state.timestampUpdating = false;
-        if (!silent) {
-            setStatus('Converted timestamp', false);
-        }
-    } catch (err) {
-        state.timestampUpdating = false;
-        if (!silent) {
-            setStatus(err?.message || err?.toString() || 'Conversion failed', true);
-        }
-    }
-}
-
-function clearTimestampOutputs() {
-    if (!elements.timestampInputs?.length) return;
-    elements.timestampInputs.forEach((input) => {
-        input.value = '';
-    });
+    runTimestamp();
+    elements.timestampInput?.focus();
 }
 
 function activateTotpTool() {
@@ -6601,35 +6620,11 @@ function activateDataTool() {
 }
 
 function activateDiffTool() {
-    updateDiffLineNumbers();
     scheduleDiff(true);
-}
-
-function updateDiffLineNumbers() {
-    updateTextareaLineNumbers('diffLeftInput', 'diffLeftLineNumbers');
-    updateTextareaLineNumbers('diffRightInput', 'diffRightLineNumbers');
-}
-
-function updateTextareaLineNumbers(textareaId, lineNumbersId) {
-    const textarea = elements[textareaId];
-    const lineNumbers = elements[lineNumbersId];
-    if (!textarea || !lineNumbers) return;
-
-    const lines = textarea.value.split('\n');
-    const lineCount = lines.length;
-
-    // Generate line number elements
-    const lineNumberElements = [];
-    for (let i = 1; i <= lineCount; i++) {
-        lineNumberElements.push(`<div>${i}</div>`);
-    }
-
-    lineNumbers.innerHTML = lineNumberElements.join('');
 }
 
 function handleDiffInput() {
     if (!isDiffTool(state.currentTool)) return;
-    updateDiffLineNumbers();
     scheduleDiff(false);
 }
 
@@ -6642,16 +6637,16 @@ function scheduleDiff(immediate = false) {
 
 function generateDiff() {
     if (!state.wasmReady || !isDiffTool(state.currentTool)) return;
-
     const leftText = elements.diffLeftInput?.value || '';
     const rightText = elements.diffRightInput?.value || '';
-
+    const show = (html, summary) => {
+        if (elements.diffOutput) elements.diffOutput.innerHTML = html;
+        if (elements.diffSummary) elements.diffSummary.textContent = summary;
+    };
     if (!leftText && !rightText) {
-        if (elements.diffOutput) elements.diffOutput.textContent = '';
-        if (elements.diffSummary) elements.diffSummary.textContent = 'No differences found';
+        show('', 'Paste text on both sides');
         return;
     }
-
     try {
         const unifiedDiff = generate_unified_text_diff(
             leftText,
@@ -6659,126 +6654,65 @@ function generateDiff() {
             'original.txt',
             'modified.txt'
         );
-
-        if (elements.diffOutput) {
-            if (unifiedDiff) {
-                // Apply syntax highlighting to diff output
-                elements.diffOutput.innerHTML = highlightDiffOutput(unifiedDiff);
-            } else {
-                elements.diffOutput.textContent = 'No differences found';
-            }
+        if (!unifiedDiff) {
+            show('', 'Identical');
+            return;
         }
-
-        // Update summary
-        if (elements.diffSummary) {
-            if (unifiedDiff) {
-                const stats = analyzeDiffStats(unifiedDiff);
-                elements.diffSummary.textContent = `${stats.additions} additions, ${stats.deletions} deletions`;
-            } else {
-                elements.diffSummary.textContent = 'No differences found';
-            }
-        }
+        const { additions, deletions } = analyzeDiffStats(unifiedDiff);
+        show(highlightDiffOutput(unifiedDiff), `+${additions} −${deletions}`);
+        setStatus('');
     } catch (error) {
         console.error('Diff generation failed:', error);
-        setStatus('Diff generation failed', true);
+        setStatus(`Couldn't compare: ${error?.message || error}`, true);
     }
 }
 
+// A div per line so a changed line is tinted across the whole width.
 function highlightDiffOutput(diffText) {
-    if (!diffText) return '';
-
-    // Split into lines and process each line
-    const lines = diffText.split('\n');
-    const highlighted = lines.map((line) => {
-        if (line.startsWith('+')) {
-            return `<div class="addition">${escapeHtml(line)}</div>`;
-        } else if (line.startsWith('-')) {
-            return `<div class="deletion">${escapeHtml(line)}</div>`;
-        } else if (line.startsWith('@@')) {
-            return `<div class="context"><strong>${escapeHtml(line)}</strong></div>`;
-        } else {
-            return `<div class="context">${escapeHtml(line)}</div>`;
-        }
-    });
-
-    return highlighted.join('');
+    return diffText
+        .replace(/\n$/, '')
+        .split('\n')
+        .map((line) => {
+            let kind = '';
+            if (line.startsWith('+++') || line.startsWith('---')) kind = 'file';
+            else if (line.startsWith('@@')) kind = 'hunk';
+            else if (line.startsWith('+')) kind = 'addition';
+            else if (line.startsWith('-')) kind = 'deletion';
+            return `<div${kind ? ` class="${kind}"` : ''}>${escapeHTML(line) || ' '}</div>`;
+        })
+        .join('');
 }
 
+// The +++/--- file headers are not changed lines.
 function analyzeDiffStats(diffText) {
-    const lines = diffText.split('\n');
     let additions = 0;
     let deletions = 0;
-
-    for (const line of lines) {
-        if (line.startsWith('+')) {
-            additions++;
-        } else if (line.startsWith('-')) {
-            deletions++;
-        }
+    for (const line of diffText.split('\n')) {
+        if (line.startsWith('+++') || line.startsWith('---')) continue;
+        if (line.startsWith('+')) additions++;
+        else if (line.startsWith('-')) deletions++;
     }
-
     return { additions, deletions };
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 function handleDiffSwap() {
     if (!isDiffTool(state.currentTool)) return;
-
     const leftValue = elements.diffLeftInput?.value || '';
     const rightValue = elements.diffRightInput?.value || '';
-
     if (elements.diffLeftInput) elements.diffLeftInput.value = rightValue;
     if (elements.diffRightInput) elements.diffRightInput.value = leftValue;
-
-    // Swap labels
-    const leftLabel = elements.diffLeftLabel?.textContent || 'Original Text';
-    const rightLabel = elements.diffRightLabel?.textContent || 'Modified Text';
-
+    const leftLabel = elements.diffLeftLabel?.textContent || 'Original';
+    const rightLabel = elements.diffRightLabel?.textContent || 'Modified';
     if (elements.diffLeftLabel) elements.diffLeftLabel.textContent = rightLabel;
     if (elements.diffRightLabel) elements.diffRightLabel.textContent = leftLabel;
-
-    updateDiffLineNumbers();
     scheduleDiff(true);
 }
 
 function handleDiffClear() {
     if (!isDiffTool(state.currentTool)) return;
-
     if (elements.diffLeftInput) elements.diffLeftInput.value = '';
     if (elements.diffRightInput) elements.diffRightInput.value = '';
-    if (elements.diffOutput) elements.diffOutput.textContent = '';
-
-    updateDiffLineNumbers();
-    if (elements.diffSummary) elements.diffSummary.textContent = 'No differences found';
-}
-
-function handleDiffCopy(side) {
-    if (!isDiffTool(state.currentTool)) return;
-
-    let text = '';
-    if (side === 'left' && elements.diffLeftInput) {
-        text = elements.diffLeftInput.value;
-    } else if (side === 'right' && elements.diffRightInput) {
-        text = elements.diffRightInput.value;
-    }
-
-    if (text) {
-        copyText(text, 'Diff input');
-    }
-}
-
-function handleDiffCopyOutput() {
-    if (!isDiffTool(state.currentTool) || !elements.diffOutput) return;
-
-    const text = elements.diffOutput.textContent || '';
-    if (text) {
-        copyText(text, 'Diff output');
-    }
+    scheduleDiff(true);
 }
 
 function handleDataRowsChange() {
@@ -7825,8 +7759,7 @@ function sanitizeRandomExclude(value) {
 async function copyText(value, label) {
     try {
         await navigator.clipboard.writeText(value);
-        setStatus(`Copied ${label}`, false);
-        showCopyFeedback(`Copied ${label}`);
+        showCopyFeedback(label ? `Copied ${label}` : 'Copied');
     } catch (err) {
         console.error(err);
         setStatus('Unable to access clipboard', true);
@@ -7835,24 +7768,13 @@ async function copyText(value, label) {
 }
 
 function showCopyFeedback(message) {
-    // Remove existing feedback
-    const existing = document.querySelector('.copy-feedback');
-    if (existing) {
-        existing.remove();
-    }
-
-    // Create new feedback element
-    const feedback = document.createElement('div');
-    feedback.className = 'copy-feedback';
-    feedback.textContent = message;
-    document.body.appendChild(feedback);
-
-    // Remove after animation
-    setTimeout(() => {
-        if (feedback.parentNode) {
-            feedback.remove();
-        }
-    }, 2000);
+    document.querySelector('.toast')?.remove();
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.setAttribute('role', 'status');
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    toast.addEventListener('animationend', () => toast.remove());
 }
 
 function escapeHTML(value = '') {

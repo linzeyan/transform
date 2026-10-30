@@ -9,23 +9,15 @@
     padding: 16px 24px 8px;
 }
 
-#converterWorkspace {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+/* Inside the ui/ frame (a 100vh column under the tool's header) a workspace scrolls by itself. */
+.tool-view {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    align-content: start;
 }
 
 #coderWorkspace {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-#pairWorkspace {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-#numberWorkspace {
-    grid-template-columns: 1fr;
-}
-
-#ipv4Workspace {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -103,7 +95,7 @@
     background: color-mix(in srgb, var(--overlay) 14%, transparent);
 }
 
-textarea {
+:where(.legacy) textarea {
     flex: 1;
     background: transparent;
     border: none;
@@ -114,7 +106,7 @@ textarea {
     min-height: 220px;
 }
 
-textarea:focus {
+:where(.legacy) textarea:focus {
     outline: none;
 }
 
@@ -123,30 +115,6 @@ textarea:focus {
     gap: 24px;
     padding: 24px 28px 16px;
     animation: fade-in 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-#converterWorkspace {
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-    gap: 28px;
-}
-
-#converterWorkspace .panel {
-    background: linear-gradient(
-        135deg in srgb,
-        color-mix(in srgb, var(--overlay) 5%, transparent) 0%,
-        color-mix(in srgb, var(--overlay) 2%, transparent) 100%
-    );
-    border: 1px solid var(--card-border);
-    border-radius: 16px;
-    box-shadow: 0 4px 16px color-mix(in srgb, var(--shade) 15%, transparent);
-    transition: var(--transition-smooth);
-    overflow: hidden;
-}
-
-#converterWorkspace .panel:hover {
-    border-color: var(--card-hover-border);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--shade) 20%, transparent);
 }
 
 .panel-header {
@@ -197,25 +165,6 @@ textarea:focus {
     box-shadow: 0 2px 8px color-mix(in srgb, var(--shade) 15%, transparent);
 }
 
-#converterWorkspace textarea {
-    background: color-mix(in srgb, var(--shade) 25%, transparent);
-    border: 1px solid color-mix(in srgb, var(--overlay) 8%, transparent);
-    border-radius: 12px;
-    padding: 20px;
-    font-size: 14px;
-    line-height: 1.6;
-    resize: vertical;
-    min-height: 300px;
-    transition: var(--transition-smooth);
-}
-
-#converterWorkspace textarea:focus {
-    background: color-mix(in srgb, var(--shade) 35%, transparent);
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
-    outline: none;
-}
-
 /* Enhanced coder workspace */
 #coderWorkspace {
     grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
@@ -246,7 +195,6 @@ textarea:focus {
 #randomWorkspace,
 #qrWorkspace,
 #totpWorkspace,
-#sqlWorkspace,
 #sshWorkspace {
     max-width: 800px;
     margin: 0 auto;
@@ -257,7 +205,6 @@ textarea:focus {
 #randomWorkspace .panel,
 #qrWorkspace .panel,
 #totpWorkspace .panel,
-#sqlWorkspace .panel,
 #sshWorkspace .panel {
     background: linear-gradient(
         135deg in srgb,
@@ -275,7 +222,6 @@ textarea:focus {
 #randomWorkspace .panel:hover,
 #qrWorkspace .panel:hover,
 #totpWorkspace .panel:hover,
-#sqlWorkspace .panel:hover,
 #sshWorkspace .panel:hover {
     border-color: var(--card-hover-border);
     transform: translateY(-2px);

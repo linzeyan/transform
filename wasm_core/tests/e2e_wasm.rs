@@ -10,14 +10,14 @@ use wasm_bindgen_test::*;
 
 use wasm_core::{
     apply_image_watermark, argon2_hash, argon2_verify, bcrypt_hash, bcrypt_verify,
-    convert_image_format, convert_number_base, convert_tabular_format, convert_timestamp,
-    convert_units, decode_content, decode_content_bytes, decrypt_bytes, encode_content,
-    encode_content_bytes, encrypt_bytes, generate_ascii_art, generate_insert_statements,
+    convert_image_format, convert_number_base, convert_tabular_format, convert_units,
+    decode_content, decode_content_bytes, decrypt_bytes, encode_content, encode_content_bytes,
+    encrypt_bytes, format_timestamp, generate_ascii_art, generate_insert_statements,
     generate_qr_code, generate_text_diff, generate_unified_text_diff, generate_user_agents,
     generate_uuids, hash_content, hash_content_bytes, html_to_markdown_text, inspect_certificates,
     ipv4_info, jwt_decode, jwt_encode, list_ascii_fonts, markdown_to_html_text,
-    random_number_sequences, random_numeric_range_sequences, totp_token, transform_format,
-    url_decode, url_encode,
+    random_number_sequences, random_numeric_range_sequences, read_timestamp, timestamp_formats,
+    totp_token, transform_format, url_decode, url_encode,
 };
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -37,15 +37,15 @@ fn landing_page_shows_converter_by_default() {
     const INDEX_HTML: &str =
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
     assert!(
-        INDEX_HTML.contains("id=\"converterWorkspace\" class=\"tool-view\""),
+        INDEX_HTML.contains("id=\"converterWorkspace\" class=\"tool-body\""),
         "converter workspace should be visible by default"
     );
     assert!(
-        INDEX_HTML.contains("id=\"numberWorkspace\" class=\"tool-view hidden\""),
+        INDEX_HTML.contains("id=\"numberWorkspace\" class=\"tool-body\" hidden"),
         "number converter workspace should start hidden"
     );
     assert!(
-        INDEX_HTML.contains("<h1 id=\"toolName\">Format Converter</h1>"),
+        INDEX_HTML.contains("<h1 id=\"toolName\" class=\"tool-title\">Format Converter</h1>"),
         "landing title should be Format Converter"
     );
 }
@@ -133,16 +133,12 @@ fn main_js_declares_hash_routing_helpers() {
 }
 
 #[wasm_bindgen_test]
-fn image_converter_exposes_batch_progress_controls() {
+fn image_converter_takes_a_batch() {
     const INDEX_HTML: &str =
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
     assert!(
         INDEX_HTML.contains("id=\"imageBatchList\""),
         "batch list container should exist for image converter"
-    );
-    assert!(
-        INDEX_HTML.contains("id=\"imageProgressFill\""),
-        "progress bar fill should be present for batch conversions"
     );
     assert!(
         INDEX_HTML.contains("id=\"imageFile\"") && INDEX_HTML.contains("multiple"),
@@ -341,13 +337,13 @@ fn tabular_converter_dom_controls_exist() {
     const INDEX_HTML: &str =
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
     for id in [
-        "tabularSection",
+        "tabularDrop",
         "tabularFile",
         "tabularFrom",
         "tabularTo",
         "tabularConvert",
         "tabularDownload",
-        "tabularProgress",
+        "tabularFiles",
         "tabularStatus",
     ] {
         assert!(
@@ -452,7 +448,7 @@ fn webp_quality_slider_is_declared_in_frontend() {
     assert!(
         MAIN_JS.contains("webp: [")
             && MAIN_JS.contains("key: 'quality'")
-            && MAIN_JS.contains("hint: '100 = lossless (default)'"),
+            && MAIN_JS.contains("hint: '100 = lossless; lower reduces the colours first'"),
         "frontend config should ship a WebP quality control while keeping libwebp out"
     );
 }
@@ -617,183 +613,71 @@ fn unit_converter_bits_and_bytes() {
 }
 
 #[wasm_bindgen_test]
-fn timestamp_sql_datetime_to_epoch() {
-    let map = js_to_json(
-        convert_timestamp("sql_datetime", "2025-01-02 03:04:05").expect("timestamp conversion"),
-    );
-    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05Z");
-    assert_eq!(field(&map, "timestamp_seconds"), "1735787045");
-    assert_eq!(field(&map, "timestamp_milliseconds"), "1735787045000");
-}
+fn timestamp_reads_any_format_and_writes_every_form() {
+    let reading =
+        js_to_json(read_timestamp("02/Jan/2026:11:04:05 +0800", "auto", "").expect("read"));
+    assert_eq!(field(&reading, "label"), "Access log (CLF)");
+    assert_eq!(reading["zoned"], true);
+    // Text, not a number: past 2^53 a JS number would round the seconds.
+    assert_eq!(field(&reading, "seconds"), "1767323045");
 
-#[wasm_bindgen_test]
-fn timestamp_converter_supports_new_formats() {
-    let map = js_to_json(
-        convert_timestamp("sql_datetime", "2025-01-02 03:04:05").expect("timestamp conversion"),
-    );
-
-    // Test ISO 8601 format (basic format without nanoseconds)
-    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05Z");
-
-    // Test RFC 3339 format (with nanoseconds)
-    let rfc3339 = field(&map, "rfc3339");
-    assert!(rfc3339.starts_with("2025-01-02T03:04:05."));
-    assert!(rfc3339.ends_with("Z"));
-
-    // Test RFC 2822 format
-    assert_eq!(field(&map, "rfc2822"), "Thu, 2 Jan 2025 03:04:05 +0000");
-
-    // Test ISO 9075 format (SQL timestamp with timezone)
-    assert_eq!(field(&map, "iso9075"), "2025-01-02 03:04:05+00:00");
-
-    // Test RFC 7231 format (HTTP date format)
-    assert_eq!(field(&map, "rfc7231"), "Thu, 02 Jan 2025 03:04:05 GMT");
-
-    // Test SQL formats
-    assert_eq!(field(&map, "sql_datetime"), "2025-01-02 03:04:05");
-    assert_eq!(field(&map, "sql_date"), "2025-01-02");
-
-    // Test Unix timestamp formats
-    assert_eq!(field(&map, "timestamp_seconds"), "1735787045");
-    assert_eq!(field(&map, "timestamp_milliseconds"), "1735787045000");
-    assert_eq!(field(&map, "timestamp_microseconds"), "1735787045000000");
-    assert_eq!(field(&map, "timestamp_nanoseconds"), "1735787045000000000");
-
-    // Test browser timezone formats exist
+    let patterns = vec!["%Y/%m/%d %H:%M".to_string(), "%Q".to_string()];
+    let written = js_to_json(format_timestamp("1767323045", 0, 8 * 3600, patterns).expect("write"));
+    assert_eq!(written["unix"]["milliseconds"], "1767323045000");
+    assert_eq!(written["utc"]["iso8601"], "2026-01-02T03:04:05Z");
+    assert_eq!(written["local"]["iso8601"], "2026-01-02T11:04:05+08:00");
+    assert_eq!(written["http"], "Fri, 02 Jan 2026 03:04:05 GMT");
+    assert_eq!(written["custom"][0]["value"], "2026/01/02 11:04");
     assert!(
-        map.get("browser_iso8601")
-            .and_then(|v| v.as_str())
-            .is_some()
-    );
-    assert!(
-        map.get("browser_rfc3339")
-            .and_then(|v| v.as_str())
-            .is_some()
-    );
-    assert!(
-        map.get("browser_rfc2822")
-            .and_then(|v| v.as_str())
-            .is_some()
-    );
-    assert!(
-        map.get("browser_iso9075")
-            .and_then(|v| v.as_str())
-            .is_some()
-    );
-    assert!(
-        map.get("browser_rfc7231")
-            .and_then(|v| v.as_str())
-            .is_some()
-    );
-    assert!(
-        map.get("browser_sql_datetime")
-            .and_then(|v| v.as_str())
-            .is_some()
-    );
-    assert!(
-        map.get("browser_sql_date")
-            .and_then(|v| v.as_str())
-            .is_some()
+        written["custom"][1]["error"].is_string(),
+        "a bad pattern explains itself"
     );
 }
 
 #[wasm_bindgen_test]
-fn timestamp_converter_now_source_returns_result() {
-    let map = js_to_json(convert_timestamp("now", "").expect("timestamp conversion for now"));
-
-    // Verify we get a populated map
-    assert!(field(&map, "iso8601").len() > 0);
-    assert!(field(&map, "rfc3339").len() > 0);
-
-    // Verify RFC 3339 has nanoseconds (contains dot)
-    assert!(field(&map, "rfc3339").contains('.'));
+fn timestamp_now_is_the_browsers_clock() {
+    let reading = js_to_json(read_timestamp("now", "auto", "").expect("read now"));
+    assert_eq!(reading["relative"], true);
+    let seconds: f64 = field(&reading, "seconds").parse().expect("seconds");
+    assert!((seconds - js_sys::Date::now() / 1000.0).abs() < 5.0);
 }
 
 #[wasm_bindgen_test]
-fn timestamp_converter_from_iso8601() {
-    let map = js_to_json(
-        convert_timestamp("iso8601", "2025-01-02T03:04:05Z").expect("timestamp conversion"),
-    );
-
-    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05Z");
-    assert!(field(&map, "rfc3339").starts_with("2025-01-02T03:04:05."));
-    assert_eq!(field(&map, "rfc2822"), "Thu, 2 Jan 2025 03:04:05 +0000");
-    assert_eq!(field(&map, "iso9075"), "2025-01-02 03:04:05+00:00");
-    assert_eq!(field(&map, "rfc7231"), "Thu, 02 Jan 2025 03:04:05 GMT");
+fn timestamp_menu_lists_the_formats_it_reads() {
+    let list = js_to_json(timestamp_formats().expect("formats"));
+    let ids: Vec<&str> = list
+        .as_array()
+        .expect("array")
+        .iter()
+        .map(|f| f["id"].as_str().expect("id"))
+        .collect();
+    for id in ["unix_s", "unix_ms", "iso8601", "rfc2822", "clf", "uuid"] {
+        assert!(ids.contains(&id), "{id} missing from {ids:?}");
+    }
+    for id in ids {
+        assert!(
+            read_timestamp("?", id, "").is_err(),
+            "{id} should reject nonsense"
+        );
+    }
 }
 
 #[wasm_bindgen_test]
-fn timestamp_converter_from_rfc3339_with_nanos() {
-    let map = js_to_json(
-        convert_timestamp("rfc3339", "2025-01-02T03:04:05.123456789Z")
-            .expect("timestamp conversion"),
-    );
-
-    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05Z");
-    assert_eq!(field(&map, "rfc3339"), "2025-01-02T03:04:05.123456789Z");
-    assert_eq!(field(&map, "rfc2822"), "Thu, 2 Jan 2025 03:04:05 +0000");
-}
-
-#[wasm_bindgen_test]
-fn timestamp_converter_from_iso9075() {
-    let map = js_to_json(
-        convert_timestamp("iso9075", "2025-01-02 03:04:05+00:00").expect("timestamp conversion"),
-    );
-
-    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05Z");
-    assert!(field(&map, "rfc3339").starts_with("2025-01-02T03:04:05."));
-    assert_eq!(field(&map, "iso9075"), "2025-01-02 03:04:05+00:00");
-}
-
-#[wasm_bindgen_test]
-fn timestamp_converter_from_rfc7231() {
-    let map = js_to_json(
-        convert_timestamp("rfc7231", "Thu, 02 Jan 2025 03:04:05 GMT")
-            .expect("timestamp conversion"),
-    );
-
-    assert_eq!(field(&map, "iso8601"), "2025-01-02T03:04:05Z");
-    assert!(field(&map, "rfc3339").starts_with("2025-01-02T03:04:05."));
-    assert_eq!(field(&map, "rfc7231"), "Thu, 02 Jan 2025 03:04:05 GMT");
-}
-
-#[wasm_bindgen_test]
-fn timestamp_workspace_has_new_format_controls() {
+fn timestamp_workspace_has_one_input() {
     const INDEX_HTML: &str =
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
-
-    // Check that new format inputs exist
     for id in [
-        "timestampIso",       // ISO 8601
-        "timestampRfc3339",   // RFC 3339
-        "timestampRfc",       // RFC 2822
-        "timestampIso9075",   // ISO 9075
-        "timestampRfc7231",   // RFC 7231
-        "timestampSql",       // SQL datetime
-        "timestampSqlDate",   // SQL date
-        "timestampSeconds",   // Unix seconds
-        "timestampMillis",    // Unix milliseconds
-        "timestampMicros",    // Unix microseconds
-        "timestampNanos",     // Unix nanoseconds
-        "browserIso8601",     // Browser ISO 8601 (readonly)
-        "browserRfc3339",     // Browser RFC 3339 (readonly)
-        "browserRfc2822",     // Browser RFC 2822 (readonly)
-        "browserIso9075",     // Browser ISO 9075 (readonly)
-        "browserRfc7231",     // Browser RFC 7231 (readonly)
-        "browserSqlDatetime", // Browser SQL datetime (readonly)
-        "browserSqlDate",     // Browser SQL date (readonly)
+        "timestampInput",
+        "timestampFormat",
+        "timestampPattern",
+        "timestampZone",
+        "timestampNow",
     ] {
         assert!(
             INDEX_HTML.contains(&format!("id=\"{id}\"")),
-            "timestamp converter should have control {id}"
+            "timestamp tool should have control {id}"
         );
     }
-
-    // Check that Now button exists
-    assert!(
-        INDEX_HTML.contains("data-preset=\"now\""),
-        "timestamp converter should have Now button"
-    );
 }
 
 #[wasm_bindgen_test]
@@ -1100,79 +984,31 @@ fn diff_tool_handles_identical_texts() {
 fn image_converter_has_range_slider_support() {
     const MAIN_JS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/main.js"));
 
-    // Verify that the JavaScript includes range input wrapper for value display
+    // A slider without its number makes the user guess the quality they picked.
     assert!(
-        MAIN_JS.contains("range-input-wrapper"),
-        "main.js should include range-input-wrapper class for slider UI"
+        MAIN_JS.contains(r#"<label class="range"#) && MAIN_JS.contains("<output>"),
+        "main.js should render each image slider inside a .range label with an <output>"
     );
-
-    // Verify that range value display element is created
     assert!(
-        MAIN_JS.contains("range-value"),
-        "main.js should include range-value class for displaying slider values"
-    );
-
-    // Verify that the code handles range input type specifically
-    assert!(
-        MAIN_JS.contains("spec.type === 'range'"),
-        "main.js should have special handling for range input type"
-    );
-
-    // Verify that value display is updated on input change
-    assert!(
-        MAIN_JS.contains("event.target.type === 'range'"),
-        "main.js should update range value display on input change"
+        MAIN_JS.contains("querySelector('output')"),
+        "main.js should update the slider's <output> as it moves"
     );
 }
 
-/// Test that the CSS includes proper styling for range input sliders.
-/// This ensures sliders are visible with proper track, thumb, and value display styling.
+/// The sliders are native ones in the theme's accent, with their value laid out beside them.
 #[wasm_bindgen_test]
 fn range_slider_css_styles_exist() {
-    const FORMS_CSS: &str = include_str!(concat!(
+    const COMPONENTS_CSS: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../www/css/components/forms.css"
+        "/../www/css/ui/components.css"
     ));
-
-    // Verify range input wrapper styles exist
     assert!(
-        FORMS_CSS.contains(".range-input-wrapper"),
-        "forms.css should include range-input-wrapper styles"
+        COMPONENTS_CSS.contains("[type='range'])")
+            && COMPONENTS_CSS.contains("accent-color: var(--ui-accent)"),
+        "components.css should colour native sliders with the accent"
     );
-
-    // Verify range value display styles exist
     assert!(
-        FORMS_CSS.contains(".range-value"),
-        "forms.css should include range-value display styles"
-    );
-
-    // Verify WebKit slider track styles exist
-    assert!(
-        FORMS_CSS.contains("input[type='range']::-webkit-slider-runnable-track"),
-        "forms.css should include WebKit slider track styles"
-    );
-
-    // Verify WebKit slider thumb styles exist
-    assert!(
-        FORMS_CSS.contains("input[type='range']::-webkit-slider-thumb"),
-        "forms.css should include WebKit slider thumb styles"
-    );
-
-    // Verify Firefox slider track styles exist
-    assert!(
-        FORMS_CSS.contains("input[type='range']::-moz-range-track"),
-        "forms.css should include Firefox slider track styles"
-    );
-
-    // Verify Firefox slider thumb styles exist
-    assert!(
-        FORMS_CSS.contains("input[type='range']::-moz-range-thumb"),
-        "forms.css should include Firefox slider thumb styles"
-    );
-
-    // Verify that range input has appearance reset
-    assert!(
-        FORMS_CSS.contains("appearance: none"),
-        "forms.css should reset default range input appearance"
+        COMPONENTS_CSS.contains(".range {") && COMPONENTS_CSS.contains(".range output {"),
+        "components.css should lay out a slider's <output> beside it"
     );
 }

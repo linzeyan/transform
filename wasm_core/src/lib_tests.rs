@@ -3,7 +3,6 @@ use crate::{ascii, cert};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64_STD; // Base64 encoder used by QR tests.
 use bcrypt::BASE_64;
-use chrono::{TimeZone, Timelike, Utc};
 use data_encoding::{BASE32, BASE32HEX};
 use image::{DynamicImage, ImageFormat, Luma};
 use qrcode::{EcLevel, QrCode};
@@ -291,168 +290,6 @@ fn generate_qr_code_accepts_custom_ecc_level() {
 }
 
 #[test]
-fn convert_timestamp_internal_from_sql_datetime() {
-    let map = convert_timestamp_internal("sql_datetime", "2025-01-02 03:04:05").unwrap();
-    let expected_dt = Utc
-        .with_ymd_and_hms(2025, 1, 2, 3, 4, 5)
-        .single()
-        .expect("valid timestamp");
-
-    // Test ISO 8601 format (basic format without nanoseconds)
-    assert_eq!(map.get("iso8601").unwrap(), "2025-01-02T03:04:05Z");
-
-    // Test RFC 3339 format (with nanoseconds)
-    assert!(map.get("rfc3339").unwrap().contains("2025-01-02T03:04:05."));
-    assert!(map.get("rfc3339").unwrap().ends_with("Z"));
-
-    // Test RFC 2822 format
-    assert_eq!(map.get("rfc2822").unwrap(), &expected_dt.to_rfc2822());
-
-    // Test ISO 9075 format (SQL timestamp with timezone)
-    assert_eq!(map.get("iso9075").unwrap(), "2025-01-02 03:04:05+00:00");
-
-    // Test RFC 7231 format (HTTP date format)
-    assert_eq!(map.get("rfc7231").unwrap(), "Thu, 02 Jan 2025 03:04:05 GMT");
-
-    // Test SQL formats
-    assert_eq!(map.get("sql_datetime").unwrap(), "2025-01-02 03:04:05");
-    assert_eq!(map.get("sql_date").unwrap(), "2025-01-02");
-
-    // Test Unix timestamp formats
-    assert_eq!(
-        map.get("timestamp_seconds").unwrap(),
-        &expected_dt.timestamp().to_string()
-    );
-
-    // Test browser timezone formats exist
-    assert!(map.contains_key("browser_iso8601"));
-    assert!(map.contains_key("browser_rfc3339"));
-    assert!(map.contains_key("browser_rfc2822"));
-    assert!(map.contains_key("browser_iso9075"));
-    assert!(map.contains_key("browser_rfc7231"));
-    assert!(map.contains_key("browser_sql_datetime"));
-    assert!(map.contains_key("browser_sql_date"));
-}
-
-#[test]
-fn convert_timestamp_internal_from_iso8601() {
-    let map = convert_timestamp_internal("iso8601", "2025-01-02T03:04:05Z").unwrap();
-    let expected_dt = Utc
-        .with_ymd_and_hms(2025, 1, 2, 3, 4, 5)
-        .single()
-        .expect("valid timestamp");
-
-    assert_eq!(map.get("iso8601").unwrap(), "2025-01-02T03:04:05Z");
-    assert_eq!(
-        map.get("rfc3339").unwrap(),
-        &expected_dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)
-    );
-    assert_eq!(map.get("rfc2822").unwrap(), &expected_dt.to_rfc2822());
-    assert_eq!(map.get("iso9075").unwrap(), "2025-01-02 03:04:05+00:00");
-    assert_eq!(map.get("rfc7231").unwrap(), "Thu, 02 Jan 2025 03:04:05 GMT");
-}
-
-#[test]
-fn convert_timestamp_internal_from_rfc3339() {
-    let map = convert_timestamp_internal("rfc3339", "2025-01-02T03:04:05.123456789Z").unwrap();
-    let expected_dt = Utc
-        .with_ymd_and_hms(2025, 1, 2, 3, 4, 5)
-        .unwrap()
-        .with_nanosecond(123_456_789)
-        .unwrap();
-
-    assert_eq!(map.get("iso8601").unwrap(), "2025-01-02T03:04:05Z");
-    assert_eq!(
-        map.get("rfc3339").unwrap(),
-        &expected_dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)
-    );
-    assert_eq!(map.get("rfc2822").unwrap(), &expected_dt.to_rfc2822());
-}
-
-#[test]
-fn convert_timestamp_internal_from_iso9075() {
-    let map = convert_timestamp_internal("iso9075", "2025-01-02 03:04:05+00:00").unwrap();
-    let expected_dt = Utc
-        .with_ymd_and_hms(2025, 1, 2, 3, 4, 5)
-        .single()
-        .expect("valid timestamp");
-
-    assert_eq!(map.get("iso8601").unwrap(), "2025-01-02T03:04:05Z");
-    assert_eq!(
-        map.get("rfc3339").unwrap(),
-        &expected_dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)
-    );
-    assert_eq!(map.get("iso9075").unwrap(), "2025-01-02 03:04:05+00:00");
-}
-
-#[test]
-fn convert_timestamp_internal_from_rfc7231() {
-    let map = convert_timestamp_internal("rfc7231", "Thu, 02 Jan 2025 03:04:05 GMT").unwrap();
-    let expected_dt = Utc
-        .with_ymd_and_hms(2025, 1, 2, 3, 4, 5)
-        .single()
-        .expect("valid timestamp");
-
-    assert_eq!(map.get("iso8601").unwrap(), "2025-01-02T03:04:05Z");
-    assert_eq!(
-        map.get("rfc3339").unwrap(),
-        &expected_dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)
-    );
-    assert_eq!(map.get("rfc7231").unwrap(), "Thu, 02 Jan 2025 03:04:05 GMT");
-}
-
-#[test]
-fn parse_iso9075_timestamp_with_timezone() {
-    let dt = parse_iso9075_timestamp("2025-01-02 03:04:05+00:00").unwrap();
-    let expected_dt = Utc
-        .with_ymd_and_hms(2025, 1, 2, 3, 4, 5)
-        .single()
-        .expect("valid timestamp");
-    assert_eq!(dt, expected_dt);
-}
-
-#[test]
-fn parse_iso9075_timestamp_without_timezone() {
-    let dt = parse_iso9075_timestamp("2025-01-02 03:04:05").unwrap();
-    let expected_dt = Utc
-        .with_ymd_and_hms(2025, 1, 2, 3, 4, 5)
-        .single()
-        .expect("valid timestamp");
-    assert_eq!(dt, expected_dt);
-}
-
-#[test]
-fn parse_rfc7231_timestamp_gmt() {
-    let dt = parse_rfc7231_timestamp("Thu, 02 Jan 2025 03:04:05 GMT").unwrap();
-    let expected_dt = Utc
-        .with_ymd_and_hms(2025, 1, 2, 3, 4, 5)
-        .single()
-        .expect("valid timestamp");
-    assert_eq!(dt, expected_dt);
-}
-
-#[test]
-fn parse_iso8601_timestamp_basic() {
-    let dt = parse_iso8601_timestamp("2025-01-02T03:04:05Z").unwrap();
-    let expected_dt = Utc
-        .with_ymd_and_hms(2025, 1, 2, 3, 4, 5)
-        .single()
-        .expect("valid timestamp");
-    assert_eq!(dt, expected_dt);
-}
-
-#[test]
-fn parse_rfc3339_timestamp_with_nanos() {
-    let dt = parse_rfc3339_timestamp("2025-01-02T03:04:05.123456789Z").unwrap();
-    let expected_dt = Utc
-        .with_ymd_and_hms(2025, 1, 2, 3, 4, 5)
-        .unwrap()
-        .with_nanosecond(123_456_789)
-        .unwrap();
-    assert_eq!(dt, expected_dt);
-}
-
-#[test]
 fn convert_units_internal_converts_bytes() {
     let map = convert_units_internal("byte", "1024").unwrap();
     assert_eq!(map.get("byte").unwrap(), "1024");
@@ -718,20 +555,6 @@ fn decrypt_bytes_internal_rejects_empty_key() {
 }
 
 #[test]
-fn convert_timestamp_internal_parses_epoch_millis() {
-    let map = convert_timestamp_internal("timestamp_milliseconds", "1735689600000").unwrap();
-    assert_eq!(map.get("sql_date").unwrap(), "2025-01-01");
-    assert_eq!(map.get("timestamp_seconds").unwrap(), "1735689600");
-}
-
-#[test]
-fn convert_timestamp_internal_accepts_rfc2822() {
-    let map = convert_timestamp_internal("rfc2822", "Wed, 02 Oct 2002 13:00:00 GMT").unwrap();
-    assert_eq!(map.get("sql_date").unwrap(), "2002-10-02");
-    assert_eq!(map.get("timestamp_seconds").unwrap(), "1033563600");
-}
-
-#[test]
 fn ipv4_info_parses_cidr_and_calculates_hosts() {
     let info = ip_info_internal("10.0.0.1/30").unwrap();
     assert_eq!(info.kind.unwrap(), "network");
@@ -897,34 +720,6 @@ fn inspect_certificates_parses_chain_and_links_issuer() {
         !leaf.fingerprints.sha256.is_empty(),
         "fingerprints should be present"
     );
-}
-
-#[test]
-fn convert_timestamp_internal_now_returns_current_time() {
-    let map = convert_timestamp_internal("now", "").unwrap();
-
-    // Check that all expected keys are present
-    assert!(map.contains_key("iso8601"));
-    assert!(map.contains_key("rfc3339"));
-    assert!(map.contains_key("rfc2822"));
-    assert!(map.contains_key("iso9075"));
-    assert!(map.contains_key("rfc7231"));
-    assert!(map.contains_key("sql_datetime"));
-    assert!(map.contains_key("sql_date"));
-    assert!(map.contains_key("timestamp_seconds"));
-    assert!(map.contains_key("timestamp_milliseconds"));
-    assert!(map.contains_key("timestamp_microseconds"));
-    assert!(map.contains_key("timestamp_nanoseconds"));
-
-    // Verify year is recent (>= 2024)
-    let iso = map.get("iso8601").unwrap();
-    assert!(iso.starts_with("202") || iso.starts_with("203")); // Covers 2020-2039
-
-    // Verify RFC 3339 contains nanoseconds (dot followed by digits)
-    let rfc3339 = map.get("rfc3339").unwrap();
-    assert!(rfc3339.contains('.'));
-    // Ensure it ends with Z
-    assert!(rfc3339.ends_with('Z'));
 }
 
 #[test]
@@ -1200,19 +995,6 @@ fn ipv6_cidr_slash_zero() {
 fn ipv6_cidr_slash_128() {
     let info = ip_info_internal("::1/128").unwrap();
     assert_eq!(info.host_bits.unwrap(), "0");
-}
-
-#[test]
-fn timestamp_epoch_zero() {
-    let map = convert_timestamp_internal("timestamp_seconds", "0").unwrap();
-    assert_eq!(map.get("sql_date").unwrap(), "1970-01-01");
-}
-
-#[test]
-fn timestamp_far_future() {
-    // Year 2100: Unix timestamp 4102444800
-    let map = convert_timestamp_internal("timestamp_seconds", "4102444800").unwrap();
-    assert!(map.get("iso8601").unwrap().starts_with("2100-"));
 }
 
 #[test]
