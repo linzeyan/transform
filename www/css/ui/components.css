@@ -153,6 +153,22 @@ body.ui {
     min-width: 0;
 }
 
+/* A filter: the magnifier sits inside the box, as in the tool list. */
+.field.search {
+    position: relative;
+}
+
+.field.search > .input {
+    padding-left: 30px;
+}
+
+.field.search > .i {
+    position: absolute;
+    left: 9px;
+    color: var(--ui-faint);
+    pointer-events: none;
+}
+
 /* Options that come and go with a choice (an encoder's) sit in the bar as its own items. */
 .options {
     display: contents;
@@ -365,6 +381,11 @@ kbd {
     white-space: nowrap;
 }
 
+.chip.danger {
+    background: color-mix(in srgb, var(--ui-danger) 14%, transparent);
+    color: var(--ui-danger);
+}
+
 .chip.live::before {
     content: '';
     width: 6px;
@@ -520,6 +541,11 @@ kbd {
     width: 180px;
 }
 
+/* Small numbers (a cost, a pass count): wide enough for four digits and the spinner. */
+.ui .input.num {
+    width: 76px;
+}
+
 /* Menus sized to their usual choice, not their longest option (a 30-character zone name). */
 #timestampFormat {
     width: 150px;
@@ -549,6 +575,18 @@ kbd {
     gap: 8px 32px;
 }
 
+/* Groups of very different lengths (2 rows beside 18): each flows under the last in its
+   column instead of sharing a row height with its neighbour. */
+.groups.flow {
+    display: block;
+    columns: 460px;
+    column-gap: 32px;
+}
+
+.groups.flow > section {
+    break-inside: avoid;
+}
+
 .group-title {
     display: flex;
     align-items: baseline;
@@ -562,6 +600,12 @@ kbd {
     font-weight: 400;
 }
 
+/* A button for the whole group (copy all) sits on the title's line without making it taller. */
+.group-title > .icon-btn {
+    align-self: center;
+    margin-block: -6px;
+}
+
 /* label | value | copy. The whole row is the hit target for copying. */
 .kv {
     margin: 0;
@@ -572,7 +616,9 @@ kbd {
 .kv > li {
     display: grid;
     grid-template-columns: 128px 1fr auto;
-    align-items: center;
+
+    /* The label sits on the value's first line, however many lines the value wraps to. */
+    align-items: baseline;
     gap: 12px;
     min-height: 32px;
     padding: 0 0 0 8px;
@@ -590,6 +636,18 @@ kbd {
 .kv .k {
     color: var(--ui-muted);
     font-size: var(--ui-size-sm);
+}
+
+/* A second, quieter line under the label (the platform a user agent is for). */
+.kv .k small {
+    display: block;
+    color: var(--ui-faint);
+    font-size: var(--ui-size-sm);
+}
+
+/* Rows that are only values (generated strings): the value takes the label's room. */
+.kv.bare > li {
+    grid-template-columns: 1fr auto;
 }
 
 .kv .v.error {
@@ -612,6 +670,13 @@ kbd {
     user-select: all;
 }
 
+.kv .v .more {
+    margin-left: 4px;
+    color: var(--ui-faint);
+    font: var(--ui-size-sm) var(--ui-font);
+    white-space: nowrap;
+}
+
 /* A row whose label is the pattern it was written with. */
 .kv.custom > li {
     grid-template-columns: 168px 1fr auto;
@@ -627,8 +692,21 @@ kbd {
     margin-top: 4px;
 }
 
+.kv > li > :is(.icon-btn, .row-actions) {
+    align-self: center;
+}
+
 .kv .icon-btn {
     opacity: 0;
+}
+
+/* A toggle shows state, so it stays in view; copy buttons wait for the pointer. */
+.kv .icon-btn[aria-pressed] {
+    opacity: 1;
+}
+
+.kv .icon-btn[aria-pressed='true'] {
+    color: var(--ui-fg);
 }
 
 .kv > li:is(:hover, :focus-within) .icon-btn {
@@ -640,13 +718,134 @@ kbd {
     max-width: 720px;
 }
 
+/* A fixed button column keeps every field the same width, with or without a button. */
 .kv.edit > li {
+    grid-template-columns: 128px 1fr var(--ui-h);
     padding-block: 3px;
 }
 
 .kv.edit .input {
     width: 100%;
     min-width: 0;
+}
+
+/* Short answers (a count, a checkbox) need no full-width field. */
+.kv.edit.narrow {
+    max-width: 420px;
+}
+
+/* A checkbox has no text baseline to share with the label: centre the row instead. */
+.kv.edit.narrow > li {
+    align-items: center;
+}
+
+.range-pair {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.range-pair > .input {
+    flex: 1;
+}
+
+.range-pair > .meta {
+    flex: none;
+}
+
+/* One button per character, pressed when it is drawn from. */
+.toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-width: 720px;
+}
+
+.toggles > button {
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--ui-input-border);
+    border-radius: var(--ui-radius);
+    background: var(--ui-input-bg);
+    color: var(--ui-faint);
+    font: var(--ui-size-mono) var(--ui-mono);
+    cursor: pointer;
+}
+
+.toggles > button[aria-pressed='true'] {
+    border-color: var(--ui-seg-on-border);
+    background: var(--ui-seg-on-bg);
+    color: var(--ui-fg);
+}
+
+/* The one-time password: read off the screen and typed elsewhere, so it is large. */
+.otp {
+    display: grid;
+    justify-items: start;
+    gap: 8px;
+    margin: 20px 0 0 8px;
+}
+
+.otp-code {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ui-fg);
+    font: 600 40px / 1.1 var(--ui-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+    cursor: copy;
+}
+
+.otp-time {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.otp-bar {
+    width: 160px;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: var(--ui-hover);
+}
+
+.otp-bar > span {
+    display: block;
+    height: 100%;
+    background: var(--ui-accent);
+    transition: width 0.3s linear;
+}
+
+/* A yes/no answer under the fields it judged (a password against a stored hash). */
+.verdict {
+    margin: 10px 0 0 8px;
+    font-size: var(--ui-size-sm);
+}
+
+.verdict.ok {
+    color: var(--ui-success);
+}
+
+.verdict.bad {
+    color: var(--ui-danger);
+}
+
+/* One certificate: its name, where it sits in the chain, whether it is still valid. */
+.cert-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 18px 0 6px;
+}
+
+.cert-head h3 {
+    margin: 0;
+    font-size: var(--ui-size);
+    font-weight: 600;
+    overflow-wrap: anywhere;
 }
 
 /* ---- Files ---- */
@@ -725,6 +924,10 @@ kbd {
     color: var(--ui-danger);
 }
 
+.files + .btn {
+    margin-top: 12px;
+}
+
 /* Original beside result; the checkerboard is what transparency looks like. */
 .previews {
     display: grid;
@@ -763,6 +966,33 @@ kbd {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+}
+
+/* The code at its own pixels, centred; scaled down only when the pane is smaller. */
+.qr-stage {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    overflow: hidden;
+}
+
+/* A flex item's percentage height resolves against the stage, so the code shrinks to fit. */
+.qr-stage img {
+    min-height: 0;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    image-rendering: pixelated;
+}
+
+.qr-payload {
+    padding: 4px 8px 8px var(--ui-pad);
+    border-top: 1px solid var(--ui-border);
 }
 
 /* ---- Pane extras ---- */
@@ -814,6 +1044,31 @@ kbd {
     margin: 0;
     color: var(--ui-faint);
     font-size: var(--ui-size-sm);
+}
+
+/* A schema column: whether it is filled, its type, and for numbers the values to draw. */
+.column {
+    display: grid;
+
+    /* The range fields fit an INT's bounds (-2147483648) without clipping. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 120px 120px minmax(0, 1.2fr);
+    align-items: center;
+    gap: 4px 8px;
+    min-height: 32px;
+}
+
+.column .name {
+    font: var(--ui-size-mono) var(--ui-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.column .detail {
+    grid-column: span 3;
+}
+
+.column.off > :not(.check) {
+    opacity: 0.45;
 }
 
 /* Unified diff: whole-line tints, as the editor's diff view draws them. */

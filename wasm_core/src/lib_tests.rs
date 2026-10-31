@@ -281,12 +281,41 @@ fn generate_qr_code_accepts_custom_ecc_level() {
         .expect("decode png");
     let entries = parse_qr_codes_native(&bytes).expect("decode");
     assert_eq!(entries[0].payload, "hello-ecc");
-    let ecc_lower = entries[0].ecc_level.to_lowercase();
-    assert!(
-        ecc_lower.contains('l') || ecc_lower.contains("low") || ecc_lower == "1",
-        "expected ECC level Low, got {}",
-        entries[0].ecc_level
-    );
+    assert_eq!(entries[0].ecc_level, "L");
+}
+
+#[test]
+fn parse_qr_codes_names_every_ecc_level_and_the_version() {
+    // The raw format bits order the levels M, L, H, Q: a straight index would mislabel all four.
+    for (level, letter) in [
+        (EcLevel::L, "L"),
+        (EcLevel::M, "M"),
+        (EcLevel::Q, "Q"),
+        (EcLevel::H, "H"),
+    ] {
+        let code = QrCode::with_error_correction_level(b"level", level).expect("qr build");
+        let image = code.render::<Luma<u8>>().min_dimensions(250, 250).build();
+        let mut buf = Vec::new();
+        DynamicImage::ImageLuma8(image)
+            .write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Png)
+            .expect("encode png");
+        let entries = parse_qr_codes_native(&buf).expect("decode");
+        assert_eq!(entries[0].ecc_level, letter);
+        assert_eq!(entries[0].version, "1");
+    }
+}
+
+#[test]
+fn parse_qr_codes_finds_none_in_a_plain_image() {
+    // A photo without a code is listed as having none, not as a file that failed.
+    let image = image::GrayImage::from_pixel(64, 64, Luma([255u8]));
+    let mut buf = Vec::new();
+    DynamicImage::ImageLuma8(image)
+        .write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Png)
+        .expect("encode png");
+    let results = parse_qr_codes_batch_native(vec![("plain.png".into(), buf)]);
+    assert!(results[0].error.is_none());
+    assert!(results[0].results.is_empty());
 }
 
 #[test]
@@ -1234,6 +1263,46 @@ fn totp_validation_rejects_invalid_digits() {
 }
 
 #[test]
+fn every_generator_is_routable() {
+    // The router opens only implemented tools: SSH Key was listed but missing from the set,
+    // so its link and its sidebar entry both said it wasn't wired up.
+    const MAIN_JS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/main.js"));
+    let start = MAIN_JS
+        .find("const implementedTools = new Set([")
+        .expect("implementedTools set");
+    let set = &MAIN_JS[start..start + MAIN_JS[start..].find("]);").expect("end of set")];
+    let ids: Vec<&str> = MAIN_JS
+        .split("id: '")
+        .skip(1)
+        .filter_map(|rest| rest.split('\'').next())
+        .filter(|id| id.starts_with("generator-"))
+        .collect();
+    assert!(ids.len() >= 9, "generator ids found: {ids:?}");
+    for id in ids {
+        assert!(set.contains(&format!("'{id}'")), "{id} is not routable");
+    }
+}
+
+#[test]
+fn totp_secret_takes_what_issuers_print() {
+    // Grouped, lowercase, unpadded or padded: the same key either way.
+    let key = decode_totp_secret("JBSWY3DPEHPK3PXP").expect("plain");
+    assert_eq!(
+        decode_totp_secret("jbsw y3dp ehpk 3pxp").expect("grouped"),
+        key
+    );
+    let unpadded = "GEZDGNBVGY3TQOJQGEZDGNBVGY";
+    assert_eq!(unpadded.len(), 26);
+    let padded = format!("{unpadded}======");
+    assert_eq!(
+        decode_totp_secret(unpadded).expect("unpadded"),
+        decode_totp_secret(&padded).expect("padded")
+    );
+    let err = decode_totp_secret("not base32!").unwrap_err();
+    assert!(err.contains("not Base32"), "{err}");
+}
+
+#[test]
 fn totp_validation_rejects_invalid_period() {
     let err = totp_token_internal("JBSWY3DPEHPK3PXP", "SHA256", 301, 6);
     assert!(err.is_err());
@@ -1346,10 +1415,9 @@ fn qr_wifi_escapes_semicolon_colon_backslash() {
 
 #[test]
 fn ssh_key_ed25519_generates_valid_keypair() {
-    let pair = generate_ssh_key_internal("ed25519", 0, "test@host", "openssh", 16, false, false)
-        .expect("ed25519 key generation");
+    let pair =
+        generate_ssh_key_internal("ed25519", 0, "test@host").expect("ed25519 key generation");
     assert_eq!(pair.key_type, "ed25519");
-    assert_eq!(pair.format, "openssh");
     assert!(
         pair.public_key.contains("ssh-ed25519"),
         "public key should contain ssh-ed25519"
@@ -1358,15 +1426,11 @@ fn ssh_key_ed25519_generates_valid_keypair() {
         pair.private_key.contains("OPENSSH PRIVATE KEY"),
         "private key should be OpenSSH format"
     );
-    assert_eq!(pair.kdf_rounds, 16);
-    assert!(!pair.resident);
-    assert!(!pair.verify_required);
 }
 
 #[test]
 fn ssh_key_rsa_generates_valid_keypair() {
-    let pair = generate_ssh_key_internal("rsa", 2048, "rsa@host", "openssh", 16, false, false)
-        .expect("RSA key generation");
+    let pair = generate_ssh_key_internal("rsa", 2048, "rsa@host").expect("RSA key generation");
     assert_eq!(pair.key_type, "rsa");
     assert!(
         pair.public_key.contains("ssh-rsa"),
@@ -1376,52 +1440,46 @@ fn ssh_key_rsa_generates_valid_keypair() {
 }
 
 #[test]
-fn ssh_key_ed25519_sk_generates_keypair() {
-    // ed25519-sk falls back to regular ed25519 internally but records the type
-    let pair = generate_ssh_key_internal("ed25519-sk", 0, "", "openssh", 50, true, true)
-        .expect("ed25519-sk key generation");
-    assert_eq!(pair.key_type, "ed25519-sk");
-    assert!(pair.resident);
-    assert!(pair.verify_required);
-}
-
-#[test]
 fn ssh_key_unsupported_type_rejected() {
-    let err = generate_ssh_key_internal("dsa", 1024, "", "openssh", 16, false, false);
-    assert!(err.is_err());
-    let msg = err.err().unwrap();
-    assert!(
-        msg.contains("unsupported"),
-        "expected unsupported key type error: {msg}"
-    );
+    // A security key's private half lives in the token: generating one here would be a plain
+    // Ed25519 key wearing the wrong name.
+    for key_type in ["dsa", "ed25519-sk"] {
+        let msg = generate_ssh_key_internal(key_type, 1024, "")
+            .err()
+            .expect("unsupported type");
+        assert!(
+            msg.contains("unsupported"),
+            "expected unsupported key type error: {msg}"
+        );
+    }
 }
 
 #[test]
-fn ssh_key_kdf_rounds_clamped() {
-    // kdf_rounds below 16 should be clamped to 16
-    let pair = generate_ssh_key_internal("ed25519", 0, "", "openssh", 1, false, false)
-        .expect("kdf clamped low");
-    assert_eq!(pair.kdf_rounds, 16);
-
-    // kdf_rounds above 500 should be clamped to 500
-    let pair = generate_ssh_key_internal("ed25519", 0, "", "openssh", 9999, false, false)
-        .expect("kdf clamped high");
-    assert_eq!(pair.kdf_rounds, 500);
+fn ssh_key_fingerprint_matches_the_public_key() {
+    // The fingerprint is what users compare against `ssh-keygen -l` or GitHub's key list,
+    // so it must be the SHA-256 of this very key, in OpenSSH's notation.
+    let pair = generate_ssh_key_internal("ed25519", 0, "").expect("ed25519 key");
+    let public = PublicKey::from_openssh(&pair.public_key).expect("parse public key");
+    assert!(pair.fingerprint.starts_with("SHA256:"));
+    assert_eq!(
+        pair.fingerprint,
+        public.fingerprint(HashAlg::Sha256).to_string()
+    );
+    let other = generate_ssh_key_internal("ed25519", 0, "").expect("second key");
+    assert_ne!(pair.fingerprint, other.fingerprint);
 }
 
 #[test]
 fn ssh_key_rsa_minimum_bits_enforced() {
     // RSA bits < 2048 should be clamped to 2048 (via bits.max(2048))
-    let pair = generate_ssh_key_internal("rsa", 512, "", "openssh", 16, false, false)
-        .expect("RSA min bits");
+    let pair = generate_ssh_key_internal("rsa", 512, "").expect("RSA min bits");
     // The key should still be generated successfully with at least 2048 bits
     assert!(pair.public_key.contains("ssh-rsa"));
 }
 
 #[test]
 fn ssh_key_comment_preserved_in_public_key() {
-    let pair = generate_ssh_key_internal("ed25519", 0, "user@machine", "openssh", 16, false, false)
-        .expect("comment key");
+    let pair = generate_ssh_key_internal("ed25519", 0, "user@machine").expect("comment key");
     // OpenSSH public keys include the comment at the end
     assert!(
         pair.public_key.contains("user@machine"),

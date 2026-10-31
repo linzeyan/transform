@@ -38,7 +38,7 @@ use sha1::Sha1;
 use sha2::{Digest, Sha224, Sha256, Sha384, Sha512, Sha512_224, Sha512_256};
 use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
 use ssh_key::private::{KeypairData, RsaKeypair};
-use ssh_key::{Algorithm, LineEnding, PrivateKey, PublicKey, rand_core::OsRng};
+use ssh_key::{Algorithm, HashAlg, LineEnding, PrivateKey, PublicKey, rand_core::OsRng};
 use uuid as uuid_crate;
 use uuid_crate::{Context, NoContext, Timestamp};
 use wasm_bindgen::prelude::*;
@@ -366,55 +366,26 @@ struct SshKeyPair {
     public_key: String,
     private_key: String,
     key_type: String,
-    format: String,
-    kdf_rounds: u32,
-    resident: bool,
-    verify_required: bool,
+    /// `SHA256:…`, as `ssh-keygen -l` and GitHub's key list print it.
+    fingerprint: String,
 }
 
 #[wasm_bindgen]
-/// Generates an SSH keypair.
-/// `key_type`: "rsa", "ed25519", "ed25519-sk" (security key).
-/// `bits`: RSA key size (min 2048). `comment`: appended to public key. `format`: "openssh" or "pem" (pem aliases openssh output).
-/// `kdf_rounds`: UI hint (16-500) preserved in output; resident/verify flags are informational for *-sk types.
-pub fn generate_ssh_key(
-    key_type: &str,
-    bits: u32,
-    comment: &str,
-    format: &str,
-    kdf_rounds: u32,
-    resident: bool,
-    verify_required: bool,
-) -> Result<JsValue, JsValue> {
-    generate_ssh_key_internal(
-        key_type,
-        bits,
-        comment,
-        format,
-        kdf_rounds,
-        resident,
-        verify_required,
-    )
-    .and_then(|pair| serde_wasm_bindgen::to_value(&pair).map_err(|e| e.to_string()))
-    .map_err(|err| JsValue::from_str(&err))
+/// Generates an unencrypted SSH key pair in OpenSSH format.
+/// `key_type`: "ed25519" or "rsa". `bits`: RSA key size (min 2048). `comment`: appended to
+/// the public key. Security-key types (`*-sk`) need the hardware token, so a page can't make them.
+pub fn generate_ssh_key(key_type: &str, bits: u32, comment: &str) -> Result<JsValue, JsValue> {
+    generate_ssh_key_internal(key_type, bits, comment)
+        .and_then(|pair| serde_wasm_bindgen::to_value(&pair).map_err(|e| e.to_string()))
+        .map_err(|err| JsValue::from_str(&err))
 }
 
 fn generate_ssh_key_internal(
     key_type: &str,
     bits: u32,
     comment: &str,
-    format: &str,
-    kdf_rounds: u32,
-    resident: bool,
-    verify_required: bool,
 ) -> Result<SshKeyPair, String> {
     let key_type_norm = key_type.to_lowercase();
-    let fmt = if format.eq_ignore_ascii_case("pem") {
-        "pem"
-    } else {
-        "openssh"
-    };
-    let kdf = kdf_rounds.clamp(16, 500);
     let mut rng = OsRng;
     let mut private = match key_type_norm.as_str() {
         "ed25519" => PrivateKey::random(&mut rng, Algorithm::Ed25519).map_err(|e| e.to_string())?,
@@ -423,10 +394,7 @@ fn generate_ssh_key_internal(
             let kp = RsaKeypair::random(&mut rng, size).map_err(|e| e.to_string())?;
             PrivateKey::try_from(KeypairData::from(kp)).map_err(|e| e.to_string())?
         }
-        "ed25519-sk" => {
-            PrivateKey::random(&mut rng, Algorithm::Ed25519).map_err(|e| e.to_string())?
-        }
-        _ => return Err("unsupported key type (use rsa, ed25519, or ed25519-sk)".into()),
+        _ => return Err("unsupported key type (use ed25519 or rsa)".into()),
     };
     private.set_comment(comment);
     let public: PublicKey = private.public_key().clone();
@@ -445,10 +413,7 @@ fn generate_ssh_key_internal(
         public_key: public_text,
         private_key: private_text,
         key_type: key_type_norm,
-        format: fmt.into(),
-        kdf_rounds: kdf,
-        resident,
-        verify_required,
+        fingerprint: public.fingerprint(HashAlg::Sha256).to_string(),
     })
 }
 
@@ -803,10 +768,8 @@ fn parse_qr_codes_internal(bytes: &[u8]) -> Result<Vec<QrDecodeResult>, String> 
         image::load_from_memory(bytes).map_err(|err| format!("failed to decode image: {err}"))?;
     let luma = decoded.to_luma8();
     let mut prepared = PreparedImage::prepare(luma);
+    // An image without a code is an answer (none here), not a failure to read it.
     let grids = prepared.detect_grids();
-    if grids.is_empty() {
-        return Err("no QR codes detected".into());
-    }
     let mut results = Vec::new();
     for grid in grids {
         match grid.decode() {
@@ -815,14 +778,24 @@ fn parse_qr_codes_internal(bytes: &[u8]) -> Result<Vec<QrDecodeResult>, String> 
                 results.push(QrDecodeResult {
                     payload,
                     encoding: "utf-8".into(),
-                    version: format!("{:?}", meta.version),
-                    ecc_level: format!("{:?}", meta.ecc_level),
+                    version: meta.version.0.to_string(),
+                    ecc_level: qr_ecc_letter(meta.ecc_level).into(),
                 });
             }
             Err(err) => return Err(format!("decode failed: {err}")),
         }
     }
     Ok(results)
+}
+
+/// rqrr reports the format field's two raw bits, which the QR spec orders M, L, H, Q.
+fn qr_ecc_letter(bits: u16) -> &'static str {
+    match bits {
+        0 => "M",
+        1 => "L",
+        2 => "H",
+        _ => "Q",
+    }
 }
 
 #[cfg(test)]
@@ -2291,17 +2264,19 @@ fn totp_token_internal(
 }
 
 fn decode_totp_secret(secret: &str) -> Result<Vec<u8>, String> {
+    // Issuers print secrets in groups and without `=` padding (a 26-character secret is
+    // common), and authenticator apps accept both: so does this.
     let cleaned: String = secret
         .chars()
-        .filter(|ch| !ch.is_whitespace())
+        .filter(|ch| !ch.is_whitespace() && *ch != '=')
         .collect::<String>()
         .to_ascii_uppercase();
     if cleaned.is_empty() {
         return Err("secret cannot be empty".into());
     }
-    BASE32
+    BASE32_NOPAD
         .decode(cleaned.as_bytes())
-        .map_err(|err| err.to_string())
+        .map_err(|_| "the secret is not Base32 (letters A–Z and digits 2–7)".to_string())
 }
 
 fn hmac_digest<M>(key: &[u8], counter: u64) -> Result<Vec<u8>, String>

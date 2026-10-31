@@ -69,21 +69,26 @@ fn url_tool_exposes_query_editor_markup() {
 }
 
 #[wasm_bindgen_test]
-fn kdf_random_salt_controls_exist() {
+fn kdf_salt_is_random_unless_typed() {
     const INDEX_HTML: &str =
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
+    // One salt field for both algorithms; left empty, every hash draws a new salt.
     assert!(
-        INDEX_HTML.contains("id=\"kdfRefreshSalts\""),
-        "Random salt button should be present for KDF tools"
+        INDEX_HTML.contains("id=\"kdfSalt\"")
+            && INDEX_HTML.contains("placeholder=\"New for every hash\""),
+        "KDF salt field should say an empty salt is random per hash"
     );
-    assert!(
-        INDEX_HTML.contains("id=\"bcryptSalt\""),
-        "Bcrypt salt input should be present"
-    );
-    assert!(
-        INDEX_HTML.contains("id=\"argonSalt\""),
-        "Argon2 salt input should be present"
-    );
+    for id in [
+        "kdfAlgoBcrypt",
+        "kdfAlgoArgon",
+        "kdfGenerate",
+        "kdfVerifyHash",
+    ] {
+        assert!(
+            INDEX_HTML.contains(&format!("id=\"{id}\"")),
+            "expected KDF control {id}"
+        );
+    }
 }
 
 #[wasm_bindgen_test]
@@ -148,33 +153,24 @@ fn image_converter_takes_a_batch() {
 
 #[wasm_bindgen_test]
 fn qr_workspace_includes_core_controls() {
-    // Ensure the QR generator UI ships with mode radios, format select, and action buttons.
+    // The code redraws as fields change, so there is no Generate button: modes, format,
+    // the preview and Save are the whole surface.
     const INDEX_HTML: &str =
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../www/index.html"));
-    assert!(
-        INDEX_HTML.contains("id=\"qrWorkspace\""),
-        "workspace container should exist"
-    );
-    assert!(
-        INDEX_HTML.contains("id=\"qrModeOtp\""),
-        "OTP mode radio should be present"
-    );
-    assert!(
-        INDEX_HTML.contains("name=\"qrMode\""),
-        "QR mode radios should share the same name"
-    );
-    assert!(
-        INDEX_HTML.contains("id=\"qrFormat\""),
-        "format select should exist"
-    );
-    assert!(
-        INDEX_HTML.contains("id=\"qrGenerate\""),
-        "generate button should be wired"
-    );
-    assert!(
-        INDEX_HTML.contains("id=\"qrDownload\""),
-        "download control should exist"
-    );
+    for id in [
+        "qrWorkspace",
+        "qrModeOtp",
+        "qrModeWifi",
+        "qrModeCustom",
+        "qrFormat",
+        "qrPreview",
+        "qrDownload",
+    ] {
+        assert!(
+            INDEX_HTML.contains(&format!("id=\"{id}\"")),
+            "QR generator should expose {id}"
+        );
+    }
 }
 
 #[wasm_bindgen_test]
@@ -204,7 +200,7 @@ fn qr_parse_allows_multiple_files_and_batch_results() {
         "QR Parse input should allow multiple files"
     );
     assert!(
-        INDEX_HTML.contains("Drag & drop images here"),
+        INDEX_HTML.contains("Drop images here"),
         "QR Parse dropzone copy should reflect multi-file support"
     );
 }
@@ -243,10 +239,12 @@ fn ascii_workspace_has_controls() {
         INDEX_HTML.contains("id=\"asciiWidth\""),
         "Width input should exist"
     );
-    assert!(
-        INDEX_HTML.contains("name=\"asciiAlign\""),
-        "Alignment radio group should exist"
-    );
+    for id in ["asciiAlignLeft", "asciiAlignCenter", "asciiAlignRight"] {
+        assert!(
+            INDEX_HTML.contains(&format!("id=\"{id}\"")),
+            "Alignment button {id} should exist"
+        );
+    }
     assert!(
         INDEX_HTML.contains("id=\"asciiDownload\""),
         "Download button should be present"
@@ -525,32 +523,24 @@ fn format_then_pretty_protobuf_restores_layout() {
 
 #[wasm_bindgen_test]
 fn ssh_key_generator_returns_keys() {
-    let result =
-        wasm_core::generate_ssh_key("ed25519", 0, "test@local", "openssh", 16, false, false)
-            .expect("ssh key");
+    let result = wasm_core::generate_ssh_key("ed25519", 0, "test@local").expect("ssh key");
     let map = js_to_json(result);
     assert_eq!(field(&map, "keyType"), "ed25519");
     assert!(field(&map, "publicKey").starts_with("ssh-ed25519 "));
     assert!(field(&map, "privateKey").contains("OPENSSH PRIVATE KEY"));
+    assert!(field(&map, "fingerprint").starts_with("SHA256:"));
 }
 
 #[wasm_bindgen_test]
-fn ssh_key_generator_clamps_rsa_bits_and_supports_sk() {
+fn ssh_key_generator_clamps_rsa_bits_and_refuses_sk() {
     // bits below 2048 should still produce a key
-    let rsa_res =
-        wasm_core::generate_ssh_key("rsa", 1024, "rsa@local", "openssh", 16, false, false)
-            .expect("rsa key");
+    let rsa_res = wasm_core::generate_ssh_key("rsa", 1024, "rsa@local").expect("rsa key");
     let rsa_map = js_to_json(rsa_res);
     assert_eq!(field(&rsa_map, "keyType"), "rsa");
     assert!(field(&rsa_map, "publicKey").contains("ssh-rsa"));
 
-    // ed25519-sk should also work and return public/private material
-    let sk_res =
-        wasm_core::generate_ssh_key("ed25519-sk", 0, "sk@local", "openssh", 20, true, true)
-            .expect("sk key");
-    let sk_map = js_to_json(sk_res);
-    assert_eq!(field(&sk_map, "keyType"), "ed25519-sk");
-    assert!(field(&sk_map, "publicKey").contains("ssh-ed25519"));
+    // A security key's private half never leaves the token.
+    assert!(wasm_core::generate_ssh_key("ed25519-sk", 0, "sk@local").is_err());
 }
 
 #[wasm_bindgen_test]
@@ -768,9 +758,11 @@ fn crypto_workspace_controls_exist() {
         "cryptoAlgorithm",
         "cryptoKey",
         "cryptoNonce",
-        "cryptoPlaintext",
-        "cryptoCiphertext",
-        "cryptoDecryptOutput",
+        "cryptoDirEncrypt",
+        "cryptoDirDecrypt",
+        "cryptoInput",
+        "cryptoOutput",
+        "cryptoFile",
     ] {
         assert!(
             INDEX_HTML.contains(&format!("id=\"{id}\"")),

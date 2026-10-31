@@ -81,11 +81,6 @@ import initWasm, {
     list_ascii_fonts,
 } from './pkg/wasm_core.js';
 
-// Import modular components
-import { initConverters } from './js/converters.js';
-import { initGenerators } from './js/generators.js';
-import { initCoders } from './js/coders.js';
-
 const formats = [
     'JSON',
     'Go Struct',
@@ -288,74 +283,52 @@ const specialCharacters = [
     '`',
 ];
 
-const minCountConfig = {
-    digits: {
-        stateKey: 'randomMinDigits',
-        elementKey: 'randomMinDigits',
-        rowKey: 'randomMinDigitsRow',
-    },
-    lower: {
-        stateKey: 'randomMinLower',
-        elementKey: 'randomMinLower',
-        rowKey: 'randomMinLowerRow',
-    },
-    upper: {
-        stateKey: 'randomMinUpper',
-        elementKey: 'randomMinUpper',
-        rowKey: 'randomMinUpperRow',
-    },
-    symbols: {
-        stateKey: 'randomMinSymbols',
-        elementKey: 'randomMinSymbols',
-    },
-};
-
 const coderTools = [
     {
         id: 'coder-encode',
         mode: 'encode',
         label: 'Base Encoders',
-        description: 'Base32/64/85/91 encodings.',
+        description: 'Base16, Base32, Base64, Base85 and Base91, from text or a file',
     },
     {
         id: 'coder-decode',
         mode: 'decode',
         label: 'Base Decoders',
-        description: 'Decode BaseX back to plain text.',
+        description: 'Base16 to Base91 back to text or bytes, the alphabet found for you',
     },
     {
         id: 'coder-hash',
         mode: 'hash',
         label: 'Hash',
-        description: 'Hashes from stdlib.',
+        description: 'MD5, SHA-1, SHA-2, SHA-3, CRC and FNV, plain or HMAC',
     },
     {
         id: 'coder-url',
         pair: 'url',
         label: 'URL Encode/Decode',
-        description: 'Bidirectional URL percent-encoding helper.',
+        description: 'Percent-encoding either way, with the query as rows',
     },
     {
         id: 'coder-jwt',
         pair: 'jwt',
         label: 'JWT Encode/Decode',
-        description: 'Sign JSON payloads and inspect JWT tokens.',
+        description: 'Read a token, or sign a payload with HS256/384/512',
     },
     {
         id: 'coder-kdf',
         mode: 'kdf',
         label: 'Password Hashers',
-        description: 'Bcrypt / Argon2 generate and verify.',
+        description: 'Bcrypt and Argon2: hash a password, or check one against a stored hash',
     },
     {
         id: 'security-crypto',
         label: 'Encrypt / Decrypt',
-        description: 'AES-GCM + (X)ChaCha20 for text/files.',
+        description: 'AES-256-GCM and (X)ChaCha20-Poly1305, for text or files',
     },
     {
         id: 'security-ssl',
         label: 'SSL Inspector',
-        description: 'Parse PEM certificates or full chains.',
+        description: 'Every field of a PEM certificate or a whole chain',
     },
 ];
 
@@ -376,9 +349,9 @@ const encodingGroups = [
         label: 'Base32',
         variants: [
             { key: 'base32_standard', label: 'Standard' },
-            { key: 'base32_standard_no_padding', label: 'Standard(no padding)' },
-            { key: 'base32_hex', label: 'Hex' },
-            { key: 'base32_hex_no_padding', label: 'Hex(no padding)' },
+            { key: 'base32_standard_no_padding', label: 'No padding' },
+            { key: 'base32_hex', label: 'Hex alphabet' },
+            { key: 'base32_hex_no_padding', label: 'Hex alphabet, no padding' },
         ],
     },
     {
@@ -386,9 +359,9 @@ const encodingGroups = [
         label: 'Base64',
         variants: [
             { key: 'base64_standard', label: 'Standard' },
-            { key: 'base64_raw_standard', label: 'Standard(no padding)' },
+            { key: 'base64_raw_standard', label: 'No padding' },
             { key: 'base64_url', label: 'URL-safe' },
-            { key: 'base64_raw_url', label: 'URL-safe(no padding)' },
+            { key: 'base64_raw_url', label: 'URL-safe, no padding' },
         ],
     },
     {
@@ -399,7 +372,7 @@ const encodingGroups = [
     {
         id: 'base91',
         label: 'Base91',
-        variants: [{ key: 'base91', label: 'Standard' }],
+        variants: [{ key: 'base91', label: 'basE91' }],
     },
 ];
 
@@ -472,28 +445,13 @@ const cryptoSuites = {
     },
 };
 
-const coderModeDescriptions = {
-    encode: 'Encode text or files into multiple bases.',
-    decode: 'Decode text and recover raw bytes.',
-    hash: 'Generate hashes for text or files.',
-};
-
-const coderModeTitles = {
-    encode: 'Encode',
-    decode: 'Decode',
-    hash: 'Hash',
-};
-
-const coderResultHints = {
-    encode: 'Base32 / Base64 / Base85 / Base91 / Hex',
-    decode: 'Decoded output',
-    hash: 'MD5 / SHA / CRC / FNV',
-};
-
-const coderPlaceholders = {
-    encode: 'Type or paste text (or pick a file below)...',
-    decode: 'Paste Base32/64/85/91 text to decode...',
-    hash: 'Enter text or pick a file to compute hashes',
+const coderPanes = {
+    encode: { result: 'Encodings', placeholder: 'Type or paste text' },
+    decode: {
+        result: 'Decoded',
+        placeholder: 'Paste Base16, Base32, Base64, Base85 or Base91 text',
+    },
+    hash: { result: 'Digests', placeholder: 'Type or paste text' },
 };
 
 const pairToolConfigs = {
@@ -586,48 +544,47 @@ const toolGroups = [
             {
                 id: 'generator-uuid',
                 label: 'UUID',
-                description: 'Generate UUID v1-v8, GUID, and ULID.',
+                description: 'Every UUID version, a GUID and a ULID, new on demand',
             },
             {
                 id: 'generator-useragent',
                 label: 'User-Agent',
-                description: 'Generate realistic browser user agents.',
+                description: 'Current user-agent strings by browser and platform',
             },
             {
                 id: 'generator-random',
                 label: 'Random',
-                description: 'Random strings with customizable charset.',
+                description: 'Random strings from the characters you pick',
             },
             {
                 id: 'generator-ascii',
                 label: 'ASCII Art',
-                description: 'Render text into ASCII art.',
+                description: 'Text drawn in FIGlet fonts',
             },
-            // QR generator covers OTP/WiFi/custom text flows.
             {
                 id: 'generator-qr',
                 label: 'QR Code',
-                description: 'Generate QR codes for OTP, WiFi, or custom text.',
+                description: 'A QR code for an authenticator, a Wi-Fi network or any text',
             },
             {
                 id: 'generator-qr-parse',
                 label: 'QR Parse',
-                description: 'Upload an image to decode embedded QR codes.',
+                description: 'Read every QR code in images',
             },
             {
                 id: 'generator-totp',
                 label: 'TOTP',
-                description: 'Time-based one-time passwords.',
+                description: 'The current one-time password for a secret',
             },
             {
                 id: 'generator-sql',
                 label: 'SQL Inserts',
-                description: 'Generate INSERT statements from MySQL schema.',
+                description: 'Sample rows for a MySQL table, JSON or JSON Schema',
             },
             {
                 id: 'generator-ssh',
                 label: 'SSH Key',
-                description: 'Generate SSH public/private key pairs.',
+                description: 'Ed25519 or RSA key pairs in OpenSSH format',
             },
         ],
     },
@@ -637,7 +594,7 @@ const toolGroups = [
             {
                 id: 'fingerprint-browser',
                 label: 'Browser Fingerprint',
-                description: 'Show readable browser/device hints.',
+                description: 'What this browser tells every site without asking',
             },
         ],
     },
@@ -715,6 +672,7 @@ const implementedTools = new Set([
     'generator-qr-parse',
     'generator-totp',
     'generator-sql',
+    'generator-ssh',
     'fingerprint-browser',
     'security-ssl',
 ]);
@@ -755,7 +713,6 @@ const workspaceIds = [
     'certWorkspace',
 ];
 
-const defaultDecoder = allEncodingVariants[0]?.key || '';
 const hashPrefix = '#/';
 let suppressHashUpdate = false;
 
@@ -764,27 +721,15 @@ let suppressHashUpdate = false;
 const state = {
     currentTool: 'format',
     wasmReady: false,
-    uuidUppercase: false,
-    currentUUIDs: {},
-    currentBrowserFilter: '',
-    currentOSFilter: '',
-    currentUserAgents: [],
+    uuids: {},
     coderMode: 'encode',
-    selectedDecoder: defaultDecoder,
-    hashUppercase: false,
     hashEncoding: 'base16',
     hashUseHmac: false,
-    hashHmacSecret: '',
-    lastEncodeResults: null,
-    lastHashResults: null,
-    encodeCaseMap: { base16: true, base32: true },
     coder: {
         inputMode: 'text',
         fileBytes: null,
         fileName: '',
-        fileSize: 0,
         decodedBytes: null,
-        decodedFileName: '',
     },
     currentPairTool: null,
     pairSyncing: false,
@@ -824,67 +769,25 @@ const state = {
     },
     numberSyncing: false,
     unitSyncing: false,
-    randomIncludeDigits: true,
-    randomAllowLeadingZero: true,
-    randomLength: 24,
-    randomCount: 5,
-    randomIncludeLower: false,
-    randomIncludeUpper: false,
-    randomExclude: '',
-    randomDigitMin: '',
-    randomDigitMax: '',
-    randomMinDigits: 0,
-    randomMinLower: 0,
-    randomMinUpper: 0,
-    randomMinSymbols: 0,
-    randomSymbols: new Set(),
-    randomResults: [],
-    ascii: {
-        font: 'standard',
-        width: 80,
-        align: 'left',
-        fonts: [],
-        output: '',
+    random: {
+        // Drawn from once Symbols is ticked: all of them until some are turned off.
+        symbols: new Set(specialCharacters),
+        results: [],
+        meta: '',
+        timer: null,
     },
-    // QR generator caches the last preview so downloads work when returning to the tab.
-    qr: {
-        mode: 'otp',
-        format: 'png',
-        ecc: 'Q',
-        otpAccount: '',
-        otpSecret: '',
-        otpIssuer: '',
-        otpAlgorithm: 'SHA1',
-        otpPeriod: 30,
-        otpDigits: 6,
-        wifiType: 'WPA',
-        wifiPass: '',
-        wifiSsid: '',
-        customString: '',
-        lastResult: null,
-    },
-    sshType: 'ed25519',
-    sshBits: 4096,
-    sshComment: '',
-    sshFormat: 'openssh',
-    sshKdf: 16,
-    sshResident: false,
-    sshVerify: false,
-    sshLastKey: null,
+    ascii: { align: 'left', timer: null },
+    qr: { mode: 'otp', result: null, timer: null },
+    ssh: { type: 'ed25519', key: null },
     // Ticks while the input is relative to now ("now - 3d").
     timestampTimer: null,
-    totpSecret: '',
-    totpAlgorithm: 'SHA256',
-    totpPeriod: 30,
-    totpDigits: 6,
     totpTimer: null,
-    dataRows: 5,
     diffTimer: null,
     dataOverrides: {},
     dataTables: [],
     dataSchemaTimer: null,
-    dataDirty: false,
-    dataKind: 'sql',
+    dataTimer: null,
+    dataError: '',
     formatKey: null,
     tabular: {
         files: [],
@@ -896,37 +799,38 @@ const state = {
         results: [],
     },
     fingerprintFacts: [],
-    kdf: {
-        active: 'bcrypt',
-        bcryptCost: 10,
-        argonTime: 3,
-        argonMem: 65536,
-        argonParallelism: 1,
-        argonType: 'argon2id',
-        argonHashLen: 32,
-        salts: {},
-    },
+    kdf: { active: 'bcrypt', verifyTimer: null },
     certTimer: null,
-    certResults: [],
     crypto: {
-        algorithm: 'aes-256-gcm',
+        direction: 'encrypt',
         inputMode: 'text',
-        fileBytes: null,
-        fileName: '',
-        fileSize: 0,
         files: [],
         results: [],
+        textResult: null,
+        // The last nonce this page drew, so a rerun never encrypts with it again.
+        madeNonce: '',
+        timer: null,
     },
 };
 
 let coderTimer = null;
 let convertTimer = null;
 
-const uuidDisplayOrder = ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'guid', 'ulid'];
-const uuidDisplayLabels = {
-    guid: 'GUID',
-    ulid: 'ULID',
-};
+// One of each version; the label says what the version is made of.
+const uuidVersions = [
+    ['v1', 'v1 · time'],
+    ['v2', 'v2 · DCE'],
+    ['v3', 'v3 · MD5'],
+    ['v4', 'v4 · random'],
+    ['v5', 'v5 · SHA-1'],
+    ['v6', 'v6 · time, sorted'],
+    ['v7', 'v7 · Unix ms, sorted'],
+    ['v8', 'v8 · custom'],
+    ['guid', 'GUID'],
+    ['ulid', 'ULID'],
+];
+
+const qrContentLabels = { otp: 'Account', wifi: 'Network', custom: 'Text' };
 
 function toolIdFromHash(rawHash) {
     const normalized = (rawHash || '').trim();
@@ -1010,16 +914,23 @@ const pairSides = (encoded) =>
     encoded
         ? { input: 'pairOutput', output: 'pairInput' }
         : { input: 'pairInput', output: 'pairOutput' };
+// A selection is text: a coder left in File mode would fill a hidden field.
+function coderTextFields() {
+    if (state.coder.inputMode === 'file') setCoderInputMode('text');
+    return { input: 'coderInput' };
+}
+
 const embedFields = {
     format: () => ({ input: 'input', output: 'output' }),
     'converter-html-md': (text) => pairSides(/^\s*</.test(text)),
     'coder-url': (text) => pairSides(/%[0-9A-Fa-f]{2}/.test(text)),
     'coder-jwt': () => ({ input: 'pairOutput' }),
-    'coder-encode': () => ({ input: 'coderInput' }),
-    'coder-decode': () => ({ input: 'coderInput' }),
-    'coder-hash': () => ({ input: 'coderInput' }),
+    'coder-encode': () => coderTextFields(),
+    'coder-decode': () => coderTextFields(),
+    'coder-hash': () => coderTextFields(),
     'converter-ipv4': () => ({ input: 'ipv4Input' }),
-    // Rendering waits for the Generate button rather than for typing.
+    'converter-timestamp': () => ({ input: 'timestampInput' }),
+    // Drawn at once rather than after the typing pause, so Replace takes the new art.
     'generator-ascii': () => ({
         input: 'asciiInput',
         output: 'asciiOutput',
@@ -1036,37 +947,27 @@ let replaceSlot = null;
 function offerReplace(output) {
     replaceSlot?.remove();
     replaceSlot = null;
-    // .panel-header: a tool not yet moved to the new layout (ASCII Art).
-    const header = output
-        ?.closest('.pane, section, .ascii-output-card')
-        ?.querySelector('.pane-head, .panel-header');
+    const header = output?.closest('.pane')?.querySelector('.pane-head');
     if (!header) return;
-    const pane = header.classList.contains('pane-head');
     // Among the header's own buttons, so it wraps and is styled with them;
     // a header without any gets a group of its own, removed with the button.
-    let actions = header.querySelector('.pane-actions, .panel-actions');
+    let actions = header.querySelector('.pane-actions');
     if (!actions) {
         actions = document.createElement('div');
-        actions.className = pane ? 'pane-actions' : 'panel-actions';
+        actions.className = 'pane-actions';
         header.appendChild(actions);
     }
     const replaceButton = document.createElement('button');
     replaceButton.type = 'button';
-    if (pane) {
-        // The reason the tab was opened, so it is the pane's primary action and comes first.
-        replaceButton.className = 'btn primary';
-        replaceButton.innerHTML = '<svg class="i"><use href="#i-replace" /></svg>Replace Selection';
-    } else {
-        replaceButton.className = 'ghost-btn';
-        replaceButton.textContent = 'Replace Selection';
-    }
+    // The reason the tab was opened, so it is the pane's primary action and comes first.
+    replaceButton.className = 'btn primary';
+    replaceButton.innerHTML = '<svg class="i"><use href="#i-replace" /></svg>Replace Selection';
     replaceButton.addEventListener('click', () => {
         const text = 'value' in output ? output.value : output.textContent;
         host.postMessage({ type: 'transform.replace', text });
         offerReplace(null);
     });
-    if (pane) actions.prepend(replaceButton);
-    else actions.appendChild(replaceButton);
+    actions.prepend(replaceButton);
     replaceSlot = actions.childElementCount > 1 ? replaceButton : actions;
 }
 
@@ -1129,11 +1030,6 @@ const timestampHelp =
 boot();
 
 async function boot() {
-    // Initialize modular components
-    initConverters();
-    initGenerators();
-    initCoders();
-
     cacheElements();
     initTabularControls();
     initTimestampControls();
@@ -1143,20 +1039,12 @@ async function boot() {
     bindUI();
     labelShortcuts();
     syncToolFromHash(true);
-    renderCoderEmpty();
-    updateCoderTexts();
     selectTool(state.currentTool);
     setStatus('Loading WebAssembly...', false);
     try {
         await initWasm();
         state.wasmReady = true;
         setStatus('Ready', false);
-        if (isUUIDTool(state.currentTool)) {
-            refreshUUIDs(true);
-        }
-        if (isUserAgentTool(state.currentTool)) {
-            refreshUserAgents(true);
-        }
         if (
             isPairTool(state.currentTool) &&
             ((elements.pairInput && elements.pairInput.value.trim()) ||
@@ -1182,15 +1070,10 @@ async function boot() {
         if (isTimestampTool(state.currentTool)) {
             runTimestamp();
         }
-        if (isQrTool(state.currentTool)) {
-            activateQrTool();
-        }
-        if (isTotpTool(state.currentTool)) {
-            activateTotpTool();
-        }
-        if (isDataTool(state.currentTool)) {
-            activateDataTool();
-        }
+        if (coderMainTools.has(state.currentTool)) runCoder();
+        if (isCryptoTool(state.currentTool)) renderCryptoMode();
+        if (isCertTool(state.currentTool)) runCertInspector();
+        activateGeneratorTool(state.currentTool);
         // Before this a host's text would only meet "Waiting for WebAssembly...".
         host?.postMessage({ type: 'transform.ready' });
     } catch (err) {
@@ -1285,33 +1168,33 @@ function cacheElements() {
     elements.watermarkRotationValue = document.getElementById('watermarkRotationValue');
     elements.watermarkSpacingValue = document.getElementById('watermarkSpacingValue');
     elements.watermarkFontSizeValue = document.getElementById('watermarkFontSizeValue');
-    elements.qrParseWorkspace = document.getElementById('qrParseWorkspace');
-    elements.qrParseFile = document.getElementById('qrParseFile');
-    elements.qrParseDrop = document.getElementById('qrParseDrop');
-    elements.qrParseResults = document.getElementById('qrParseResults');
-    elements.qrEccLevel = document.getElementById('qrEccLevel');
     elements.coderWorkspace = document.getElementById('coderWorkspace');
-    elements.coderInput = document.getElementById('coderInput');
-    elements.coderResults = document.getElementById('coderResults');
-    elements.coderWorkspaceTitle = document.getElementById('coderWorkspaceTitle');
-    elements.coderModeHint = document.getElementById('coderModeHint');
-    elements.coderInputControls = document.getElementById('coderInputControls');
+    elements.coderSource = document.getElementById('coderSource');
     elements.coderModeText = document.getElementById('coderModeText');
     elements.coderModeFile = document.getElementById('coderModeFile');
-    elements.coderFile = document.getElementById('coderFile');
-    elements.coderFileMeta = document.getElementById('coderFileMeta');
     elements.decodeVariantWrap = document.getElementById('decodeVariantWrap');
     elements.decodeVariant = document.getElementById('decodeVariant');
+    elements.encodeLowerWrap = document.getElementById('encodeLowerWrap');
+    elements.encodeLower = document.getElementById('encodeLower');
+    elements.hashControls = document.getElementById('hashControls');
+    elements.hashEncoding = document.getElementById('hashEncoding');
+    elements.hashUpperWrap = document.getElementById('hashUpperWrap');
+    elements.hashUpper = document.getElementById('hashUpper');
+    elements.hashUseHmac = document.getElementById('hashUseHmac');
+    elements.hashSecretWrap = document.getElementById('hashSecretWrap');
+    elements.hashHmacSecret = document.getElementById('hashHmacSecret');
+    elements.coderInputLabel = document.getElementById('coderInputLabel');
+    elements.coderInputMeta = document.getElementById('coderInputMeta');
+    elements.coderInput = document.getElementById('coderInput');
+    elements.coderFilePane = document.getElementById('coderFilePane');
+    elements.coderDrop = document.getElementById('coderDrop');
+    elements.coderFile = document.getElementById('coderFile');
+    elements.coderResultHeading = document.getElementById('coderResultHeading');
+    elements.coderResultMeta = document.getElementById('coderResultMeta');
     elements.coderResultActions = document.getElementById('coderResultActions');
     elements.coderDownloadDecoded = document.getElementById('coderDownloadDecoded');
-    elements.hashToggleCase = document.getElementById('hashToggleCase');
-    elements.hashEncoding = document.getElementById('hashEncoding');
-    elements.hashControls = document.getElementById('hashControls');
-    elements.hashUseHmac = document.getElementById('hashUseHmac');
-    elements.hashHmacSecret = document.getElementById('hashHmacSecret');
-    elements.coderResultHeading = document.getElementById('coderResultHeading');
-    elements.coderResultHint = document.getElementById('coderResultHint');
-    elements.coderDecodeMeta = document.getElementById('coderDecodeMeta');
+    elements.coderOutput = document.getElementById('coderOutput');
+    elements.coderResults = document.getElementById('coderResults');
     elements.pairWorkspace = document.getElementById('pairWorkspace');
     elements.pairInput = document.getElementById('pairInput');
     elements.pairOutput = document.getElementById('pairOutput');
@@ -1328,29 +1211,25 @@ function cacheElements() {
     elements.urlQueryAdd = document.getElementById('urlQueryAdd');
     elements.urlQueryEmpty = document.getElementById('urlQueryEmpty');
     elements.kdfWorkspace = document.getElementById('kdfWorkspace');
-    elements.kdfAlgoSelect = document.getElementById('kdfAlgoSelect');
-    elements.kdfCards = document.querySelectorAll('.kdf-card');
-    elements.kdfRefreshSalts = document.getElementById('kdfRefreshSalts');
-    elements.bcryptPassword = document.getElementById('bcryptPassword');
+    elements.kdfAlgoBcrypt = document.getElementById('kdfAlgoBcrypt');
+    elements.kdfAlgoArgon = document.getElementById('kdfAlgoArgon');
+    elements.bcryptOptions = document.getElementById('bcryptOptions');
+    elements.argonOptions = document.getElementById('argonOptions');
     elements.bcryptCost = document.getElementById('bcryptCost');
-    elements.bcryptSalt = document.getElementById('bcryptSalt');
-    elements.bcryptOutput = document.getElementById('bcryptOutput');
-    elements.bcryptVerifyHash = document.getElementById('bcryptVerifyHash');
-    elements.bcryptHashBtn = document.getElementById('bcryptHashBtn');
-    elements.bcryptVerifyBtn = document.getElementById('bcryptVerifyBtn');
-    elements.bcryptStatus = document.getElementById('bcryptStatus');
-    elements.argonPassword = document.getElementById('argonPassword');
-    elements.argonSalt = document.getElementById('argonSalt');
-    elements.argonTime = document.getElementById('argonTime');
-    elements.argonMem = document.getElementById('argonMem');
-    elements.argonParallelism = document.getElementById('argonParallelism');
     elements.argonType = document.getElementById('argonType');
+    elements.argonMem = document.getElementById('argonMem');
+    elements.argonTime = document.getElementById('argonTime');
+    elements.argonParallelism = document.getElementById('argonParallelism');
     elements.argonHashLen = document.getElementById('argonHashLen');
-    elements.argonOutput = document.getElementById('argonOutput');
-    elements.argonVerifyHash = document.getElementById('argonVerifyHash');
-    elements.argonHashBtn = document.getElementById('argonHashBtn');
-    elements.argonVerifyBtn = document.getElementById('argonVerifyBtn');
-    elements.argonStatus = document.getElementById('argonStatus');
+    elements.kdfGenerate = document.getElementById('kdfGenerate');
+    elements.kdfPassword = document.getElementById('kdfPassword');
+    elements.kdfShowPassword = document.getElementById('kdfShowPassword');
+    elements.kdfSalt = document.getElementById('kdfSalt');
+    elements.kdfOutputMeta = document.getElementById('kdfOutputMeta');
+    elements.kdfOutputLabel = document.getElementById('kdfOutputLabel');
+    elements.kdfOutput = document.getElementById('kdfOutput');
+    elements.kdfVerifyHash = document.getElementById('kdfVerifyHash');
+    elements.kdfVerdict = document.getElementById('kdfVerdict');
     elements.numberWorkspace = document.getElementById('numberWorkspace');
     elements.numberBinary = document.getElementById('numberBinary');
     elements.numberOctal = document.getElementById('numberOctal');
@@ -1364,85 +1243,111 @@ function cacheElements() {
     elements.ipv4Workspace = document.getElementById('ipv4Workspace');
     elements.ipv4Input = document.getElementById('ipv4Input');
     elements.ipv4Results = document.getElementById('ipv4Results');
-    elements.uuidList = document.getElementById('uuidList');
-    elements.uuidToggleCase = document.getElementById('uuidToggleCase');
+    elements.uuidUpper = document.getElementById('uuidUpper');
     elements.uuidRegenerate = document.getElementById('uuidRegenerate');
+    elements.uuidList = document.getElementById('uuidList');
     elements.uaBrowser = document.getElementById('uaBrowser');
     elements.uaOS = document.getElementById('uaOS');
-    elements.uaResults = document.getElementById('uaResults');
     elements.uaCount = document.getElementById('uaCount');
-    elements.randomWorkspace = document.getElementById('randomWorkspace');
-    elements.randomIncludeDigits = document.getElementById('randomIncludeDigits');
+    elements.uaResults = document.getElementById('uaResults');
+    elements.sshTypeEd25519 = document.getElementById('sshTypeEd25519');
+    elements.sshTypeRsa = document.getElementById('sshTypeRsa');
+    elements.sshBitsWrap = document.getElementById('sshBitsWrap');
+    elements.sshBits = document.getElementById('sshBits');
+    elements.sshComment = document.getElementById('sshComment');
+    elements.sshGenerate = document.getElementById('sshGenerate');
+    elements.sshFingerprint = document.getElementById('sshFingerprint');
+    elements.sshSavePublic = document.getElementById('sshSavePublic');
+    elements.sshPublic = document.getElementById('sshPublic');
+    elements.sshSavePrivate = document.getElementById('sshSavePrivate');
+    elements.sshPrivate = document.getElementById('sshPrivate');
+    elements.fingerprintSearch = document.getElementById('fingerprintSearch');
+    elements.fingerprintCount = document.getElementById('fingerprintCount');
+    elements.fingerprintRefresh = document.getElementById('fingerprintRefresh');
+    elements.fingerprintCopyAll = document.getElementById('fingerprintCopyAll');
+    elements.fingerprintGrid = document.getElementById('fingerprintGrid');
     elements.randomLength = document.getElementById('randomLength');
     elements.randomCount = document.getElementById('randomCount');
+    elements.randomIncludeDigits = document.getElementById('randomIncludeDigits');
+    elements.randomIncludeLower = document.getElementById('randomIncludeLower');
+    elements.randomIncludeUpper = document.getElementById('randomIncludeUpper');
+    elements.randomIncludeSymbols = document.getElementById('randomIncludeSymbols');
+    elements.randomExclude = document.getElementById('randomExclude');
+    elements.randomGenerate = document.getElementById('randomGenerate');
+    elements.randomSymbolsGroup = document.getElementById('randomSymbolsGroup');
+    elements.randomSymbolToggles = document.getElementById('randomSymbolToggles');
+    elements.randomMinimums = document.getElementById('randomMinimums');
+    elements.randomMinDigitsRow = document.getElementById('randomMinDigitsRow');
+    elements.randomMinDigits = document.getElementById('randomMinDigits');
+    elements.randomMinLowerRow = document.getElementById('randomMinLowerRow');
+    elements.randomMinLower = document.getElementById('randomMinLower');
+    elements.randomMinUpperRow = document.getElementById('randomMinUpperRow');
+    elements.randomMinUpper = document.getElementById('randomMinUpper');
+    elements.randomMinSymbolsRow = document.getElementById('randomMinSymbolsRow');
+    elements.randomMinSymbols = document.getElementById('randomMinSymbols');
+    elements.randomDigitOptions = document.getElementById('randomDigitOptions');
     elements.randomAllowZero = document.getElementById('randomAllowZero');
-    elements.randomAllowZeroRow = document.getElementById('randomAllowZeroRow');
     elements.randomDigitRangeRow = document.getElementById('randomDigitRangeRow');
     elements.randomDigitMin = document.getElementById('randomDigitMin');
     elements.randomDigitMax = document.getElementById('randomDigitMax');
-    elements.randomIncludeLower = document.getElementById('randomIncludeLower');
-    elements.randomIncludeUpper = document.getElementById('randomIncludeUpper');
-    elements.randomExclude = document.getElementById('randomExclude');
-    elements.randomMinDigits = document.getElementById('randomMinDigits');
-    elements.randomMinLower = document.getElementById('randomMinLower');
-    elements.randomMinUpper = document.getElementById('randomMinUpper');
-    elements.randomMinDigitsRow = document.getElementById('randomMinDigitsRow');
-    elements.randomMinLowerRow = document.getElementById('randomMinLowerRow');
-    elements.randomMinUpperRow = document.getElementById('randomMinUpperRow');
-    elements.randomMinSymbols = document.getElementById('randomMinSymbols');
-    elements.randomSymbolToggles = document.getElementById('randomSymbolToggles');
-    elements.randomSymbolMinRow = document.getElementById('randomSymbolMinRow');
-    elements.randomGenerate = document.getElementById('randomGenerate');
-    elements.randomResults = document.getElementById('randomResults');
+    elements.randomMeta = document.getElementById('randomMeta');
     elements.randomCopyAll = document.getElementById('randomCopyAll');
-    elements.asciiWorkspace = document.getElementById('asciiWorkspace');
-    elements.asciiInput = document.getElementById('asciiInput');
+    elements.randomError = document.getElementById('randomError');
+    elements.randomResults = document.getElementById('randomResults');
     elements.asciiFont = document.getElementById('asciiFont');
     elements.asciiWidth = document.getElementById('asciiWidth');
     elements.asciiAlignLeft = document.getElementById('asciiAlignLeft');
     elements.asciiAlignCenter = document.getElementById('asciiAlignCenter');
     elements.asciiAlignRight = document.getElementById('asciiAlignRight');
-    elements.asciiGenerate = document.getElementById('asciiGenerate');
-    elements.asciiOutput = document.getElementById('asciiOutput');
-    elements.asciiCopy = document.getElementById('asciiCopy');
+    elements.asciiInput = document.getElementById('asciiInput');
+    elements.asciiMeta = document.getElementById('asciiMeta');
     elements.asciiDownload = document.getElementById('asciiDownload');
-    elements.asciiStatus = document.getElementById('asciiStatus');
-    // QR generator inputs are grouped by mode so we toggle rows on radio change.
-    elements.qrWorkspace = document.getElementById('qrWorkspace');
+    elements.asciiError = document.getElementById('asciiError');
+    elements.asciiOutput = document.getElementById('asciiOutput');
     elements.qrModeOtp = document.getElementById('qrModeOtp');
     elements.qrModeWifi = document.getElementById('qrModeWifi');
     elements.qrModeCustom = document.getElementById('qrModeCustom');
+    elements.qrEccLevel = document.getElementById('qrEccLevel');
+    elements.qrFormat = document.getElementById('qrFormat');
+    elements.qrContentLabel = document.getElementById('qrContentLabel');
+    elements.qrFields = document.getElementById('qrFields');
+    elements.qrOtpIssuer = document.getElementById('qrOtpIssuer');
     elements.qrOtpAccount = document.getElementById('qrOtpAccount');
     elements.qrOtpSecret = document.getElementById('qrOtpSecret');
-    elements.qrOtpIssuer = document.getElementById('qrOtpIssuer');
     elements.qrOtpAlgorithm = document.getElementById('qrOtpAlgorithm');
     elements.qrOtpPeriod = document.getElementById('qrOtpPeriod');
     elements.qrOtpDigits = document.getElementById('qrOtpDigits');
-    elements.qrWifiType = document.getElementById('qrWifiType');
     elements.qrWifiSsid = document.getElementById('qrWifiSsid');
+    elements.qrWifiType = document.getElementById('qrWifiType');
+    elements.qrWifiPassRow = document.getElementById('qrWifiPassRow');
     elements.qrWifiPass = document.getElementById('qrWifiPass');
     elements.qrCustomString = document.getElementById('qrCustomString');
-    elements.qrFormat = document.getElementById('qrFormat');
-    elements.qrGenerate = document.getElementById('qrGenerate');
-    elements.qrDownload = document.getElementById('qrDownload');
-    elements.qrPreview = document.getElementById('qrPreview');
     elements.qrMeta = document.getElementById('qrMeta');
+    elements.qrDownload = document.getElementById('qrDownload');
     elements.qrError = document.getElementById('qrError');
-    elements.sshWorkspace = document.getElementById('sshWorkspace');
-    elements.sshType = document.getElementById('sshType');
-    elements.sshBits = document.getElementById('sshBits');
-    elements.sshBitsRow = document.querySelector('.ssh-bits-row');
-    elements.sshFormat = document.getElementById('sshFormat');
-    elements.sshKdf = document.getElementById('sshKdf');
-    elements.sshComment = document.getElementById('sshComment');
-    elements.sshGenerate = document.getElementById('sshGenerate');
-    elements.sshPublic = document.getElementById('sshPublic');
-    elements.sshPrivate = document.getElementById('sshPrivate');
-    elements.sshCopyPublic = document.getElementById('sshCopyPublic');
-    elements.sshCopyPrivate = document.getElementById('sshCopyPrivate');
-    elements.sshResident = document.getElementById('sshResident');
-    elements.sshVerify = document.getElementById('sshVerify');
-    elements.sshSkOptions = document.getElementById('sshSkOptions');
+    elements.qrPreview = document.getElementById('qrPreview');
+    elements.qrPayload = document.getElementById('qrPayload');
+    elements.qrParseDrop = document.getElementById('qrParseDrop');
+    elements.qrParseFile = document.getElementById('qrParseFile');
+    elements.qrParseResults = document.getElementById('qrParseResults');
+    elements.totpAlgorithm = document.getElementById('totpAlgorithm');
+    elements.totpPeriod = document.getElementById('totpPeriod');
+    elements.totpDigits = document.getElementById('totpDigits');
+    elements.totpSecret = document.getElementById('totpSecret');
+    elements.totpError = document.getElementById('totpError');
+    elements.totpResult = document.getElementById('totpResult');
+    elements.totpCode = document.getElementById('totpCode');
+    elements.totpBar = document.getElementById('totpBar');
+    elements.totpRemaining = document.getElementById('totpRemaining');
+    elements.dataRows = document.getElementById('dataRows');
+    elements.dataGenerate = document.getElementById('dataGenerate');
+    elements.dataSchema = document.getElementById('dataSchema');
+    elements.dataColumnEditor = document.getElementById('dataColumnEditor');
+    elements.dataOutputLabel = document.getElementById('dataOutputLabel');
+    elements.dataOutputMeta = document.getElementById('dataOutputMeta');
+    elements.dataSave = document.getElementById('dataSave');
+    elements.dataError = document.getElementById('dataError');
+    elements.dataOutput = document.getElementById('dataOutput');
     elements.timestampFormat = document.getElementById('timestampFormat');
     elements.timestampPattern = document.getElementById('timestampPattern');
     elements.timestampInput = document.getElementById('timestampInput');
@@ -1462,20 +1367,6 @@ function cacheElements() {
     elements.hashControls = document.getElementById('hashControls');
     elements.hashUseHmac = document.getElementById('hashUseHmac');
     elements.hashHmacSecret = document.getElementById('hashHmacSecret');
-    elements.totpSecret = document.getElementById('totpSecret');
-    elements.totpAlgorithm = document.getElementById('totpAlgorithm');
-    elements.totpPeriod = document.getElementById('totpPeriod');
-    elements.totpDigits = document.getElementById('totpDigits');
-    elements.totpCode = document.getElementById('totpCode');
-    elements.totpPeriodLabel = document.getElementById('totpPeriodLabel');
-    elements.totpRemainingLabel = document.getElementById('totpRemainingLabel');
-    elements.totpError = document.getElementById('totpError');
-    elements.dataSchema = document.getElementById('dataSchema');
-    elements.dataRows = document.getElementById('dataRows');
-    elements.dataGenerate = document.getElementById('dataGenerate');
-    elements.dataOutput = document.getElementById('dataOutput');
-    elements.dataCopy = document.getElementById('dataCopy');
-    elements.dataColumnEditor = document.getElementById('dataColumnEditor');
     elements.diffLeftInput = document.getElementById('diffLeftInput');
     elements.diffRightInput = document.getElementById('diffRightInput');
     elements.diffLeftLabel = document.getElementById('diffLeftLabel');
@@ -1484,33 +1375,36 @@ function cacheElements() {
     elements.diffSummary = document.getElementById('diffSummary');
     elements.diffClear = document.getElementById('diffClear');
     elements.diffSwap = document.getElementById('diffSwap');
+    elements.cryptoDirEncrypt = document.getElementById('cryptoDirEncrypt');
+    elements.cryptoDirDecrypt = document.getElementById('cryptoDirDecrypt');
     elements.cryptoAlgorithm = document.getElementById('cryptoAlgorithm');
-    elements.cryptoKey = document.getElementById('cryptoKey');
-    elements.cryptoNonce = document.getElementById('cryptoNonce');
-    elements.cryptoPlaintext = document.getElementById('cryptoPlaintext');
-    elements.cryptoCiphertext = document.getElementById('cryptoCiphertext');
-    elements.cryptoDecryptInput = document.getElementById('cryptoDecryptInput');
-    elements.cryptoDecryptOutput = document.getElementById('cryptoDecryptOutput');
-    elements.cryptoEncrypt = document.getElementById('cryptoEncrypt');
-    elements.cryptoDecrypt = document.getElementById('cryptoDecrypt');
-    elements.cryptoCopyCiphertext = document.getElementById('cryptoCopyCiphertext');
-    elements.cryptoGenerateKey = document.getElementById('cryptoGenerateKey');
-    elements.cryptoGenerateNonce = document.getElementById('cryptoGenerateNonce');
     elements.cryptoModeText = document.getElementById('cryptoModeText');
     elements.cryptoModeFile = document.getElementById('cryptoModeFile');
+    elements.cryptoRun = document.getElementById('cryptoRun');
+    elements.cryptoRunLabel = document.getElementById('cryptoRunLabel');
+    elements.cryptoKey = document.getElementById('cryptoKey');
+    elements.cryptoGenerateKey = document.getElementById('cryptoGenerateKey');
+    elements.cryptoNonceWrap = document.getElementById('cryptoNonceWrap');
+    elements.cryptoNonce = document.getElementById('cryptoNonce');
+    elements.cryptoText = document.getElementById('cryptoText');
+    elements.cryptoInputLabel = document.getElementById('cryptoInputLabel');
+    elements.cryptoInputMeta = document.getElementById('cryptoInputMeta');
+    elements.cryptoInput = document.getElementById('cryptoInput');
+    elements.cryptoOutputLabel = document.getElementById('cryptoOutputLabel');
+    elements.cryptoOutputMeta = document.getElementById('cryptoOutputMeta');
+    elements.cryptoSaveText = document.getElementById('cryptoSaveText');
+    elements.cryptoError = document.getElementById('cryptoError');
+    elements.cryptoOutput = document.getElementById('cryptoOutput');
+    elements.cryptoFiles = document.getElementById('cryptoFiles');
+    elements.cryptoDrop = document.getElementById('cryptoDrop');
+    elements.cryptoDropMeta = document.getElementById('cryptoDropMeta');
     elements.cryptoFile = document.getElementById('cryptoFile');
-    elements.cryptoFileMeta = document.getElementById('cryptoFileMeta');
+    elements.cryptoFileTable = document.getElementById('cryptoFileTable');
+    elements.cryptoFileList = document.getElementById('cryptoFileList');
     elements.cryptoDownload = document.getElementById('cryptoDownload');
-    elements.fingerprintGrid = document.getElementById('fingerprintGrid');
-    elements.fingerprintSummary = document.getElementById('fingerprintSummary');
-    elements.fingerprintRefresh = document.getElementById('fingerprintRefresh');
-    elements.fingerprintCopyAll = document.getElementById('fingerprintCopyAll');
-    elements.fingerprintSearch = document.getElementById('fingerprintSearch');
-    elements.fingerprintCount = document.getElementById('fingerprintCount');
     elements.certInput = document.getElementById('certInput');
     elements.certResults = document.getElementById('certResults');
     elements.certSummary = document.getElementById('certSummary');
-    elements.certParse = document.getElementById('certParse');
     elements.certSample = document.getElementById('certSample');
 }
 
@@ -1626,20 +1520,12 @@ function handleCopyButtons(event) {
 }
 
 function initCoderControls() {
-    if (!elements.decodeVariant) return;
-    const options = allEncodingVariants
+    elements.decodeVariant.innerHTML = `<option value="auto">Auto</option>${allEncodingVariants
         .map(
             (variant) =>
                 `<option value="${variant.key}">${variant.group} · ${variant.label}</option>`
         )
-        .join('');
-    elements.decodeVariant.innerHTML = options;
-    if (!state.selectedDecoder && allEncodingVariants.length > 0) {
-        state.selectedDecoder = allEncodingVariants[0].key;
-    }
-    if (state.selectedDecoder) {
-        elements.decodeVariant.value = state.selectedDecoder;
-    }
+        .join('')}`;
 }
 
 function bindUI() {
@@ -1750,82 +1636,43 @@ function bindUI() {
     elements.watermarkFontSize?.addEventListener('input', handleWatermarkRangeChange);
     elements.watermarkColor?.addEventListener('input', handleWatermarkChange);
     elements.watermarkDirection?.addEventListener('change', handleWatermarkChange);
-    elements.qrParseFile?.addEventListener('change', handleQrParseFileChange);
-    elements.qrParseDrop?.addEventListener('dragover', (event) => {
-        event.preventDefault();
-        elements.qrParseDrop.classList.add('dragging');
-    });
-    elements.qrParseDrop?.addEventListener('dragleave', () => {
-        elements.qrParseDrop.classList.remove('dragging');
-    });
-    elements.qrParseDrop?.addEventListener('drop', (event) => {
-        event.preventDefault();
-        elements.qrParseDrop.classList.remove('dragging');
-        const files = Array.from(event.dataTransfer?.files || []);
-        if (files.length) {
-            handleQrParseSelectedFiles(files);
-        }
-    });
-    elements.qrParseDrop?.addEventListener('click', (event) => {
-        if (event.target?.id === 'qrParseFile') return;
-        elements.qrParseFile?.click();
-    });
-    elements.qrParseResults?.addEventListener('click', handleQrParseResultsClick);
-    elements.qrEccLevel?.addEventListener('change', handleQrFieldChange);
     window.addEventListener('hashchange', () => syncToolFromHash(false));
-    elements.coderInput?.addEventListener('input', () => scheduleCoder());
-    elements.coderModeText?.addEventListener('change', () => setCoderInputMode('text'));
-    elements.coderModeFile?.addEventListener('change', () => setCoderInputMode('file'));
-    elements.coderFile?.addEventListener('change', handleCoderFileChange);
-    elements.decodeVariant?.addEventListener('change', (event) => {
-        state.selectedDecoder = event.target.value;
-        updateCoderTexts();
-        scheduleCoder(true);
+    elements.coderInput?.addEventListener('input', scheduleCoder);
+    elements.coderModeText?.addEventListener('click', () => setCoderInputMode('text'));
+    elements.coderModeFile?.addEventListener('click', () => setCoderInputMode('file'));
+    elements.coderFile?.addEventListener('change', (event) => {
+        loadCoderFile(event.target.files?.[0]);
+        // Choosing the same file again still fires change.
+        event.target.value = '';
     });
-    elements.coderResults?.addEventListener('click', (event) => {
-        const toggle = event.target.closest('button[data-encode-group]');
-        if (toggle) {
-            const group = toggle.dataset.encodeGroup || '';
-            if (group) {
-                state.encodeCaseMap[group] = !state.encodeCaseMap[group];
-                if (state.lastEncodeResults) {
-                    renderEncodeResults(state.lastEncodeResults);
-                }
-            }
-            return;
-        }
-        const button = event.target.closest('button[data-value]');
-        if (button) {
-            const value = button.dataset.value || '';
-            if (value) {
-                copyText(value, button.dataset.label || 'Result');
-            }
-            return;
-        }
-        const entry = event.target.closest('.coder-entry[data-copy-value]');
-        if (entry) {
-            const value = entry.dataset.copyValue || '';
-            if (value) {
-                copyText(value, entry.dataset.copyLabel || 'Result');
-            }
-        }
+    bindFileDrop(elements.coderDrop, ([file]) => loadCoderFile(file));
+    // A file dropped on the text is meant as the input, whatever the switch says.
+    bindFileDrop(elements.coderInput, ([file]) => {
+        if (state.coderMode === 'decode') return;
+        state.coder.inputMode = 'file';
+        loadCoderFile(file);
     });
+    elements.decodeVariant?.addEventListener('change', runCoder);
+    elements.encodeLower?.addEventListener('change', runCoder);
+    elements.hashEncoding?.addEventListener('change', () => {
+        state.hashEncoding = elements.hashEncoding.value;
+        renderHashControls();
+        runCoder();
+    });
+    elements.hashUpper?.addEventListener('change', runCoder);
+    elements.hashUseHmac?.addEventListener('change', () => {
+        state.hashUseHmac = elements.hashUseHmac.checked;
+        renderHashControls();
+        runCoder();
+        if (state.hashUseHmac) elements.hashHmacSecret.focus();
+    });
+    elements.hashHmacSecret?.addEventListener('input', scheduleCoder);
     elements.coderDownloadDecoded?.addEventListener('click', downloadDecodedFile);
     elements.pairInput?.addEventListener('input', () => handlePairInput('input'));
     elements.pairOutput?.addEventListener('input', () => handlePairInput('output'));
     elements.urlQueryTable?.addEventListener('input', handleUrlQueryTableInput);
     elements.urlQueryTable?.addEventListener('click', handleUrlQueryTableClick);
     elements.urlQueryAdd?.addEventListener('click', () => addUrlQueryRow());
-    elements.hashToggleCase?.addEventListener('click', () => {
-        state.hashUppercase = !state.hashUppercase;
-        elements.hashToggleCase.dataset.upper = state.hashUppercase ? 'true' : 'false';
-        if (state.lastHashResults) {
-            renderHashResults(state.lastHashResults);
-        }
-    });
-    elements.hashEncoding?.addEventListener('change', handleHashEncodingChange);
-    elements.hashUseHmac?.addEventListener('change', handleHashModeToggle);
-    elements.hashHmacSecret?.addEventListener('input', handleHashSecretInput);
     elements.jwtAlgorithm?.addEventListener('change', () => {
         if (state.currentTool === 'coder-jwt') {
             runPairConversion('input');
@@ -1849,128 +1696,105 @@ function bindUI() {
         elements[id]?.addEventListener('input', () => handleUnitInput(key));
     });
     elements.ipv4Input?.addEventListener('input', () => runIPv4Conversion());
-    elements.uuidToggleCase?.addEventListener('click', () => {
-        state.uuidUppercase = !state.uuidUppercase;
-        if (elements.uuidToggleCase) {
-            elements.uuidToggleCase.dataset.upper = state.uuidUppercase ? 'true' : 'false';
-        }
-        renderUUIDs();
-    });
-    elements.uuidRegenerate?.addEventListener('click', () => refreshUUIDs(true));
-    elements.uaBrowser?.addEventListener('change', () => refreshUserAgents(true));
-    elements.uaOS?.addEventListener('change', () => refreshUserAgents(true));
-    elements.randomIncludeDigits?.addEventListener('change', handleRandomIncludeDigitsChange);
-    elements.randomLength?.addEventListener('input', handleRandomLengthChange);
-    elements.randomCount?.addEventListener('input', handleRandomCountChange);
-    elements.randomAllowZero?.addEventListener('change', handleRandomLeadingToggle);
-    elements.randomIncludeLower?.addEventListener('change', handleRandomIncludeLowerChange);
-    elements.randomIncludeUpper?.addEventListener('change', handleRandomIncludeUpperChange);
-    elements.randomExclude?.addEventListener('input', handleRandomExcludeInput);
-    elements.randomDigitMin?.addEventListener('input', handleRandomDigitRangeInput);
-    elements.randomDigitMax?.addEventListener('input', handleRandomDigitRangeInput);
-    elements.randomMinDigits?.addEventListener('input', () => handleRandomMinChange('digits'));
-    elements.randomMinLower?.addEventListener('input', () => handleRandomMinChange('lower'));
-    elements.randomMinUpper?.addEventListener('input', () => handleRandomMinChange('upper'));
-    elements.randomMinSymbols?.addEventListener('input', () => handleRandomMinChange('symbols'));
-    elements.randomSymbolToggles?.addEventListener('click', handleRandomSymbolToggle);
-    elements.randomGenerate?.addEventListener('click', () => runRandomGenerator());
-    elements.asciiGenerate?.addEventListener('click', () => runAsciiGenerator());
-    elements.asciiCopy?.addEventListener('click', () => handleAsciiCopy());
-    elements.asciiDownload?.addEventListener('click', () => handleAsciiDownload());
-    elements.asciiFont?.addEventListener('change', () => {
-        state.ascii.font = elements.asciiFont.value || 'standard';
-    });
-    elements.asciiWidth?.addEventListener('input', () => {
-        const val = Number.parseInt(elements.asciiWidth.value, 10);
-        if (Number.isFinite(val)) state.ascii.width = val;
-    });
-    [elements.asciiAlignLeft, elements.asciiAlignCenter, elements.asciiAlignRight].forEach(
-        (input) => {
-            input?.addEventListener('change', () => {
-                const checked = document.querySelector('input[name="asciiAlign"]:checked');
-                if (checked) {
-                    state.ascii.align = checked.value;
-                }
-            });
-        }
-    );
-    elements.qrModeOtp?.addEventListener('change', () => setQrMode('otp'));
-    elements.qrModeWifi?.addEventListener('change', () => setQrMode('wifi'));
-    elements.qrModeCustom?.addEventListener('change', () => setQrMode('custom'));
+    elements.uuidUpper?.addEventListener('change', renderUUIDs);
+    elements.uuidRegenerate?.addEventListener('click', refreshUUIDs);
+    elements.uaBrowser?.addEventListener('change', activateUserAgentTool);
+    elements.uaOS?.addEventListener('change', activateUserAgentTool);
     [
-        elements.qrOtpAccount,
-        elements.qrOtpSecret,
-        elements.qrOtpIssuer,
-        elements.qrOtpAlgorithm,
-        elements.qrOtpPeriod,
-        elements.qrOtpDigits,
-        elements.qrWifiType,
-        elements.qrWifiSsid,
-        elements.qrWifiPass,
-        elements.qrCustomString,
-    ].forEach((input) => input?.addEventListener('input', handleQrFieldChange));
-    elements.qrFormat?.addEventListener('change', (event) => {
-        state.qr.format = (event.target.value || 'png').toLowerCase();
+        elements.randomLength,
+        elements.randomCount,
+        elements.randomExclude,
+        elements.randomMinDigits,
+        elements.randomMinLower,
+        elements.randomMinUpper,
+        elements.randomMinSymbols,
+        elements.randomDigitMin,
+        elements.randomDigitMax,
+    ].forEach((input) => input?.addEventListener('input', scheduleRandom));
+    [
+        elements.randomIncludeDigits,
+        elements.randomIncludeLower,
+        elements.randomIncludeUpper,
+        elements.randomAllowZero,
+    ].forEach((input) => input?.addEventListener('change', scheduleRandom));
+    elements.randomIncludeSymbols?.addEventListener('change', () => {
+        // Ticked with none picked it would add nothing: start again from all of them.
+        if (elements.randomIncludeSymbols.checked && !state.random.symbols.size) {
+            specialCharacters.forEach((symbol) => state.random.symbols.add(symbol));
+            renderSymbolButtons();
+        }
+        scheduleRandom();
     });
-    elements.qrGenerate?.addEventListener('click', handleQrGenerate);
+    elements.randomSymbolToggles?.addEventListener('click', handleRandomSymbolToggle);
+    elements.randomGenerate?.addEventListener('click', runRandomGenerator);
+    elements.randomCopyAll?.addEventListener('click', () =>
+        copyText(state.random.results.join('\n'), 'every string')
+    );
+    elements.asciiInput?.addEventListener('input', scheduleAscii);
+    elements.asciiWidth?.addEventListener('input', scheduleAscii);
+    elements.asciiFont?.addEventListener('change', runAsciiGenerator);
+    elements.asciiAlignLeft?.addEventListener('click', () => setAsciiAlign('left'));
+    elements.asciiAlignCenter?.addEventListener('click', () => setAsciiAlign('center'));
+    elements.asciiAlignRight?.addEventListener('click', () => setAsciiAlign('right'));
+    elements.asciiDownload?.addEventListener('click', handleAsciiDownload);
+    elements.qrModeOtp?.addEventListener('click', () => setQrMode('otp'));
+    elements.qrModeWifi?.addEventListener('click', () => setQrMode('wifi'));
+    elements.qrModeCustom?.addEventListener('click', () => setQrMode('custom'));
+    elements.qrFields?.addEventListener('input', scheduleQr);
+    // Security None has no password to ask for.
+    elements.qrWifiType?.addEventListener('change', renderQrMode);
+    elements.qrCustomString?.addEventListener('input', scheduleQr);
+    elements.qrEccLevel?.addEventListener('change', runQr);
+    elements.qrFormat?.addEventListener('change', runQr);
     elements.qrDownload?.addEventListener('click', downloadQrImage);
+    elements.qrParseFile?.addEventListener('change', (event) => {
+        addQrParseFiles(Array.from(event.target.files || []));
+        event.target.value = '';
+    });
+    bindFileDrop(elements.qrParseDrop, addQrParseFiles);
+    elements.sshTypeEd25519?.addEventListener('click', () => setSshType('ed25519'));
+    elements.sshTypeRsa?.addEventListener('click', () => setSshType('rsa'));
     elements.sshGenerate?.addEventListener('click', runSshGenerator);
-    elements.sshCopyPublic?.addEventListener('click', () => {
-        const val = elements.sshPublic?.value || '';
-        if (val.trim()) copyText(val, 'public key');
-    });
-    elements.sshCopyPrivate?.addEventListener('click', () => {
-        const val = elements.sshPrivate?.value || '';
-        if (val.trim()) copyText(val, 'private key');
-    });
-    elements.sshType?.addEventListener('change', handleSshTypeChange);
-    elements.sshBits?.addEventListener('input', handleSshBitsChange);
-    elements.sshComment?.addEventListener('input', handleSshCommentChange);
-    elements.sshFormat?.addEventListener('change', handleSshFormatChange);
-    elements.sshKdf?.addEventListener('input', handleSshKdfChange);
-    elements.sshResident?.addEventListener('change', handleSshResidentChange);
-    elements.sshVerify?.addEventListener('change', handleSshVerifyChange);
-    elements.randomResults?.addEventListener('click', handleRandomResultsClick);
-    elements.randomCopyAll?.addEventListener('click', handleRandomCopyAll);
-    // Fingerprint tool event listeners
-    elements.fingerprintRefresh?.addEventListener('click', () => refreshFingerprint(false));
+    elements.sshSavePublic?.addEventListener('click', () => saveSshKey('public'));
+    elements.sshSavePrivate?.addEventListener('click', () => saveSshKey('private'));
+    elements.fingerprintRefresh?.addEventListener('click', refreshFingerprint);
     elements.fingerprintCopyAll?.addEventListener('click', handleFingerprintCopyAll);
-    elements.fingerprintSearch?.addEventListener('input', handleFingerprintSearch);
-    elements.kdfAlgoSelect = document.getElementById('kdfAlgoSelect');
-    elements.kdfCards = document.querySelectorAll('.kdf-card');
-    elements.kdfAlgoSelect?.addEventListener('change', (ev) => {
-        setKdfAlgorithm(ev.target.value);
-    });
-    elements.kdfRefreshSalts?.addEventListener('click', refreshKdfSalts);
-    elements.bcryptHashBtn?.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        runBcryptHash();
-    });
-    elements.bcryptVerifyBtn?.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        verifyBcrypt();
-    });
-    elements.argonHashBtn?.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        runArgonHash();
-    });
-    elements.argonVerifyBtn?.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        verifyArgon();
-    });
-    elements.cryptoAlgorithm?.addEventListener('change', handleCryptoAlgorithmChange);
+    elements.fingerprintSearch?.addEventListener('input', () =>
+        renderFingerprintFacts(state.fingerprintFacts)
+    );
+    elements.totpSecret?.addEventListener('input', handleTotpSecretInput);
+    [elements.totpAlgorithm, elements.totpPeriod, elements.totpDigits].forEach((input) =>
+        input?.addEventListener('input', refreshTotp)
+    );
+    elements.dataSchema?.addEventListener('input', scheduleDataSchema);
+    elements.dataRows?.addEventListener('input', scheduleData);
+    elements.dataGenerate?.addEventListener('click', runDataGenerator);
+    elements.dataSave?.addEventListener('click', saveDataOutput);
+    elements.dataColumnEditor?.addEventListener('input', handleDataOverrideInput);
+    elements.kdfAlgoBcrypt?.addEventListener('click', () => setKdfAlgorithm('bcrypt'));
+    elements.kdfAlgoArgon?.addEventListener('click', () => setKdfAlgorithm('argon2'));
+    elements.kdfGenerate?.addEventListener('click', runKdfHash);
+    elements.kdfShowPassword?.addEventListener('click', toggleKdfPassword);
+    elements.kdfPassword?.addEventListener('input', scheduleKdfVerify);
+    elements.kdfVerifyHash?.addEventListener('input', scheduleKdfVerify);
+    elements.cryptoDirEncrypt?.addEventListener('click', () => setCryptoDirection('encrypt'));
+    elements.cryptoDirDecrypt?.addEventListener('click', () => setCryptoDirection('decrypt'));
+    elements.cryptoModeText?.addEventListener('click', () => setCryptoInputMode('text'));
+    elements.cryptoModeFile?.addEventListener('click', () => setCryptoInputMode('files'));
+    elements.cryptoAlgorithm?.addEventListener('change', handleCryptoKeyChange);
+    elements.cryptoRun?.addEventListener('click', runCrypto);
     elements.cryptoGenerateKey?.addEventListener('click', seedCryptoKey);
-    elements.cryptoGenerateNonce?.addEventListener('click', seedCryptoNonce);
-    elements.cryptoEncrypt?.addEventListener('click', handleCryptoEncrypt);
-    elements.cryptoDecrypt?.addEventListener('click', handleCryptoDecrypt);
-    elements.cryptoCopyCiphertext?.addEventListener('click', copyCryptoCiphertext);
+    elements.cryptoKey?.addEventListener('input', handleCryptoKeyChange);
+    elements.cryptoNonce?.addEventListener('input', handleCryptoKeyChange);
+    elements.cryptoInput?.addEventListener('input', handleCryptoInput);
+    elements.cryptoSaveText?.addEventListener('click', saveCryptoText);
+    elements.cryptoFile?.addEventListener('change', (event) => {
+        addCryptoFiles(Array.from(event.target.files || []));
+        event.target.value = '';
+    });
+    bindFileDrop(elements.cryptoDrop, addCryptoFiles);
+    elements.cryptoFileList?.addEventListener('click', handleCryptoFileListClick);
     elements.cryptoDownload?.addEventListener('click', handleCryptoDownload);
-    elements.cryptoModeText?.addEventListener('change', () => setCryptoInputMode('text'));
-    elements.cryptoModeFile?.addEventListener('change', () => setCryptoInputMode('file'));
-    elements.cryptoFile?.addEventListener('change', handleCryptoFileChange);
-    elements.hashEncoding?.addEventListener('change', handleHashEncodingChange);
-    elements.hashUseHmac?.addEventListener('change', handleHashModeToggle);
-    elements.hashHmacSecret?.addEventListener('input', handleHashSecretInput);
     elements.timestampInput?.addEventListener('input', () => runTimestamp());
     elements.timestampFormat?.addEventListener('change', () => {
         const custom = elements.timestampFormat.value === 'custom';
@@ -1989,16 +1813,6 @@ function bindUI() {
     elements.timestampAddFormat?.addEventListener('click', addTimestampFormat);
     elements.timestampCustom?.addEventListener('input', handleTimestampFormatEdit);
     elements.timestampCustom?.addEventListener('click', handleTimestampFormatRemove);
-    elements.totpSecret?.addEventListener('input', handleTotpFieldChange);
-    elements.totpAlgorithm?.addEventListener('change', handleTotpFieldChange);
-    elements.totpPeriod?.addEventListener('input', handleTotpFieldChange);
-    elements.totpDigits?.addEventListener('input', handleTotpFieldChange);
-    elements.totpCode?.addEventListener('click', copyTotpCode);
-    elements.dataSchema?.addEventListener('input', handleDataSchemaInput);
-    elements.dataRows?.addEventListener('input', handleDataRowsChange);
-    elements.dataGenerate?.addEventListener('click', () => runDataGenerator());
-    elements.dataCopy?.addEventListener('click', copyDataOutput);
-    elements.dataColumnEditor?.addEventListener('input', handleDataOverrideInput);
 
     // Diff tool event listeners
     // Diff is automatically generated on input via handleDiffInput
@@ -2007,12 +1821,10 @@ function bindUI() {
     elements.diffClear?.addEventListener('click', handleDiffClear);
     elements.diffSwap?.addEventListener('click', handleDiffSwap);
 
-    elements.certInput?.addEventListener('input', () => scheduleCertInspector());
-    elements.certParse?.addEventListener('click', () => runCertInspector(true));
+    elements.certInput?.addEventListener('input', scheduleCertInspector);
     elements.certSample?.addEventListener('click', () => {
-        if (!elements.certInput) return;
         elements.certInput.value = sampleCertificateChain.trim();
-        runCertInspector(true);
+        runCertInspector();
     });
 }
 
@@ -2346,14 +2158,7 @@ function selectTool(toolId) {
         return;
     }
     if (coderMainTools.has(toolId)) {
-        const nextMode = coderToolModes[toolId] || 'encode';
-        const changed = state.coderMode !== nextMode;
-        state.coderMode = nextMode;
-        updateCoderTexts();
-        if (changed) {
-            renderCoderEmpty();
-        }
-        scheduleCoder(true);
+        activateCoderTool(toolId);
         return;
     }
     if (isPairTool(toolId)) {
@@ -2380,25 +2185,8 @@ function selectTool(toolId) {
         activateIPv4Tool();
         return;
     }
-    if (isUUIDTool(toolId)) {
-        activateUUIDTool();
-    } else if (isUserAgentTool(toolId)) {
-        activateUserAgentTool();
-    } else if (isRandomTool(toolId)) {
-        activateRandomTool();
-    } else if (isAsciiTool(toolId)) {
-        activateAsciiTool();
-    } else if (isQrTool(toolId)) {
-        activateQrTool();
-    } else if (isTotpTool(toolId)) {
-        activateTotpTool();
-    } else if (isSshTool(toolId)) {
-        activateSshTool();
-    } else if (isDataTool(toolId)) {
-        activateDataTool();
-    } else if (isFingerprintTool(toolId)) {
-        activateFingerprintTool();
-    } else if (isCryptoTool(toolId)) {
+    if (activateGeneratorTool(toolId)) return;
+    if (isCryptoTool(toolId)) {
         activateCryptoTool();
     } else if (isCertTool(toolId)) {
         activateCertTool();
@@ -2428,295 +2216,242 @@ function setStatus(message, isError) {
     elements.status.classList.toggle('error', Boolean(isError));
 }
 
-function scheduleCoder(immediate = false) {
-    if (!coderMainTools.has(state.currentTool)) return;
-    if (immediate) {
-        runCoder();
-        return;
-    }
+// Encoders, decoders and hashes share a workspace; the mode decides the bar and the result.
+function activateCoderTool(toolId) {
+    const mode = coderToolModes[toolId] || 'encode';
+    state.coderMode = mode;
+    // A decoder reads text: its result is the bytes, so there is no file to read in.
+    if (mode === 'decode') state.coder.inputMode = 'text';
+    elements.coderSource.hidden = mode === 'decode';
+    elements.decodeVariantWrap.hidden = mode !== 'decode';
+    elements.encodeLowerWrap.hidden = mode !== 'encode';
+    elements.hashControls.hidden = mode !== 'hash';
+    elements.coderResultHeading.textContent = coderPanes[mode].result;
+    elements.coderInput.placeholder = coderPanes[mode].placeholder;
+    renderHashControls();
+    renderCoderSource();
+    runCoder();
+}
+
+function scheduleCoder() {
     clearTimeout(coderTimer);
-    coderTimer = setTimeout(() => runCoder(), 200);
+    coderTimer = setTimeout(runCoder, 150);
 }
 
 function setCoderInputMode(mode) {
-    const useFile = mode === 'file';
-    state.coder.inputMode = useFile ? 'file' : 'text';
-    if (elements.coderModeText) elements.coderModeText.checked = !useFile;
-    if (elements.coderModeFile) elements.coderModeFile.checked = useFile;
-    if (elements.coderFile) elements.coderFile.classList.toggle('hidden', !useFile);
-    if (elements.coderFileMeta) elements.coderFileMeta.classList.toggle('hidden', !useFile);
-    if (!useFile) {
-        state.coder.fileBytes = null;
-        state.coder.fileName = '';
-        state.coder.fileSize = 0;
-    }
-    renderCoderFileMeta();
-    if (state.coderMode !== 'decode') {
-        scheduleCoder(true);
-    }
+    state.coder.inputMode = mode;
+    renderCoderSource();
+    runCoder();
 }
 
-async function handleCoderFileChange(event) {
-    const file = event?.target?.files?.[0];
-    if (!file) {
-        state.coder.fileBytes = null;
-        state.coder.fileName = '';
-        state.coder.fileSize = 0;
-        renderCoderFileMeta();
-        renderCoderEmpty();
+function renderCoderSource() {
+    const file = state.coder.inputMode === 'file';
+    elements.coderModeText.setAttribute('aria-pressed', String(!file));
+    elements.coderModeFile.setAttribute('aria-pressed', String(file));
+    elements.coderInput.hidden = file;
+    elements.coderFilePane.hidden = !file;
+    elements.coderInputLabel.textContent = file ? 'File' : 'Text';
+    elements.coderDrop.classList.toggle('compact', Boolean(state.coder.fileBytes));
+    renderCoderInputMeta();
+}
+
+function renderCoderInputMeta() {
+    const { inputMode, fileBytes, fileName } = state.coder;
+    if (inputMode === 'file') {
+        elements.coderInputMeta.textContent = fileBytes
+            ? `${fileName} · ${formatBytes(fileBytes.length)}`
+            : '';
         return;
     }
-    try {
-        const buffer = await file.arrayBuffer();
-        state.coder.fileBytes = new Uint8Array(buffer);
-        state.coder.fileName = file.name;
-        state.coder.fileSize = file.size;
-        renderCoderFileMeta();
-        scheduleCoder(true);
-    } catch (err) {
-        console.error(err);
-        setStatus(`⚠️ Failed to read file: ${err?.message || err}`, true);
-    }
+    const text = elements.coderInput.value;
+    elements.coderInputMeta.textContent = text ? `${utf8ToBytes(text).length} bytes` : '';
 }
 
-function renderCoderFileMeta() {
-    if (!elements.coderFileMeta) return;
-    if (state.coder.inputMode !== 'file') {
-        elements.coderFileMeta.textContent = 'File mode hidden';
-        elements.coderFileMeta.classList.add('hidden');
-        return;
-    }
-    elements.coderFileMeta.classList.remove('hidden');
-    if (state.coder.fileBytes?.length) {
-        const name = state.coder.fileName || 'selected file';
-        const size = state.coder.fileBytes.length;
-        elements.coderFileMeta.textContent = `${name} (${size} bytes)`;
-    } else {
-        elements.coderFileMeta.textContent = 'No file selected';
-    }
+async function loadCoderFile(file) {
+    if (!file) return;
+    state.coder.fileBytes = new Uint8Array(await file.arrayBuffer());
+    state.coder.fileName = file.name;
+    renderCoderSource();
+    runCoder();
 }
 
-function clearDecodedFileState() {
-    state.coder.decodedBytes = null;
-    state.coder.decodedFileName = '';
-    if (elements.coderDecodeMeta) {
-        elements.coderDecodeMeta.classList.add('hidden');
-        elements.coderDecodeMeta.textContent = '';
-    }
+function renderHashControls() {
+    elements.hashUpperWrap.hidden = state.hashEncoding !== 'base16';
+    elements.hashSecretWrap.hidden = !state.hashUseHmac;
 }
 
 function runCoder() {
-    if (!coderMainTools.has(state.currentTool)) return;
-    if (!state.wasmReady) {
-        setStatus('Waiting for WebAssembly...', true);
-        return;
-    }
-    const text = elements.coderInput?.value || '';
-    const trimmed = text.trim();
-    const usingFile = state.coderMode !== 'decode' && state.coder.inputMode === 'file';
-    const fileBytes = state.coder.fileBytes;
-    if (state.coderMode !== 'hash') {
-        clearDecodedFileState();
-    }
-    if (!trimmed && state.coderMode !== 'hash' && !usingFile) {
+    if (!coderMainTools.has(state.currentTool) || !state.wasmReady) return;
+    const mode = state.coderMode;
+    const fromFile = mode !== 'decode' && state.coder.inputMode === 'file';
+    const text = elements.coderInput.value;
+    const bytes = fromFile ? state.coder.fileBytes : null;
+    renderCoderInputMeta();
+    state.coder.decodedBytes = null;
+    elements.coderOutput.hidden = true;
+    elements.coderResults.hidden = false;
+    elements.coderResultActions.hidden = true;
+    elements.coderResultMeta.textContent = '';
+    if (fromFile ? !bytes : !text) {
         renderCoderEmpty();
         return;
     }
     try {
-        if (state.coderMode === 'encode') {
-            if (usingFile && !(fileBytes && fileBytes.length)) {
-                renderCoderEmpty();
-                setStatus('Select a file to encode', true);
-                return;
-            }
-            const result = usingFile
-                ? encode_content_bytes(fileBytes || new Uint8Array())
-                : encode_content(text);
-            const map = normalizeMapResult(result);
-            state.lastEncodeResults = map;
-            renderEncodeResults(map);
-            setStatus(usingFile ? 'Encoded file' : 'Done', false);
-            return;
+        if (mode === 'encode') {
+            renderEncodeResults(
+                normalizeMapResult(fromFile ? encode_content_bytes(bytes) : encode_content(text))
+            );
+        } else if (mode === 'decode') {
+            renderDecodeResult(text.trim());
+        } else {
+            renderHashResults(normalizeMapResult(hashDigests(text, bytes)));
         }
-        if (state.coderMode === 'decode') {
-            const decoderKey = state.selectedDecoder || elements.decodeVariant?.value || '';
-            if (!decoderKey) {
-                setStatus('Select an encoding to decode', true);
-                return;
-            }
-            if (!trimmed) {
-                renderCoderEmpty();
-                return;
-            }
-            const decodeInput = decoderKey === 'hex_upper' ? text.toUpperCase() : text;
-            const bytes = decode_content_bytes(decoderKey, decodeInput);
-            const preview = bytesToUtf8Strict(bytes);
-            const displayValue = preview ?? toBase64(bytes, false);
-            const info = encodingVariantMap.get(decoderKey);
-            const displayLabel = info ? `${info.group} · ${info.label}` : 'Decoded';
-            state.coder.decodedBytes = bytes;
-            state.coder.decodedFileName = state.coder.fileName || 'decoded.bin';
-            renderDecodeResult({
-                label: displayLabel,
-                value: displayValue,
-                byteLength: bytes.length,
-                note: preview ? '' : 'Binary output shown as Base64',
-            });
-            setStatus(preview ? 'Done' : 'Decoded (binary previewed as Base64)', false);
-            updateCoderActionsVisibility();
-            return;
-        }
-        if (usingFile && !(fileBytes && fileBytes.length)) {
-            renderCoderEmpty();
-            setStatus('Select a file to hash', true);
-            return;
-        }
-        const hashes = state.hashUseHmac
-            ? state.coder.inputMode === 'file'
-                ? hash_content_hmac_bytes(
-                      fileBytes || new Uint8Array(),
-                      utf8ToBytes(state.hashHmacSecret || '')
-                  )
-                : hash_content_hmac(text, state.hashHmacSecret || '')
-            : state.coder.inputMode === 'file'
-              ? hash_content_bytes(fileBytes || new Uint8Array())
-              : hash_content(text);
-        const map = normalizeMapResult(hashes);
-        state.lastHashResults = map;
-        renderHashResults(map);
-        setStatus(usingFile ? 'Hashed file' : 'Done', false);
     } catch (err) {
-        renderCoderEmpty();
-        setStatus(`⚠️ ${err?.message || err}`, true);
+        elements.coderResults.innerHTML = `<p class="notice">${escapeHTML(String(err?.message || err))}</p>`;
     }
 }
 
-function updateCoderTexts() {
-    if (elements.coderWorkspaceTitle) {
-        elements.coderWorkspaceTitle.textContent =
-            coderModeTitles[state.coderMode] || state.coderMode;
-    }
-    if (elements.coderModeHint) {
-        elements.coderModeHint.textContent = coderModeDescriptions[state.coderMode] || '';
-    }
-    if (elements.coderResultHeading) {
-        const heading =
-            state.coderMode === 'hash'
-                ? 'Hash Digests'
-                : state.coderMode === 'decode'
-                  ? 'Decode'
-                  : 'Encodings';
-        elements.coderResultHeading.textContent = heading;
-    }
-    if (elements.coderResultHint) {
-        if (state.coderMode === 'decode') {
-            const info = encodingVariantMap.get(state.selectedDecoder);
-            elements.coderResultHint.textContent = info
-                ? `${info.group} · ${info.label}`
-                : coderResultHints.decode;
-        } else {
-            elements.coderResultHint.textContent = coderResultHints[state.coderMode] || '';
-        }
-    }
-    if (elements.decodeVariantWrap) {
-        elements.decodeVariantWrap.classList.toggle('hidden', state.coderMode !== 'decode');
-    }
-    if (elements.coderInputControls) {
-        const showFileControls = state.coderMode !== 'decode';
-        elements.coderInputControls.classList.toggle('hidden', !showFileControls);
-        if (!showFileControls) {
-            state.coder.inputMode = 'text';
-            state.coder.fileBytes = null;
-            state.coder.fileName = '';
-            state.coder.fileSize = 0;
-            if (elements.coderModeText) elements.coderModeText.checked = true;
-            renderCoderFileMeta();
-        } else {
-            setCoderInputMode(state.coder.inputMode || 'text');
-        }
-    }
-    if (elements.decodeVariant && state.selectedDecoder) {
-        elements.decodeVariant.value = state.selectedDecoder;
-    }
-    if (elements.hashToggleCase) {
-        const showToggle = state.coderMode === 'hash' && state.hashEncoding === 'base16';
-        elements.hashToggleCase.classList.toggle('hidden', !showToggle);
-        if (showToggle) {
-            elements.hashToggleCase.dataset.upper = state.hashUppercase ? 'true' : 'false';
-        }
-    }
-    if (elements.hashControls) {
-        const show = state.coderMode === 'hash';
-        elements.hashControls.classList.toggle('hidden', !show);
-        if (show) {
-            if (elements.hashEncoding) elements.hashEncoding.value = state.hashEncoding;
-            if (elements.hashUseHmac) elements.hashUseHmac.checked = state.hashUseHmac;
-            if (elements.hashHmacSecret) {
-                elements.hashHmacSecret.classList.toggle('hidden', !state.hashUseHmac);
-                elements.hashHmacSecret.value = state.hashHmacSecret;
-            }
-        }
-    }
-    if (elements.coderInput) {
-        elements.coderInput.placeholder =
-            coderPlaceholders[state.coderMode] || coderPlaceholders.encode;
-    }
-    updateCoderActionsVisibility();
+function hashDigests(text, bytes) {
+    if (!state.hashUseHmac) return bytes ? hash_content_bytes(bytes) : hash_content(text);
+    const key = elements.hashHmacSecret.value;
+    return bytes ? hash_content_hmac_bytes(bytes, utf8ToBytes(key)) : hash_content_hmac(text, key);
 }
 
 function renderCoderEmpty() {
-    if (!elements.coderResults) return;
-    if (state.coderMode === 'hash') {
-        state.lastHashResults = null;
-    }
-    if (state.coderMode === 'encode') {
-        state.lastEncodeResults = null;
-    }
-    if (state.coderMode !== 'hash') {
-        clearDecodedFileState();
-    }
-    const message =
+    const what =
         state.coderMode === 'decode'
-            ? 'Paste encoded text to decode'
+            ? [
+                  'Paste encoded text',
+                  'Base16, Base32, Base64, Base85 or Base91 · read automatically',
+              ]
             : state.coder.inputMode === 'file'
-              ? 'Select a file to process'
-              : 'Enter content to see results';
-    elements.coderResults.innerHTML = `<div class="muted">${message}</div>`;
-    updateCoderActionsVisibility();
+              ? ['Drop a file on the left', 'Its bytes are read here, never uploaded']
+              : [
+                    `${coderPanes[state.coderMode].result} appear here as you type`,
+                    'or switch to File for binary input',
+                ];
+    elements.coderResults.innerHTML = `<div class="empty"><strong>${what[0]}</strong><span>${what[1]}</span></div>`;
 }
 
-function updateCoderActionsVisibility() {
-    if (!elements.coderResultActions) return;
-    const showHash = state.coderMode === 'hash' && state.hashEncoding === 'base16';
-    const showDownload = state.coderMode === 'decode' && Boolean(state.coder.decodedBytes?.length);
-    const showAny = showHash || showDownload;
-    elements.coderResultActions.classList.toggle('hidden', !showAny);
-    if (elements.hashToggleCase) {
-        elements.hashToggleCase.classList.toggle('hidden', !showHash);
+function renderCoderGroups(groups) {
+    elements.coderResults.innerHTML = groups
+        .filter((group) => group.rows.length)
+        .map(
+            (group) =>
+                `<h2 class="group-title">${escapeHTML(group.title)}</h2><ul class="kv">${group.rows
+                    .map(([label, value]) => renderKvRow(label, value))
+                    .join('')}</ul>`
+        )
+        .join('');
+}
+
+function renderEncodeResults(map) {
+    const lower = elements.encodeLower.checked;
+    renderCoderGroups(
+        encodingGroups.map((group) => ({
+            title: group.label,
+            rows: group.variants
+                .filter((variant) => typeof map?.[variant.key] === 'string')
+                .map((variant) => {
+                    const value = map[variant.key];
+                    // Base16 and Base32 read the same in either case; the rest are case-sensitive.
+                    const folds = group.id === 'base16' || group.id === 'base32';
+                    return [variant.label, folds && lower ? value.toLowerCase() : value];
+                }),
+        }))
+    );
+}
+
+// Auto tries the strict alphabets first: hex is also valid Base64, and Base91 takes nearly anything.
+const decodeAutoOrder = [
+    'hex_upper',
+    'base64_standard',
+    'base64_url',
+    'base64_raw_standard',
+    'base64_raw_url',
+    'base32_standard',
+    'base32_standard_no_padding',
+    'base32_hex',
+    'base32_hex_no_padding',
+    'base85_ascii85',
+    'base91',
+];
+
+function decodeAs(key, text) {
+    return decode_content_bytes(key, key === 'hex_upper' ? text.toUpperCase() : text);
+}
+
+// Text a person would have encoded: valid UTF-8 without control characters other than whitespace.
+function readableText(bytes) {
+    const text = bytesToUtf8Strict(bytes);
+    return text !== null && !/[^\P{Cc}\t\n\r]/u.test(text) ? text : null;
+}
+
+function decodeAuto(text) {
+    let binary = null;
+    for (const key of decodeAutoOrder) {
+        let bytes;
+        try {
+            bytes = decodeAs(key, text);
+        } catch {
+            continue;
+        }
+        if (!bytes.length) continue;
+        if (readableText(bytes) !== null) return { key, bytes };
+        binary ??= { key, bytes };
     }
-    if (elements.coderDownloadDecoded) {
-        elements.coderDownloadDecoded.classList.toggle('hidden', !showDownload);
+    if (binary) return binary;
+    throw new Error('Not Base16, Base32, Base64, Base85 or Base91 text');
+}
+
+function renderDecodeResult(text) {
+    const choice = elements.decodeVariant.value;
+    const { key, bytes } =
+        choice === 'auto' ? decodeAuto(text) : { key: choice, bytes: decodeAs(choice, text) };
+    const info = encodingVariantMap.get(key);
+    const decoded = readableText(bytes);
+    state.coder.decodedBytes = bytes;
+    elements.coderResultMeta.textContent = `${choice === 'auto' ? 'read as ' : ''}${info.group} · ${info.label} · ${formatCount(bytes.length, 'byte')}`;
+    elements.coderResultActions.hidden = false;
+    elements.coderResultActions.querySelector('[data-copy-from]').hidden = decoded === null;
+    if (decoded === null) {
+        elements.coderResults.innerHTML = `<div class="empty"><strong>Binary data, ${formatBytes(bytes.length)}</strong><span>Not text: save it as a file</span></div>`;
+        return;
     }
+    elements.coderOutput.value = decoded;
+    elements.coderOutput.hidden = false;
+    elements.coderResults.hidden = true;
+}
+
+function downloadDecodedFile() {
+    const bytes = state.coder.decodedBytes;
+    if (!bytes?.length) return;
+    saveFile(new Blob([bytes], { type: 'application/octet-stream' }), 'decoded.bin');
 }
 
 function encodeDigest(hexValue) {
-    const lower = state.hashUppercase ? hexValue.toUpperCase() : hexValue.toLowerCase();
-    if (state.hashEncoding === 'base16') return lower;
-    const bytes = hexToUint8(lower);
-    if (!bytes) return lower;
-    if (state.hashEncoding === 'base64') {
-        return toBase64(bytes, false);
-    }
-    if (state.hashEncoding === 'base64_raw') {
-        return toBase64(bytes, true);
-    }
-    if (state.hashEncoding === 'base64_url') {
-        return toBase64(bytes, false).replace(/\+/g, '-').replace(/\//g, '_');
-    }
-    if (state.hashEncoding === 'base64_url_raw') {
-        return toBase64(bytes, true).replace(/\+/g, '-').replace(/\//g, '_');
-    }
-    return lower;
+    const upper = state.hashEncoding === 'base16' && elements.hashUpper.checked;
+    const hex = upper ? hexValue.toUpperCase() : hexValue.toLowerCase();
+    if (state.hashEncoding === 'base16') return hex;
+    const bytes = hexToUint8(hex);
+    if (!bytes) return hex;
+    const raw = state.hashEncoding.endsWith('_raw');
+    const base64 = toBase64(bytes, raw);
+    return state.hashEncoding.startsWith('base64_url')
+        ? base64.replace(/\+/g, '-').replace(/\//g, '_')
+        : base64;
+}
+
+function renderHashResults(map) {
+    elements.coderResultMeta.textContent = state.hashUseHmac ? 'HMAC with the key above' : '';
+    renderCoderGroups(
+        hashGroups.map((group) => ({
+            title: group.label,
+            rows: group.keys
+                .filter((key) => typeof map?.[key] === 'string')
+                .map((key) => [hashLabels[key] || key, encodeDigest(map[key])]),
+        }))
+    );
 }
 
 function hexToUint8(hex) {
@@ -2739,184 +2474,8 @@ function toBase64(bytes, stripPadding) {
     return stripPadding ? encoded.replace(/=+$/, '') : encoded;
 }
 
-function renderEncodeResults(map) {
-    if (!elements.coderResults) return;
-    const blocks = encodingGroups
-        .map((group) => {
-            let toggleInjected = false;
-            const entries = group.variants
-                .map((variant) => {
-                    const raw = map?.[variant.key];
-                    if (typeof raw !== 'string') {
-                        return null;
-                    }
-                    let displayValue = raw;
-                    let toggleGroup = null;
-                    if (group.id === 'base16') {
-                        const upper = state.encodeCaseMap.base16 !== false;
-                        displayValue = upper ? raw.toUpperCase() : raw.toLowerCase();
-                        if (!toggleInjected) {
-                            toggleGroup = 'base16';
-                            toggleInjected = true;
-                        }
-                    } else if (group.id === 'base32') {
-                        const upper = state.encodeCaseMap.base32 !== false;
-                        displayValue = upper ? raw.toUpperCase() : raw.toLowerCase();
-                        if (!toggleInjected) {
-                            toggleGroup = 'base32';
-                            toggleInjected = true;
-                        }
-                    }
-                    return {
-                        label: variant.label,
-                        value: displayValue,
-                        copyLabel: `${group.label} · ${variant.label}`,
-                        clickCopy: true,
-                        toggleGroup,
-                    };
-                })
-                .filter(Boolean);
-            if (!entries.length) {
-                return '';
-            }
-            return renderGroupBlock(group.label, entries);
-        })
-        .filter(Boolean);
-    if (!blocks.length) {
-        renderCoderEmpty();
-        return;
-    }
-    elements.coderResults.innerHTML = `
-    <div class="coder-groups">
-      <div class="coder-output-grid">${blocks.join('')}</div>
-    </div>
-  `;
-}
-
-function renderDecodeResult(result) {
-    if (!elements.coderResults) return;
-    const label = result?.label || 'Decoded';
-    const note = result?.note || '';
-    const block = renderGroupBlock(label, [
-        {
-            label,
-            value: result?.value || '',
-            copyLabel: label,
-            clickCopy: true,
-        },
-    ]);
-    const metaParts = [];
-    if (result?.byteLength !== undefined) {
-        metaParts.push(`${result.byteLength} bytes`);
-    }
-    if (note) metaParts.push(note);
-    if (elements.coderDecodeMeta) {
-        if (metaParts.length) {
-            elements.coderDecodeMeta.textContent = metaParts.join(' · ');
-            elements.coderDecodeMeta.classList.remove('hidden');
-        } else {
-            elements.coderDecodeMeta.textContent = '';
-            elements.coderDecodeMeta.classList.add('hidden');
-        }
-    }
-    elements.coderResults.innerHTML = `
-    <div class="coder-groups">
-      <div class="coder-output-grid">${block}</div>
-    </div>
-  `;
-}
-
-// Exposes decoded bytes as a download so binary payloads can be recovered.
-function downloadDecodedFile() {
-    const bytes = state.coder.decodedBytes;
-    if (!bytes?.length) {
-        setStatus('No decoded file available', true);
-        return;
-    }
-    const blob = new Blob([bytes], { type: 'application/octet-stream' });
-    saveFile(blob, state.coder.decodedFileName || 'decoded.bin');
-    setStatus('Saved decoded file', false);
-}
-
-function renderHashResults(map) {
-    if (!elements.coderResults) return;
-    const blocks = hashGroups
-        .map((group) => {
-            const entries = group.keys
-                .map((key) => {
-                    const raw = map?.[key];
-                    if (typeof raw !== 'string') {
-                        return null;
-                    }
-                    const label = hashLabels[key] || key;
-                    const value = encodeDigest(raw);
-                    return {
-                        label,
-                        value,
-                        copyLabel: label,
-                        clickCopy: true,
-                    };
-                })
-                .filter(Boolean);
-            if (!entries.length) return '';
-            return renderGroupBlock(group.label, entries);
-        })
-        .filter(Boolean);
-    if (!blocks.length) {
-        renderCoderEmpty();
-        return;
-    }
-    elements.coderResults.innerHTML = `
-    <div class="coder-groups">
-      <div class="coder-output-grid">${blocks.join('')}</div>
-    </div>
-  `;
-}
-
-function renderGroupBlock(title, entries) {
-    if (!entries.length) return '';
-    const rows = entries.map((entry) => renderEntryRow(entry)).join('');
-    const safeTitle = escapeHTML(title || 'Result');
-    return `
-    <section class="coder-output-block">
-      <header>${safeTitle}</header>
-      <div class="coder-output-entries">
-        ${rows}
-      </div>
-    </section>
-  `;
-}
-
-function renderEntryRow(entry) {
-    const clickable = !!entry.clickCopy;
-    const safeLabel = escapeHTML(entry.label || 'Result');
-    const safeValue = escapeHTML(entry.value || '');
-    const attrValue = escapeAttr(entry.value || '');
-    const buttonLabel = escapeAttr(entry.copyLabel || entry.label || 'Result');
-    const entryAttrs = clickable
-        ? `class="coder-entry click-copy" data-copy-value="${attrValue}" data-copy-label="${buttonLabel}"`
-        : `class="coder-entry"`;
-    const toggleGroup = entry.toggleGroup || null;
-    let actionMarkup = '';
-    if (toggleGroup) {
-        const upperActive = state.encodeCaseMap[toggleGroup] !== false;
-        actionMarkup = `<button type="button" data-encode-group="${toggleGroup}" data-upper="${
-            upperActive ? 'true' : 'false'
-        }">Toggle Case</button>`;
-    } else if (clickable) {
-        actionMarkup = '<span class="copy-icon" title="Click to copy">📋</span>';
-    } else {
-        actionMarkup = `<button type="button" class="copy-btn" data-label="${buttonLabel}" data-value="${attrValue}">📋 Copy</button>`;
-    }
-    return `
-    <div ${entryAttrs}>
-      <div class="coder-entry-meta">
-        <span>${safeLabel}</span>
-        ${actionMarkup}
-      </div>
-      <textarea readonly spellcheck="false">${safeValue}</textarea>
-    </div>
-  `;
+function formatCount(count, noun) {
+    return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
 function isUUIDTool(toolId) {
@@ -3546,7 +3105,7 @@ function renderIPv4Results(data) {
     const rows = (pairs) =>
         pairs
             .filter(([, value]) => value)
-            .map(([label, value]) => renderIPv4Row(label, value))
+            .map(([label, value]) => renderKvRow(label, value))
             .join('');
     const address = rows([
         ['Version', data.version],
@@ -3583,9 +3142,18 @@ function renderIPv4Results(data) {
     elements.ipv4Results.innerHTML = `<div class="groups">${group('Address', address)}${group('Network', network)}</div>`;
 }
 
-function renderIPv4Row(label, value) {
+// A whole file's encoding runs to megabytes: the row shows its start, Copy takes all of it.
+const kvPreviewLimit = 600;
+
+function renderKvRow(label, value, note = '') {
     const text = String(value);
-    return `<li><span class="k">${escapeHTML(label)}</span><span class="v" title="${escapeAttr(text)}">${escapeHTML(text)}</span><button class="icon-btn" type="button" title="Copy ${escapeAttr(label)}" data-copy-text="${escapeAttr(text)}"><svg class="i"><use href="#i-copy" /></svg></button></li>`;
+    const rest = text.length - kvPreviewLimit;
+    const shown =
+        rest > 0
+            ? `${escapeHTML(text.slice(0, kvPreviewLimit))}<span class="more">… ${rest.toLocaleString('en')} more characters</span>`
+            : escapeHTML(text);
+    const sub = note ? `<small>${escapeHTML(note)}</small>` : '';
+    return `<li><span class="k">${escapeHTML(label)}${sub}</span><span class="v">${shown}</span><button class="icon-btn" type="button" title="Copy ${escapeAttr(label)}" data-copy-text="${escapeAttr(text)}"><svg class="i"><use href="#i-copy" /></svg></button></li>`;
 }
 
 function renderWatermarkControls() {
@@ -4072,193 +3640,126 @@ function formatByteSize(bytes) {
     return `${rounded} ${units[idx]}`;
 }
 
+// Generators (and the fingerprint page) show a result as soon as they open, and again
+// once wasm is ready if they opened before it was.
+function activateGeneratorTool(toolId) {
+    if (isUUIDTool(toolId)) activateUUIDTool();
+    else if (isUserAgentTool(toolId)) activateUserAgentTool();
+    else if (isRandomTool(toolId)) activateRandomTool();
+    else if (isAsciiTool(toolId)) activateAsciiTool();
+    else if (isQrTool(toolId)) activateQrTool();
+    else if (isTotpTool(toolId)) activateTotpTool();
+    else if (isSshTool(toolId)) activateSshTool();
+    else if (isDataTool(toolId)) activateDataTool();
+    else if (isFingerprintTool(toolId)) activateFingerprintTool();
+    else return false;
+    return true;
+}
+
 function activateUUIDTool() {
-    state.uuidUppercase = false;
-    if (elements.uuidToggleCase) {
-        elements.uuidToggleCase.dataset.upper = 'false';
-    }
-    if (!state.wasmReady) {
-        if (elements.uuidList) {
-            elements.uuidList.innerHTML = '<div class="muted">Waiting for WebAssembly...</div>';
-        }
-        return;
-    }
-    refreshUUIDs(true);
+    if (Object.keys(state.uuids).length) renderUUIDs();
+    else refreshUUIDs();
 }
 
-function refreshUUIDs(force = false) {
+function refreshUUIDs() {
     if (!isUUIDTool(state.currentTool) || !state.wasmReady) return;
-    if (!force && Object.keys(state.currentUUIDs).length) {
-        renderUUIDs();
-        return;
-    }
-    try {
-        const result = generate_uuids();
-        state.currentUUIDs = normalizeUuidResult(result);
-        renderUUIDs();
-        setStatus('Generated new UUIDs', false);
-    } catch (err) {
-        console.error(err);
-        setStatus(`⚠️ ${err.message}`, true);
-    }
+    state.uuids = normalizeMapResult(generate_uuids());
+    renderUUIDs();
 }
 
-/**
- * Renders the UUID list with click-to-copy functionality for entire rows.
- * Each UUID row is clickable to copy the UUID value to clipboard.
- */
+// Case is a display choice for the versions; a GUID is written uppercase, and a ULID's
+// Crockford alphabet is uppercase by definition.
 function renderUUIDs() {
-    if (!elements.uuidList) return;
-    const entries = [];
-    const seen = new Set();
-    uuidDisplayOrder.forEach((key) => {
-        if (state.currentUUIDs[key]) {
-            entries.push([key, state.currentUUIDs[key]]);
-            seen.add(key);
-        }
-    });
-    Object.keys(state.currentUUIDs).forEach((key) => {
-        if (!seen.has(key)) {
-            entries.push([key, state.currentUUIDs[key]]);
-        }
-    });
-    if (!entries.length) {
-        elements.uuidList.innerHTML = '<div class="muted">No UUIDs generated yet</div>';
-        return;
-    }
-    // Generate HTML rows without copy buttons - entire row is clickable
-    const rows = entries
-        .map(([version, value]) => {
-            const display = state.uuidUppercase ? value.toUpperCase() : value.toLowerCase();
-            const label = uuidDisplayLabels[version] || version.toUpperCase();
-            return `
-        <div class="uuid-row" data-value="${escapeAttr(display)}" data-label="${escapeAttr(label)}">
-          <span>${label}</span>
-          <code>${escapeHTML(display)}</code>
-        </div>
-      `;
+    const upper = elements.uuidUpper.checked;
+    elements.uuidList.innerHTML = uuidVersions
+        .filter(([key]) => state.uuids[key])
+        .map(([key, label]) => {
+            const value = state.uuids[key];
+            const versioned = key.startsWith('v');
+            return renderKvRow(
+                label,
+                versioned && !upper ? value.toLowerCase() : value.toUpperCase()
+            );
         })
         .join('');
-    elements.uuidList.innerHTML = rows;
-    // Attach click event to entire row for copy functionality
-    elements.uuidList.querySelectorAll('.uuid-row').forEach((row) => {
-        row.addEventListener('click', () => {
-            const value = row.dataset.value || '';
-            const label = row.dataset.label || 'UUID';
-            if (!value) return;
-            copyText(value, label);
-        });
-        // Add cursor pointer to indicate clickable
-        row.style.cursor = 'pointer';
-    });
 }
 
+// A fixed table, refreshed weekly by a workflow: the filters pick from it, nothing is random.
 function activateUserAgentTool() {
-    state.currentBrowserFilter = elements.uaBrowser?.value || '';
-    state.currentOSFilter = elements.uaOS?.value || '';
-    if (!state.wasmReady) {
-        if (elements.uaResults) {
-            elements.uaResults.innerHTML =
-                '<div class="ua-placeholder">Waiting for WebAssembly...</div>';
-        }
-        return;
-    }
-    refreshUserAgents(true);
-}
-
-function refreshUserAgents(force = false) {
-    if (!isUserAgentTool(state.currentTool) || !state.wasmReady) return;
-    const browser = elements.uaBrowser?.value || '';
-    const os = elements.uaOS?.value || '';
-    const sameFilters = browser === state.currentBrowserFilter && os === state.currentOSFilter;
-    if (!force && sameFilters && state.currentUserAgents.length) {
-        renderUserAgents(state.currentUserAgents);
-        return;
-    }
-    state.currentBrowserFilter = browser;
-    state.currentOSFilter = os;
-    try {
-        const list = generate_user_agents(browser, os);
-        state.currentUserAgents = Array.isArray(list) ? list : [];
-        renderUserAgents(state.currentUserAgents);
-        setStatus('Generated user agents', false);
-    } catch (err) {
-        console.error(err);
-        setStatus(`⚠️ ${err.message}`, true);
-    }
-}
-
-/**
- * Renders user agent list with improved UI structure and click-to-copy functionality.
- */
-function renderUserAgents(list) {
-    if (!elements.uaResults) return;
-
-    const count = list.length || 0;
-
-    // Update count badge
-    if (elements.uaCount) {
-        if (count > 0) {
-            elements.uaCount.textContent = `${count} ${count === 1 ? 'agent' : 'agents'}`;
-        } else {
-            elements.uaCount.textContent = '';
-        }
-    }
-
-    if (!list.length) {
-        elements.uaResults.innerHTML =
-            '<div class="ua-placeholder">No user agents found for the selected filters</div>';
-        return;
-    }
-
-    const cards = list
-        .map((entry) => {
-            const browserName = entry.browserName || 'Unknown';
-            const browserVersion = entry.browserVersion || '';
-            const osName = entry.osName || 'Unknown';
-            const osVersion = entry.osVersion || '';
-            const engineName = entry.engineName || 'Unknown';
-            const engineVersion = entry.engineVersion || '';
-            const browserText = browserVersion ? `${browserName} ${browserVersion}` : browserName;
-            const osText = osVersion ? `${osName} ${osVersion}` : osName;
-            const engineText = engineVersion ? `${engineName} ${engineVersion}` : engineName;
-            const ua = entry.userAgent || '';
-            return `
-        <div class="ua-card" data-ua="${escapeAttr(ua)}" title="Click to copy">
-          <code>${escapeHTML(ua)}</code>
-          <div class="ua-meta">
-            <span><strong>Browser:</strong> ${escapeHTML(browserText)}</span>
-            <span><strong>OS:</strong> ${escapeHTML(osText)}</span>
-            <span><strong>Engine:</strong> ${escapeHTML(engineText)}</span>
-          </div>
-        </div>
-      `;
-        })
+    if (!state.wasmReady) return;
+    const list = generate_user_agents(elements.uaBrowser.value, elements.uaOS.value);
+    const agents = Array.isArray(list) ? list : [];
+    // The table stores names lowercase; the menus already spell them properly.
+    const spell = (select, value) =>
+        select.querySelector(`option[value="${CSS.escape(value)}"]`)?.textContent || value;
+    elements.uaCount.textContent = agents.length
+        ? formatCount(agents.length, 'string')
+        : 'None for this browser on this platform';
+    elements.uaResults.innerHTML = agents
+        .map((entry) =>
+            renderKvRow(
+                `${spell(elements.uaBrowser, entry.browserName)} ${entry.browserVersion}`,
+                entry.userAgent,
+                `${spell(elements.uaOS, entry.osName)} ${entry.osVersion}`.trim()
+            )
+        )
         .join('');
-    elements.uaResults.innerHTML = cards;
-
-    // Add click handlers for copying user agents
-    elements.uaResults.querySelectorAll('.ua-card').forEach((card) => {
-        card.addEventListener('click', () => {
-            const value = card.dataset.ua || '';
-            if (!value) return;
-            copyText(value, 'user agent');
-        });
-    });
 }
 
 // Fingerprint workspace: collect passive browser/device signals (no external calls or permissions).
 function activateFingerprintTool() {
-    refreshFingerprint(true);
+    refreshFingerprint();
 }
 
-function refreshFingerprint(silent = false) {
+function refreshFingerprint() {
     if (!isFingerprintTool(state.currentTool)) return;
-    const facts = collectFingerprintFacts();
-    state.fingerprintFacts = facts;
-    renderFingerprintFacts(facts);
+    state.fingerprintFacts = collectFingerprintFacts();
+    renderFingerprintFacts(state.fingerprintFacts);
     runFingerprintAsyncEnrichments();
-    if (!silent) setStatus('Fingerprint refreshed', false);
+}
+
+function groupFingerprintFacts(facts) {
+    const groups = new Map();
+    [...facts]
+        .sort((a, b) => a.group.localeCompare(b.group))
+        .forEach((fact) => {
+            if (!groups.has(fact.group)) groups.set(fact.group, []);
+            groups.get(fact.group).push(fact);
+        });
+    return groups;
+}
+
+// The filter matches a group's name too, so "webgl" keeps the whole WebGL group.
+function renderFingerprintFacts(facts = []) {
+    const query = elements.fingerprintSearch.value.trim().toLowerCase();
+    const shown = query
+        ? facts.filter((fact) =>
+              `${fact.group} ${fact.label} ${fact.value}`.toLowerCase().includes(query)
+          )
+        : facts;
+    elements.fingerprintCount.textContent = query
+        ? `${shown.length} of ${formatCount(facts.length, 'signal')}`
+        : formatCount(facts.length, 'signal');
+    if (!shown.length) {
+        elements.fingerprintGrid.innerHTML = `<div class="empty"><strong>Nothing matches “${escapeHTML(query)}”</strong></div>`;
+        return;
+    }
+    elements.fingerprintGrid.innerHTML = [...groupFingerprintFacts(shown)]
+        .map(
+            ([group, list]) =>
+                `<section><h2 class="group-title">${escapeHTML(group)} <span class="meta">${list.length}</span></h2><ul class="kv">${list.map((fact) => renderKvRow(fact.label, fact.value)).join('')}</ul></section>`
+        )
+        .join('');
+}
+
+function handleFingerprintCopyAll() {
+    const text = [...groupFingerprintFacts(state.fingerprintFacts)]
+        .map(
+            ([group, list]) =>
+                `${group}\n${list.map((fact) => `  ${fact.label}: ${fact.value}`).join('\n')}`
+        )
+        .join('\n\n');
+    if (text) copyText(text, 'every signal');
 }
 
 function collectFingerprintFacts() {
@@ -4483,165 +3984,6 @@ function collectFingerprintFacts() {
     return dedupeFacts(facts);
 }
 
-/**
- * Renders fingerprint facts with improved UI structure including group counts and click-to-copy.
- */
-function renderFingerprintFacts(facts = []) {
-    const total = facts.length || 0;
-
-    // Update summary
-    if (elements.fingerprintSummary) {
-        const summaryText = elements.fingerprintSummary.querySelector('.fingerprint-summary-text');
-        if (summaryText) {
-            summaryText.textContent = total ? 'Fingerprint data collected' : 'No data available';
-        }
-    }
-
-    // Update count badge
-    if (elements.fingerprintCount) {
-        elements.fingerprintCount.textContent = total ? `${total} signals` : '';
-    }
-
-    // Show/hide Copy All button
-    if (elements.fingerprintCopyAll) {
-        elements.fingerprintCopyAll.classList.toggle('hidden', total === 0);
-    }
-
-    if (!elements.fingerprintGrid) return;
-    if (!facts.length) {
-        elements.fingerprintGrid.innerHTML = '<div class="muted">No data detected.</div>';
-        return;
-    }
-
-    // Store facts for search functionality
-    state.fingerprintFacts = facts;
-
-    // Group facts by category
-    const groups = facts.reduce((acc, fact) => {
-        const key = fact.group || 'Other';
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(fact);
-        return acc;
-    }, {});
-
-    // Render sections with improved structure
-    const sections = Object.keys(groups)
-        .sort()
-        .map((group) => {
-            const items = groups[group]
-                .map((entry) => {
-                    const label = escapeHTML(entry.label || '');
-                    const value = escapeHTML(entry.value || '');
-                    const searchableText = `${label} ${value}`.toLowerCase();
-                    return `<li data-search-text="${escapeAttr(searchableText)}" data-value="${escapeAttr(value)}">
-                        <span class="fp-label">${label}</span>
-                        <code>${value}</code>
-                    </li>`;
-                })
-                .join('');
-            const count = groups[group].length;
-            return `<div class="fingerprint-group" data-group="${escapeAttr(group)}">
-                <div class="fingerprint-group-header">
-                    <h3>${escapeHTML(group)}</h3>
-                    <span class="fingerprint-group-count">${count}</span>
-                </div>
-                <ul class="fingerprint-list">${items}</ul>
-            </div>`;
-        })
-        .join('');
-    elements.fingerprintGrid.innerHTML = sections;
-
-    // Add click handlers for copying individual values
-    elements.fingerprintGrid.querySelectorAll('.fingerprint-list li').forEach((li) => {
-        li.addEventListener('click', () => {
-            const value = li.dataset.value || '';
-            if (value) {
-                copyText(value, 'Fingerprint value');
-            }
-        });
-    });
-
-    // Apply current search filter if any
-    if (elements.fingerprintSearch?.value) {
-        handleFingerprintSearch({ target: elements.fingerprintSearch });
-    }
-}
-
-/**
- * Handles search input to filter fingerprint data.
- */
-function handleFingerprintSearch(event) {
-    const query = (event?.target?.value || '').toLowerCase().trim();
-    if (!elements.fingerprintGrid) return;
-
-    const groups = elements.fingerprintGrid.querySelectorAll('.fingerprint-group');
-    let visibleCount = 0;
-
-    groups.forEach((group) => {
-        const items = group.querySelectorAll('.fingerprint-list li');
-        let groupVisibleCount = 0;
-
-        items.forEach((item) => {
-            const searchText = item.dataset.searchText || '';
-            const matches = !query || searchText.includes(query);
-
-            if (matches) {
-                item.classList.remove('hidden');
-                groupVisibleCount++;
-            } else {
-                item.classList.add('hidden');
-            }
-        });
-
-        // Hide group if no items visible
-        if (groupVisibleCount === 0) {
-            group.classList.add('hidden');
-        } else {
-            group.classList.remove('hidden');
-            visibleCount += groupVisibleCount;
-        }
-    });
-
-    // Update count badge
-    if (elements.fingerprintCount) {
-        const total = state.fingerprintFacts?.length || 0;
-        if (query && visibleCount !== total) {
-            elements.fingerprintCount.textContent = `${visibleCount} of ${total} signals`;
-        } else {
-            elements.fingerprintCount.textContent = total ? `${total} signals` : '';
-        }
-    }
-}
-
-/**
- * Copies all fingerprint data to clipboard in a formatted way.
- */
-function handleFingerprintCopyAll() {
-    if (!state.fingerprintFacts || state.fingerprintFacts.length === 0) {
-        setStatus('No fingerprint data to copy', true);
-        return;
-    }
-
-    // Format as grouped text
-    const groups = state.fingerprintFacts.reduce((acc, fact) => {
-        const key = fact.group || 'Other';
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(fact);
-        return acc;
-    }, {});
-
-    const lines = Object.keys(groups)
-        .sort()
-        .flatMap((group) => {
-            const header = `\n=== ${group} ===\n`;
-            const items = groups[group].map((fact) => `${fact.label}: ${fact.value}`);
-            return [header, ...items];
-        });
-
-    const allText = lines.join('\n');
-    copyText(allText, 'All fingerprint data');
-}
-
 function storageAvailable(type) {
     try {
         const storage = window[type];
@@ -4672,7 +4014,8 @@ function formatBytes(bytes) {
         value /= 1024;
         unit += 1;
     }
-    return `${value.toFixed(1)} ${units[unit]}`;
+    // Whole bytes have no fraction to show.
+    return `${unit ? value.toFixed(1) : value} ${units[unit]}`;
 }
 
 function measureTimeResolution() {
@@ -4937,164 +4280,66 @@ function hashString(input) {
     return `h${Math.abs(hash).toString(16)}`;
 }
 
-// SSL Inspector: parse PEM certificates and render friendly metadata cards.
+// SSL Inspector: parse PEM certificates as they are pasted, one block of fields per certificate.
 function activateCertTool() {
-    if (!elements.certInput) return;
-    if (elements.certInput.value.trim()) {
-        runCertInspector(true);
-    } else {
-        renderCertResults([]);
-    }
+    runCertInspector();
 }
 
-function scheduleCertInspector(immediate = false) {
-    if (!isCertTool(state.currentTool)) return;
-    if (immediate) {
-        runCertInspector(true);
-        return;
-    }
+function scheduleCertInspector() {
     clearTimeout(state.certTimer);
-    state.certTimer = setTimeout(() => runCertInspector(), 240);
+    state.certTimer = setTimeout(runCertInspector, 200);
 }
 
-function runCertInspector(force = false) {
-    if (!isCertTool(state.currentTool)) return;
-    if (!state.wasmReady) {
-        setStatus('Waiting for WebAssembly...', true);
-        return;
-    }
-    const text = elements.certInput?.value || '';
-    const trimmed = text.trim();
-    if (!trimmed) {
-        renderCertResults([]);
-        if (force) setStatus('Paste a certificate to inspect', true);
+function runCertInspector() {
+    if (!isCertTool(state.currentTool) || !state.wasmReady) return;
+    const text = elements.certInput.value.trim();
+    elements.certSummary.textContent = '';
+    if (!text) {
+        elements.certResults.innerHTML =
+            '<div class="empty"><strong>Paste a certificate or a whole chain</strong><span>PEM, as many blocks as you like · or try the sample chain</span></div>';
         return;
     }
     try {
-        const results = inspect_certificates(trimmed);
-        const list = Array.isArray(results) ? results : [];
-        state.certResults = list;
-        renderCertResults(list);
-        const noun = list.length === 1 ? 'certificate' : 'certificates';
-        setStatus(`Parsed ${list.length} ${noun}`, false);
+        const list = inspect_certificates(text);
+        elements.certSummary.textContent = formatCount(list.length, 'certificate');
+        elements.certResults.innerHTML = list.map((entry) => renderCertBlock(entry, list)).join('');
     } catch (err) {
-        console.error(err);
-        setStatus(`⚠️ ${err?.message || err}`, true);
+        elements.certResults.innerHTML = `<p class="notice">${escapeHTML(String(err?.message || err))}</p>`;
     }
 }
 
-function renderCertResults(list = []) {
-    if (elements.certSummary) {
-        elements.certSummary.textContent = list.length
-            ? `${list.length} certificate${list.length === 1 ? '' : 's'} parsed`
-            : 'No certificates parsed yet.';
-    }
-    if (!elements.certResults) return;
-    if (!list.length) {
-        elements.certResults.innerHTML =
-            '<div class="muted">Paste a PEM certificate or full chain to inspect fields.</div>';
-        return;
-    }
-    const cards = list.map((entry) => renderCertCard(entry, list)).join('');
-    elements.certResults.innerHTML = cards;
-}
-
-function renderCertCard(entry, list) {
-    const subject = escapeHTML(entry.subjectCommonName || entry.subject || 'Unknown subject');
-    const issuer = escapeHTML(entry.issuer || '');
+function renderCertBlock(entry, list) {
     const role = describeCertRole(entry, list);
     const validity = formatValiditySummary(entry);
-    const san = formatBadgeList(entry.subjectAltNames || [], 'Subject Alt Names');
-    const ku = formatBadgeList(entry.keyUsage || [], 'Key Usage');
-    const eku = formatBadgeList(entry.extendedKeyUsage || [], 'Extended Key Usage');
-    const basic = entry.basicConstraints
-        ? `<div class="cert-block"><span>Basic Constraints</span><code>${
-              entry.basicConstraints.ca ? 'CA' : 'End-entity'
-          }${
-              entry.basicConstraints.pathLen !== null &&
-              entry.basicConstraints.pathLen !== undefined
-                  ? ` · pathLen=${entry.basicConstraints.pathLen}`
-                  : ''
-          }</code></div>`
-        : '';
-    const issuerHint =
-        entry.issuerPosition && entry.issuerPosition !== entry.position
-            ? `Chain issuer: #${entry.issuerPosition}`
-            : role === 'Root'
-              ? 'Self-signed'
-              : '';
-    const akid = entry.authorityKeyId
-        ? `<div class="cert-block"><span>Authority Key ID</span><code>${escapeHTML(
-              entry.authorityKeyId
-          )}</code></div>`
-        : '';
-    const skid = entry.subjectKeyId
-        ? `<div class="cert-block"><span>Subject Key ID</span><code>${escapeHTML(
-              entry.subjectKeyId
-          )}</code></div>`
-        : '';
     const fingerprints = entry.fingerprints || {};
-    return `
-    <div class="cert-card">
-      <div class="cert-card-head">
-        <div>
-          <p class="cert-chip">${escapeHTML(role)} · #${entry.position || 0}</p>
-          <h3>${subject}</h3>
-          <p class="muted">${issuerHint ? `${escapeHTML(issuerHint)} · ` : ''}Issuer: ${issuer}</p>
-        </div>
-        <div class="cert-valid ${validity.expired ? 'expired' : ''}">
-          <span>${escapeHTML(validity.label)}</span>
-          <code>${escapeHTML(entry.notAfter || '')}</code>
-        </div>
-      </div>
-      <div class="cert-meta-grid">
-        <div class="cert-block">
-          <span>Serial</span>
-          <code>${escapeHTML(entry.serialHex || '')}</code>
-        </div>
-        <div class="cert-block">
-          <span>Signature</span>
-          <code>${escapeHTML(entry.signatureAlgorithm || '')}</code>
-        </div>
-        <div class="cert-block">
-          <span>Public Key</span>
-          <code>${escapeHTML(
-              `${entry.publicKeyAlgorithm || ''} · ${entry.publicKeyBits || 0} bits`
-          )}</code>
-        </div>
-        <div class="cert-block">
-          <span>Valid From</span>
-          <code>${escapeHTML(entry.notBefore || '')}</code>
-        </div>
-      </div>
-      <div class="cert-block">
-        <span>Fingerprints</span>
-        <div class="cert-fingerprints">
-          <div><label>SHA-256</label><code>${escapeHTML(fingerprints.sha256 || '')}</code></div>
-          <div><label>SHA-1</label><code>${escapeHTML(fingerprints.sha1 || '')}</code></div>
-          <div><label>SPKI SHA-256</label><code>${escapeHTML(
-              fingerprints.spkiSha256 || ''
-          )}</code></div>
-        </div>
-      </div>
-      ${san || ''}
-      ${ku || ''}
-      ${eku || ''}
-      ${basic || ''}
-      ${akid || ''}
-      ${skid || ''}
-    </div>
-  `;
-}
-
-function formatBadgeList(values, label) {
-    if (!Array.isArray(values) || !values.length) return '';
-    const chips = values
-        .map((val) => `<span class="cert-badge">${escapeHTML(val)}</span>`)
+    const basic = entry.basicConstraints;
+    const rows = [
+        ['Subject', entry.subject],
+        ['Issuer', entry.issuer],
+        ['Valid from', entry.notBefore],
+        ['Valid until', entry.notAfter],
+        ['Alt names', (entry.subjectAltNames || []).join(', ')],
+        ['Key usage', (entry.keyUsage || []).join(', ')],
+        ['Extended usage', (entry.extendedKeyUsage || []).join(', ')],
+        [
+            'Constraints',
+            basic &&
+                `${basic.ca ? 'CA' : 'End entity'}${basic.pathLen != null ? ` · path length ${basic.pathLen}` : ''}`,
+        ],
+        ['Public key', `${entry.publicKeyAlgorithm || ''} · ${entry.publicKeyBits || 0} bits`],
+        ['Signature', entry.signatureAlgorithm],
+        ['Serial', entry.serialHex],
+        ['Subject key ID', entry.subjectKeyId],
+        ['Authority key ID', entry.authorityKeyId],
+        ['SHA-256', fingerprints.sha256],
+        ['SHA-1', fingerprints.sha1],
+        ['SPKI SHA-256', fingerprints.spkiSha256],
+    ]
+        .filter(([, value]) => value)
+        .map(([label, value]) => renderKvRow(label, value))
         .join('');
-    return `<div class="cert-block"><span>${escapeHTML(
-        label
-    )}</span><div class="cert-badges">${chips}</div></div>`;
+    const name = entry.subjectCommonName || entry.subject || 'Unnamed certificate';
+    return `<div class="cert-head"><h3>${escapeHTML(name)}</h3><span class="meta">${escapeHTML(role)} · #${entry.position || 0}</span><span class="chip${validity.expired ? ' danger' : ''}">${escapeHTML(validity.label)}</span></div><ul class="kv">${rows}</ul>`;
 }
 
 function describeCertRole(entry, list) {
@@ -5105,712 +4350,343 @@ function describeCertRole(entry, list) {
 }
 
 function formatValiditySummary(entry) {
-    const expired = Boolean(entry.isExpired);
-    if (expired) {
-        return { label: 'Expired', expired: true };
-    }
+    if (entry.isExpired) return { label: 'Expired', expired: true };
     if (typeof entry.daysValidFromNow === 'number') {
-        const days = entry.daysValidFromNow;
-        return { label: `Expires in ${days}d`, expired: false };
+        return {
+            label: `Expires in ${formatCount(entry.daysValidFromNow, 'day')}`,
+            expired: false,
+        };
     }
-    return { label: 'Active', expired: false };
+    return { label: 'Valid', expired: false };
+}
+
+// Random: the bar picks the characters; the sheet holds the rules only some picks need.
+function activateRandomTool() {
+    renderRandomOptions();
+    if (state.random.results.length) renderRandomResults();
+    else runRandomGenerator();
 }
 
 function renderSymbolButtons() {
-    if (!elements.randomSymbolToggles) return;
-    const buttons = specialCharacters
-        .map((symbol) => {
-            const isActive = state.randomSymbols?.has(symbol);
-            return `<button type="button" data-symbol="${escapeAttr(
-                symbol
-            )}" data-active="${isActive ? 'true' : 'false'}">${escapeHTML(symbol)}</button>`;
-        })
+    elements.randomSymbolToggles.innerHTML = specialCharacters
+        .map(
+            (symbol) =>
+                `<button type="button" data-symbol="${escapeAttr(symbol)}" aria-pressed="${state.random.symbols.has(symbol)}">${escapeHTML(symbol)}</button>`
+        )
         .join('');
-    elements.randomSymbolToggles.innerHTML = buttons;
-    syncSymbolButtons();
-    updateSymbolMinState();
 }
 
-function syncSymbolButtons() {
-    if (!elements.randomSymbolToggles) return;
-    elements.randomSymbolToggles.querySelectorAll('button[data-symbol]').forEach((button) => {
-        const symbol = button.dataset.symbol || '';
-        const isActive = state.randomSymbols?.has(symbol);
-        button.dataset.active = isActive ? 'true' : 'false';
-    });
+function randomSets() {
+    return {
+        digits: elements.randomIncludeDigits.checked,
+        lower: elements.randomIncludeLower.checked,
+        upper: elements.randomIncludeUpper.checked,
+        symbols: elements.randomIncludeSymbols.checked && state.random.symbols.size > 0,
+    };
+}
+
+// Minimums only mean something with two kinds or more; leading zeros and a range only for
+// strings of digits.
+function renderRandomOptions() {
+    const sets = randomSets();
+    const kinds = Object.values(sets).filter(Boolean).length;
+    const digitsOnly = sets.digits && kinds === 1;
+    elements.randomSymbolsGroup.hidden = !elements.randomIncludeSymbols.checked;
+    elements.randomMinimums.hidden = kinds < 2;
+    elements.randomMinDigitsRow.hidden = !sets.digits;
+    elements.randomMinLowerRow.hidden = !sets.lower;
+    elements.randomMinUpperRow.hidden = !sets.upper;
+    elements.randomMinSymbolsRow.hidden = !sets.symbols;
+    elements.randomDigitOptions.hidden = !digitsOnly;
+    elements.randomDigitRangeRow.hidden = !digitsOnly || elements.randomAllowZero.checked;
+}
+
+function scheduleRandom() {
+    renderRandomOptions();
+    clearTimeout(state.random.timer);
+    state.random.timer = setTimeout(runRandomGenerator, 150);
 }
 
 function handleRandomSymbolToggle(event) {
     const button = event.target.closest('button[data-symbol]');
     if (!button) return;
-    const symbol = button.dataset.symbol || '';
-    if (!state.randomSymbols) {
-        state.randomSymbols = new Set();
-    }
-    const active = button.dataset.active !== 'false';
-    if (active) {
-        state.randomSymbols.delete(symbol);
-        button.dataset.active = 'false';
-    } else {
-        state.randomSymbols.add(symbol);
-        button.dataset.active = 'true';
-    }
-    updateMinInputStates();
-    updateRandomZeroControl();
-    validateMinimumTotals(true);
-}
-
-function activateRandomTool() {
-    if (elements.randomIncludeDigits) {
-        elements.randomIncludeDigits.checked = state.randomIncludeDigits;
-    }
-    if (elements.randomLength) {
-        elements.randomLength.value = state.randomLength;
-    }
-    if (elements.randomCount) {
-        elements.randomCount.value = state.randomCount;
-    }
-    if (elements.randomAllowZero) {
-        elements.randomAllowZero.checked = state.randomAllowLeadingZero;
-    }
-    if (elements.randomIncludeLower) {
-        elements.randomIncludeLower.checked = state.randomIncludeLower;
-    }
-    if (elements.randomIncludeUpper) {
-        elements.randomIncludeUpper.checked = state.randomIncludeUpper;
-    }
-    if (elements.randomExclude) {
-        elements.randomExclude.value = state.randomExclude;
-    }
-    if (elements.randomDigitMin) {
-        elements.randomDigitMin.value = state.randomDigitMin;
-    }
-    if (elements.randomDigitMax) {
-        elements.randomDigitMax.value = state.randomDigitMax;
-    }
-    updateMinInputStates();
-    syncSymbolButtons();
-    updateRandomZeroControl();
-    updateRandomResults(state.randomResults);
-    setStatus('Ready', false);
-}
-
-function characterSetSummary() {
-    if (!state.randomSymbols) {
-        state.randomSymbols = new Set();
-    }
-    const hasSymbols = state.randomSymbols.size > 0;
-    const hasDigits = Boolean(state.randomIncludeDigits);
-    const hasLower = Boolean(state.randomIncludeLower);
-    const hasUpper = Boolean(state.randomIncludeUpper);
-    const activeCount = [hasDigits, hasLower, hasUpper, hasSymbols].filter(Boolean).length;
-    return { hasDigits, hasLower, hasUpper, hasSymbols, activeCount };
-}
-
-function isDigitsOnlySelection() {
-    const summary = characterSetSummary();
-    return summary.hasDigits && !summary.hasLower && !summary.hasUpper && !summary.hasSymbols;
-}
-
-function shouldShowMinimumInputs() {
-    return characterSetSummary().activeCount >= 2;
-}
-
-function activateSshTool() {
-    if (elements.sshType) elements.sshType.value = state.sshType;
-    if (elements.sshBits) {
-        elements.sshBits.value = state.sshBits;
-    }
-    if (elements.sshComment) elements.sshComment.value = state.sshComment;
-    if (elements.sshFormat) elements.sshFormat.value = state.sshFormat;
-    if (elements.sshKdf) elements.sshKdf.value = state.sshKdf;
-    if (elements.sshResident) elements.sshResident.checked = state.sshResident;
-    if (elements.sshVerify) elements.sshVerify.checked = state.sshVerify;
-    updateSshVisibility();
-    renderSshOutputs();
-    setStatus('Ready', false);
-}
-
-function updateRandomZeroControl() {
-    if (!elements.randomAllowZero) return;
-    const digitsOnly = isDigitsOnlySelection();
-    if (elements.randomAllowZeroRow) {
-        elements.randomAllowZeroRow.classList.toggle('hidden', !digitsOnly);
-    }
-    elements.randomAllowZero.disabled = !digitsOnly;
-    if (digitsOnly) {
-        elements.randomAllowZero.checked = state.randomAllowLeadingZero;
-    }
-    updateDigitRangeVisibility();
-}
-
-function updateDigitRangeVisibility() {
-    if (!elements.randomDigitRangeRow || !elements.randomDigitMin || !elements.randomDigitMax) {
-        return;
-    }
-    const digitsOnly = isDigitsOnlySelection();
-    const showRange = digitsOnly && !state.randomAllowLeadingZero;
-    elements.randomDigitRangeRow.classList.toggle('hidden', !showRange);
-    elements.randomDigitMin.disabled = !showRange;
-    elements.randomDigitMax.disabled = !showRange;
-    if (showRange) {
-        elements.randomDigitMin.value = state.randomDigitMin || '';
-        elements.randomDigitMax.value = state.randomDigitMax || '';
-    }
-}
-
-function handleRandomMinChange(kind) {
-    const config = minCountConfig[kind];
-    if (!config) return;
-    const el = elements[config.elementKey];
-    if (!el) return;
-    let value = parseInt(el.value, 10);
-    if (!Number.isFinite(value) || value < 0) {
-        value = 0;
-    }
-    const max = Math.max(0, Number(state.randomLength) || 0);
-    if (value > max) {
-        value = max;
-    }
-    state[config.stateKey] = value;
-    el.value = value;
-    validateMinimumTotals(true);
-}
-
-function updateMinInputStates() {
-    const showMinimums = shouldShowMinimumInputs();
-    setMinInputState('digits', state.randomIncludeDigits && showMinimums);
-    setMinInputState('lower', state.randomIncludeLower && showMinimums);
-    setMinInputState('upper', state.randomIncludeUpper && showMinimums);
-    updateSymbolMinState(showMinimums);
-}
-
-function setMinInputState(kind, enabled) {
-    const config = minCountConfig[kind];
-    if (!config) return;
-    const el = elements[config.elementKey];
-    if (!el) return;
-    const wrapper = config.rowKey ? elements[config.rowKey] : null;
-    el.disabled = !enabled;
-    if (wrapper) {
-        wrapper.classList.toggle('hidden', !enabled);
-    } else {
-        el.classList.toggle('hidden', !enabled);
-    }
-    if (!enabled) {
-        state[config.stateKey] = 0;
-        el.value = 0;
-    } else {
-        el.value = state[config.stateKey] || 0;
-    }
-    if (enabled) {
-        handleRandomMinChange(kind);
-    } else {
-        validateMinimumTotals(false);
-    }
-}
-
-function updateSymbolMinState(showMinimums = shouldShowMinimumInputs()) {
-    const el = elements.randomMinSymbols;
-    if (!el) return;
-    const hasSymbols = state.randomSymbols && state.randomSymbols.size > 0;
-    const showRow = hasSymbols && showMinimums;
-    if (elements.randomSymbolMinRow) {
-        elements.randomSymbolMinRow.classList.toggle('hidden', !showRow);
-    }
-    el.disabled = !showRow;
-    if (!showRow) {
-        state.randomMinSymbols = 0;
-        el.value = 0;
-    } else {
-        el.value = state.randomMinSymbols || 0;
-    }
-    validateMinimumTotals(false);
-}
-
-function validateMinimumTotals(showWarning = false) {
-    const { minDigits, minLower, minUpper, minSymbols } = getMinimumCounts();
-    const total = minDigits + minLower + minUpper + minSymbols;
-    if (total > state.randomLength) {
-        if (showWarning) {
-            setStatus('Minimum counts exceed length', true);
-        }
-        return false;
-    }
-    return true;
-}
-
-function getMinimumCounts() {
-    if (!state.randomSymbols) {
-        state.randomSymbols = new Set();
-    }
-    const symbolSet = state.randomSymbols;
-    const hasSymbols = symbolSet.size > 0;
-    return {
-        minDigits: state.randomIncludeDigits ? state.randomMinDigits || 0 : 0,
-        minLower: state.randomIncludeLower ? state.randomMinLower || 0 : 0,
-        minUpper: state.randomIncludeUpper ? state.randomMinUpper || 0 : 0,
-        minSymbols: hasSymbols ? state.randomMinSymbols || 0 : 0,
-        hasSymbols,
-    };
-}
-
-function handleRandomLengthChange() {
-    if (!elements.randomLength) return;
-    let value = parseInt(elements.randomLength.value, 10);
-    if (!Number.isFinite(value)) {
-        value = 1;
-    }
-    value = Math.min(Math.max(value, 1), 2048);
-    state.randomLength = value;
-    elements.randomLength.value = value;
-    validateMinimumTotals(true);
-}
-
-function handleRandomCountChange() {
-    if (!elements.randomCount) return;
-    let value = parseInt(elements.randomCount.value, 10);
-    if (!Number.isFinite(value)) {
-        value = 1;
-    }
-    value = Math.min(Math.max(value, 1), 256);
-    state.randomCount = value;
-    elements.randomCount.value = value;
-}
-
-function handleRandomIncludeDigitsChange(event) {
-    state.randomIncludeDigits = Boolean(event?.target?.checked);
-    updateRandomZeroControl();
-    if (!state.randomIncludeDigits) {
-        state.randomMinDigits = 0;
-        if (elements.randomMinDigits) elements.randomMinDigits.value = 0;
-    }
-    updateMinInputStates();
-    validateMinimumTotals(true);
-}
-
-function handleRandomLeadingToggle(event) {
-    state.randomAllowLeadingZero = Boolean(event?.target?.checked);
-    updateRandomZeroControl();
-}
-
-function handleRandomIncludeLowerChange(event) {
-    state.randomIncludeLower = Boolean(event?.target?.checked);
-    if (!state.randomIncludeLower) {
-        state.randomMinLower = 0;
-        if (elements.randomMinLower) elements.randomMinLower.value = 0;
-    }
-    updateMinInputStates();
-    updateRandomZeroControl();
-    validateMinimumTotals(true);
-}
-
-function handleRandomIncludeUpperChange(event) {
-    state.randomIncludeUpper = Boolean(event?.target?.checked);
-    if (!state.randomIncludeUpper) {
-        state.randomMinUpper = 0;
-        if (elements.randomMinUpper) elements.randomMinUpper.value = 0;
-    }
-    updateMinInputStates();
-    updateRandomZeroControl();
-    validateMinimumTotals(true);
-}
-
-function handleRandomExcludeInput() {
-    if (!elements.randomExclude) return;
-    const sanitized = sanitizeRandomExclude(elements.randomExclude.value || '');
-    state.randomExclude = sanitized;
-    elements.randomExclude.value = sanitized;
-}
-
-function handleRandomDigitRangeInput(event) {
-    const targetId = event?.target?.id || '';
-    const value = (event?.target?.value || '').trim();
-    if (targetId === 'randomDigitMin') {
-        state.randomDigitMin = value;
-    } else if (targetId === 'randomDigitMax') {
-        state.randomDigitMax = value;
-    }
-}
-
-function isDigitRangeRequested() {
-    if (state.randomAllowLeadingZero) return false;
-    if (!isDigitsOnlySelection()) return false;
-    const hasMin = Boolean((state.randomDigitMin || '').trim());
-    const hasMax = Boolean((state.randomDigitMax || '').trim());
-    return hasMin || hasMax;
+    const symbol = button.dataset.symbol;
+    const on = !state.random.symbols.has(symbol);
+    if (on) state.random.symbols.add(symbol);
+    else state.random.symbols.delete(symbol);
+    button.setAttribute('aria-pressed', String(on));
+    scheduleRandom();
 }
 
 function runRandomGenerator() {
-    if (!isRandomTool(state.currentTool)) {
-        setStatus('Select the Random tool', true);
-        return;
-    }
-    if (!state.wasmReady) {
-        setStatus('Waiting for WebAssembly...', true);
-        return;
-    }
-    handleRandomLengthChange();
-    handleRandomCountChange();
-    handleRandomExcludeInput();
-    if (!validateMinimumTotals(true)) {
-        return;
-    }
-    if (!state.randomSymbols) {
-        state.randomSymbols = new Set();
-    }
-    const symbolSet = state.randomSymbols;
-    const { minDigits, minLower, minUpper, minSymbols, hasSymbols } = getMinimumCounts();
-    if (
-        !state.randomIncludeDigits &&
-        !state.randomIncludeLower &&
-        !state.randomIncludeUpper &&
-        !hasSymbols
-    ) {
-        setStatus('Select at least one character set', true);
-        return;
-    }
-    const rangeRequested = isDigitRangeRequested();
-    // When restricted to digits without leading zeros, allow ranged integer output.
-    if (rangeRequested) {
-        const minValue = (state.randomDigitMin || '').trim();
-        const maxValue = (state.randomDigitMax || '').trim();
-        if (!minValue || !maxValue) {
-            setStatus('Enter both min and max to generate ranged digits', true);
-            return;
-        }
-        try {
-            const ranged = random_numeric_range_sequences(
-                state.randomCount,
-                minValue,
-                maxValue,
-                state.randomLength
-            );
-            const list = Array.isArray(ranged) ? ranged.map((item) => String(item || '')) : [];
-            updateRandomResults(list);
-            setStatus('Done', false);
-        } catch (err) {
-            updateRandomResults([]);
-            setStatus(`⚠️ ${err?.message || err}`, true);
-        }
-        return;
-    }
-    const digits = state.randomIncludeDigits ? digitCharacters : '';
-    const symbols = hasSymbols ? Array.from(symbolSet).join('') : '';
+    if (!isRandomTool(state.currentTool) || !state.wasmReady) return;
+    const length = readNumber(elements.randomLength, 1, 2048);
+    const count = readNumber(elements.randomCount, 1, 256);
+    const sets = randomSets();
+    const kinds = Object.values(sets).filter(Boolean).length;
+    const digitsOnly = sets.digits && kinds === 1;
+    const atLeast = (input, on) => (kinds > 1 && on ? readNumber(input, 0, length) : 0);
+    const low = elements.randomDigitMin.value.trim();
+    const high = elements.randomDigitMax.value.trim();
+    const ranged = digitsOnly && !elements.randomAllowZero.checked && (low || high);
     try {
-        const result = random_number_sequences(
-            state.randomLength,
-            state.randomCount,
-            state.randomAllowLeadingZero,
-            digits,
-            state.randomIncludeLower,
-            state.randomIncludeUpper,
-            symbols,
-            state.randomExclude,
-            minDigits,
-            minLower,
-            minUpper,
-            minSymbols
-        );
-        const list = Array.isArray(result) ? result.map((item) => String(item || '')) : [];
-        updateRandomResults(list);
-        setStatus('Done', false);
+        if (!kinds) throw new Error('Pick at least one kind of character');
+        if (ranged && !(low && high)) throw new Error('Give both ends of the range');
+        const list = ranged
+            ? random_numeric_range_sequences(count, low, high, length)
+            : random_number_sequences(
+                  length,
+                  count,
+                  !digitsOnly || elements.randomAllowZero.checked,
+                  sets.digits ? digitCharacters : '',
+                  sets.lower,
+                  sets.upper,
+                  sets.symbols ? [...state.random.symbols].join('') : '',
+                  sanitizeRandomExclude(elements.randomExclude.value),
+                  atLeast(elements.randomMinDigits, sets.digits),
+                  atLeast(elements.randomMinLower, sets.lower),
+                  atLeast(elements.randomMinUpper, sets.upper),
+                  atLeast(elements.randomMinSymbols, sets.symbols)
+              );
+        state.random.results = Array.from(list || [], String);
+        state.random.meta = ranged
+            ? `numbers from ${low} to ${high}`
+            : `${formatCount(length, 'character')} each`;
+        elements.randomError.hidden = true;
     } catch (err) {
-        updateRandomResults([]);
-        setStatus(`⚠️ ${err?.message || err}`, true);
+        state.random.results = [];
+        elements.randomError.textContent = String(err?.message || err);
+        elements.randomError.hidden = false;
     }
+    renderRandomResults();
 }
 
-async function ensureAsciiFontsLoaded() {
-    if (state.ascii.fonts && state.ascii.fonts.length) return;
-    if (!state.wasmReady) return;
-    try {
-        const fonts = list_ascii_fonts();
-        if (Array.isArray(fonts)) {
-            state.ascii.fonts = fonts;
-            renderAsciiFonts();
-        }
-    } catch (err) {
-        console.error(err);
-        setStatus('Unable to load ASCII fonts', true);
-    }
+function renderRandomResults() {
+    const list = state.random.results;
+    elements.randomMeta.textContent = list.length
+        ? `${formatCount(list.length, 'string')} · ${state.random.meta}`
+        : '';
+    elements.randomCopyAll.hidden = !list.length;
+    elements.randomResults.innerHTML = list
+        .map(
+            (value) =>
+                `<li><span class="v">${escapeHTML(value)}</span><button class="icon-btn" type="button" title="Copy" data-copy-text="${escapeAttr(value)}"><svg class="i"><use href="#i-copy" /></svg></button></li>`
+        )
+        .join('');
 }
 
-function renderAsciiFonts() {
-    if (!elements.asciiFont) return;
-    const current = state.ascii.font || 'standard';
-    elements.asciiFont.innerHTML = '';
-    const fonts = state.ascii.fonts && state.ascii.fonts.length ? state.ascii.fonts : ['standard'];
-    fonts.forEach((name) => {
-        const opt = document.createElement('option');
-        opt.value = name;
-        opt.textContent = name;
-        if (name === current) opt.selected = true;
-        elements.asciiFont.appendChild(opt);
-    });
-}
-
-function currentAsciiAlign() {
-    const checked = document.querySelector('input[name="asciiAlign"]:checked');
-    return checked?.value || state.ascii.align || 'left';
-}
-
-function setAsciiOutput(text, status, isError = false) {
-    if (elements.asciiOutput) {
-        elements.asciiOutput.textContent = text || '';
-    }
-    if (elements.asciiStatus) {
-        elements.asciiStatus.textContent =
-            status || (text ? 'Preview ready' : 'Enter text to render');
-    }
-    const hasText = Boolean(text && text.trim());
-    if (elements.asciiCopy) elements.asciiCopy.disabled = !hasText;
-    if (elements.asciiDownload) elements.asciiDownload.disabled = !hasText;
-    if (status) {
-        setStatus(status, isError);
-    }
-}
-
-async function runAsciiGenerator() {
-    if (!isAsciiTool(state.currentTool)) {
-        setStatus('Select the ASCII Art tool', true);
-        return;
-    }
-    if (!state.wasmReady) {
-        setStatus('Waiting for WebAssembly...', true);
-        return;
-    }
-    await ensureAsciiFontsLoaded();
-    const text = elements.asciiInput?.value || '';
-    const font = (elements.asciiFont?.value || state.ascii.font || 'standard').toLowerCase();
-    const widthVal = Number.parseInt(elements.asciiWidth?.value || '', 10);
-    const width = Number.isFinite(widthVal) ? widthVal : undefined;
-    const align = currentAsciiAlign();
-    try {
-        const art = generate_ascii_art(text, font, width, align);
-        state.ascii.output = art;
-        state.ascii.font = font;
-        if (width) state.ascii.width = width;
-        state.ascii.align = align;
-        setAsciiOutput(art, 'ASCII art generated');
-    } catch (err) {
-        console.error(err);
-        setAsciiOutput('', err?.message || 'Unable to generate ASCII art', true);
-    }
-}
-
+// ASCII Art: drawing takes no time, so the art follows every keystroke and option.
 function activateAsciiTool() {
-    renderAsciiFonts();
-    if (elements.asciiWidth) {
-        elements.asciiWidth.value = state.ascii.width || 80;
+    if (!state.wasmReady) return;
+    if (!elements.asciiFont.options.length) {
+        const fonts = list_ascii_fonts();
+        elements.asciiFont.innerHTML = (Array.isArray(fonts) ? fonts : ['standard'])
+            .map((name) => `<option>${escapeHTML(name)}</option>`)
+            .join('');
+        elements.asciiFont.value = 'standard';
     }
-    const align = state.ascii.align || 'left';
-    const alignInput = document.querySelector(`input[name="asciiAlign"][value="${align}"]`);
-    if (alignInput) {
-        alignInput.checked = true;
-    }
-    if (state.ascii.output) {
-        setAsciiOutput(state.ascii.output, 'Ready');
-    } else {
-        setAsciiOutput('', 'Enter text to render');
-    }
-    ensureAsciiFontsLoaded();
+    runAsciiGenerator();
 }
 
-function handleAsciiCopy() {
-    if (!state.ascii.output) {
-        setStatus('No ASCII art to copy', true);
-        return;
+function setAsciiAlign(align) {
+    state.ascii.align = align;
+    [
+        [elements.asciiAlignLeft, 'left'],
+        [elements.asciiAlignCenter, 'center'],
+        [elements.asciiAlignRight, 'right'],
+    ].forEach(([button, value]) => button.setAttribute('aria-pressed', String(value === align)));
+    runAsciiGenerator();
+}
+
+function scheduleAscii() {
+    clearTimeout(state.ascii.timer);
+    state.ascii.timer = setTimeout(runAsciiGenerator, 120);
+}
+
+function runAsciiGenerator() {
+    if (!isAsciiTool(state.currentTool) || !state.wasmReady || !elements.asciiFont.value) return;
+    clearTimeout(state.ascii.timer);
+    const text = elements.asciiInput.value;
+    let art = '';
+    try {
+        art = text.trim()
+            ? generate_ascii_art(
+                  text,
+                  elements.asciiFont.value,
+                  readNumber(elements.asciiWidth, 10, 200),
+                  state.ascii.align
+              )
+            : '';
+        elements.asciiError.hidden = true;
+    } catch (err) {
+        elements.asciiError.textContent = String(err?.message || err);
+        elements.asciiError.hidden = false;
     }
-    copyText(state.ascii.output, 'ASCII art');
+    elements.asciiOutput.textContent = art;
+    const lines = art ? art.split('\n') : [];
+    elements.asciiMeta.textContent = lines.length
+        ? `${formatCount(lines.length, 'line')} · ${Math.max(...lines.map((line) => line.length))} columns`
+        : '';
 }
 
 function handleAsciiDownload() {
-    if (!state.ascii.output) {
-        setStatus('No ASCII art to download', true);
-        return;
-    }
-    const blob = new Blob([state.ascii.output], { type: 'text/plain;charset=utf-8' });
-    saveFile(blob, 'ascii-art.txt');
-    setStatus('Downloaded ascii-art.txt', false);
+    const art = elements.asciiOutput.textContent;
+    if (art) saveFile(new Blob([art], { type: 'text/plain;charset=utf-8' }), 'ascii-art.txt');
 }
 
-/**
- * Updates the random results display with generated strings.
- * Shows/hides the "Copy All" button based on whether there are results.
- */
-function updateRandomResults(values) {
-    state.randomResults = Array.isArray(values)
-        ? values.filter((value) => typeof value === 'string' && value.length > 0)
-        : [];
-    if (!elements.randomResults) return;
-
-    // Show/hide "Copy All" button
-    if (elements.randomCopyAll) {
-        elements.randomCopyAll.classList.toggle('hidden', state.randomResults.length === 0);
-    }
-
-    if (!state.randomResults.length) {
-        elements.randomResults.innerHTML =
-            '<div class="random-placeholder">Click Generate to produce strings</div>';
-        return;
-    }
-
-    // Render results with improved structure
-    const items = state.randomResults
-        .map(
-            (value) => `
-        <div class="random-result-item" data-random-value="${escapeAttr(value)}">
-          <span class="random-result-text">${escapeHTML(value)}</span>
-        </div>
-      `
-        )
-        .join('');
-    elements.randomResults.innerHTML = items;
-}
-
-/**
- * Handles clicking on individual result items to copy them.
- */
-function handleRandomResultsClick(event) {
-    const row = event.target.closest('.random-result-item');
-    if (!row) return;
-    const value = row.dataset.randomValue || '';
-    if (!value) return;
-    copyText(value, 'Random string');
-}
-
-/**
- * Copies all generated random strings to clipboard, one per line.
- */
-function handleRandomCopyAll() {
-    if (!state.randomResults || state.randomResults.length === 0) {
-        setStatus('No results to copy', true);
-        return;
-    }
-    const allText = state.randomResults.join('\n');
-    copyText(allText, 'All random strings');
-}
-
-function setQrMode(mode, shouldRender = true) {
-    const nextMode = ['otp', 'wifi', 'custom'].includes(mode) ? mode : 'otp';
-    const changed = state.qr.mode !== nextMode;
-    state.qr.mode = nextMode;
-    if (elements.qrModeOtp) elements.qrModeOtp.checked = nextMode === 'otp';
-    if (elements.qrModeWifi) elements.qrModeWifi.checked = nextMode === 'wifi';
-    if (elements.qrModeCustom) elements.qrModeCustom.checked = nextMode === 'custom';
-    updateQrModeVisibility();
-    if (shouldRender) {
-        if (changed) {
-            state.qr.lastResult = null;
-            renderQrPlaceholder('Generate to see a 250 × 250 QR preview.');
-        } else if (state.qr.lastResult) {
-            renderQrResult(state.qr.lastResult);
-        } else {
-            renderQrPlaceholder('Generate to see a 250 × 250 QR preview.');
-        }
-    }
-}
-
+// QR Code and QR Parse share a tool set; each opens its own workspace.
 function activateQrTool() {
-    setQrMode(state.qr.mode || 'otp', false);
-    if (elements.qrOtpAccount) elements.qrOtpAccount.value = state.qr.otpAccount || '';
-    if (elements.qrOtpSecret) elements.qrOtpSecret.value = state.qr.otpSecret || '';
-    if (elements.qrOtpIssuer) elements.qrOtpIssuer.value = state.qr.otpIssuer || '';
-    if (elements.qrOtpAlgorithm) elements.qrOtpAlgorithm.value = state.qr.otpAlgorithm || 'SHA1';
-    if (elements.qrOtpPeriod) elements.qrOtpPeriod.value = state.qr.otpPeriod || 30;
-    if (elements.qrOtpDigits) elements.qrOtpDigits.value = state.qr.otpDigits || 6;
-    if (elements.qrWifiType) elements.qrWifiType.value = state.qr.wifiType || 'WPA';
-    if (elements.qrWifiSsid) elements.qrWifiSsid.value = state.qr.wifiSsid || '';
-    if (elements.qrWifiPass) elements.qrWifiPass.value = state.qr.wifiPass || '';
-    if (elements.qrCustomString) elements.qrCustomString.value = state.qr.customString || '';
-    if (elements.qrFormat) elements.qrFormat.value = state.qr.format || 'png';
-    if (elements.qrEccLevel) elements.qrEccLevel.value = state.qr.ecc || 'Q';
-    updateQrModeVisibility();
-    if (state.qr.lastResult) {
-        renderQrResult(state.qr.lastResult);
-    } else {
-        renderQrPlaceholder('Generate to see a 250 × 250 QR preview.');
+    if (state.currentTool === 'generator-qr-parse') {
+        renderQrParseResults();
+        return;
     }
-    setStatus('Ready', false);
+    renderQrMode();
+    runQr();
 }
 
-function updateQrModeVisibility() {
-    document.querySelectorAll('#qrWorkspace .qr-row[data-mode]').forEach((row) => {
-        const mode = row.dataset.mode || '';
-        row.classList.toggle('hidden', mode !== state.qr.mode);
+function setQrMode(mode) {
+    state.qr.mode = mode;
+    renderQrMode();
+    runQr();
+}
+
+function renderQrMode() {
+    const { mode } = state.qr;
+    [
+        [elements.qrModeOtp, 'otp'],
+        [elements.qrModeWifi, 'wifi'],
+        [elements.qrModeCustom, 'custom'],
+    ].forEach(([button, value]) => button.setAttribute('aria-pressed', String(value === mode)));
+    elements.qrContentLabel.textContent = qrContentLabels[mode];
+    elements.qrFields.hidden = mode === 'custom';
+    elements.qrFields.querySelectorAll('[data-mode]').forEach((list) => {
+        list.hidden = list.dataset.mode !== mode;
     });
+    elements.qrCustomString.hidden = mode !== 'custom';
+    elements.qrWifiPassRow.hidden = elements.qrWifiType.value === 'nopass';
 }
 
-function handleQrFieldChange(event) {
-    const { id, value } = event.target;
-    switch (id) {
-        case 'qrOtpAccount':
-            state.qr.otpAccount = value;
-            break;
-        case 'qrOtpSecret':
-            state.qr.otpSecret = value;
-            break;
-        case 'qrOtpIssuer':
-            state.qr.otpIssuer = value;
-            break;
-        case 'qrOtpAlgorithm':
-            state.qr.otpAlgorithm = value || 'SHA1';
-            break;
-        case 'qrOtpPeriod': {
-            const period = clampNumber(value, 1, 300, 30);
-            state.qr.otpPeriod = period;
-            event.target.value = period;
-            break;
-        }
-        case 'qrOtpDigits': {
-            const digits = clampNumber(value, 4, 10, 6);
-            state.qr.otpDigits = digits;
-            event.target.value = digits;
-            break;
-        }
-        case 'qrWifiType':
-            state.qr.wifiType = value || 'WPA';
-            break;
-        case 'qrWifiSsid':
-            state.qr.wifiSsid = value;
-            break;
-        case 'qrWifiPass':
-            state.qr.wifiPass = value;
-            break;
-        case 'qrCustomString':
-            state.qr.customString = value;
-            break;
-        case 'qrEccLevel':
-            state.qr.ecc = value || 'Q';
-            break;
-        default:
-            break;
-    }
+function scheduleQr() {
+    clearTimeout(state.qr.timer);
+    state.qr.timer = setTimeout(runQr, 150);
+}
+
+// The one field each kind of code can't do without.
+function qrMissing() {
+    const { mode } = state.qr;
+    if (mode === 'otp' && !elements.qrOtpSecret.value.trim()) return 'Enter the secret to encode';
+    if (mode === 'wifi' && !elements.qrWifiSsid.value.trim()) return 'Enter the network name';
+    if (mode === 'custom' && !elements.qrCustomString.value) return 'Type the text to encode';
+    return '';
 }
 
 function buildQrPayload() {
-    if (state.qr.mode === 'otp') {
-        return {
-            otpAccount: elements.qrOtpAccount?.value || state.qr.otpAccount || '',
-            otpSecret: elements.qrOtpSecret?.value || state.qr.otpSecret || '',
-            otpIssuer: elements.qrOtpIssuer?.value || state.qr.otpIssuer || '',
-            otpAlgorithm: elements.qrOtpAlgorithm?.value || state.qr.otpAlgorithm || 'SHA1',
-            otpPeriod: Number(elements.qrOtpPeriod?.value || state.qr.otpPeriod || 30),
-            otpDigits: Number(elements.qrOtpDigits?.value || state.qr.otpDigits || 6),
-        };
-    }
-    if (state.qr.mode === 'wifi') {
-        return {
-            wifiType: elements.qrWifiType?.value || state.qr.wifiType || 'WPA',
-            wifiSsid: elements.qrWifiSsid?.value || state.qr.wifiSsid || '',
-            wifiPass: elements.qrWifiPass?.value || state.qr.wifiPass || '',
-        };
-    }
     return {
-        customString: elements.qrCustomString?.value || state.qr.customString || '',
-        qrEcc: elements.qrEccLevel?.value || state.qr.ecc || 'Q',
+        otpAccount: elements.qrOtpAccount.value,
+        otpSecret: elements.qrOtpSecret.value,
+        otpIssuer: elements.qrOtpIssuer.value,
+        otpAlgorithm: elements.qrOtpAlgorithm.value,
+        otpPeriod: readNumber(elements.qrOtpPeriod, 1, 300),
+        otpDigits: readNumber(elements.qrOtpDigits, 4, 10),
+        wifiType: elements.qrWifiType.value,
+        wifiSsid: elements.qrWifiSsid.value,
+        wifiPass: elements.qrWifiPass.value,
+        customString: elements.qrCustomString.value,
+        // Every kind honours the level: an authenticator code is scanned off screens too.
+        qrEcc: elements.qrEccLevel.value,
     };
+}
+
+function runQr() {
+    if (state.currentTool !== 'generator-qr' || !state.wasmReady) return;
+    clearTimeout(state.qr.timer);
+    state.qr.result = null;
+    elements.qrError.hidden = true;
+    elements.qrDownload.disabled = true;
+    elements.qrPayload.hidden = true;
+    elements.qrMeta.textContent = '';
+    const missing = qrMissing();
+    if (missing) {
+        elements.qrPreview.innerHTML = `<div class="empty"><strong>${escapeHTML(missing)}</strong><span>The code appears as you type</span></div>`;
+        return;
+    }
+    try {
+        const result = normalizeQrResult(
+            generate_qr_code(state.qr.mode, elements.qrFormat.value, buildQrPayload())
+        );
+        state.qr.result = result;
+        elements.qrPreview.innerHTML = `<img src="${escapeAttr(result.dataUrl)}" alt="QR code" width="${result.width}" height="${result.height}" />`;
+        elements.qrMeta.textContent = `${result.format.toUpperCase()} · ${result.width} × ${result.height} · level ${elements.qrEccLevel.value}`;
+        elements.qrPayload.innerHTML = renderKvRow('Encodes', result.payload);
+        elements.qrPayload.hidden = false;
+        elements.qrDownload.disabled = false;
+    } catch (err) {
+        elements.qrPreview.innerHTML = '';
+        elements.qrError.textContent = String(err?.message || err);
+        elements.qrError.hidden = false;
+    }
+}
+
+function downloadQrImage() {
+    const result = state.qr.result;
+    if (result) saveFile(result.dataUrl, result.downloadName);
+}
+
+function addQrParseFiles(files) {
+    Promise.all(
+        files.map(async (file) => ({
+            fileName: file.name || 'image',
+            bytes: new Uint8Array(await file.arrayBuffer()),
+        }))
+    ).then((loaded) => {
+        state.qrParse.files = loaded;
+        runQrParse();
+    });
+}
+
+async function runQrParse() {
+    if (state.currentTool !== 'generator-qr-parse' || !state.wasmReady) return;
+    if (!state.qrParse.files.length) return;
+    try {
+        const results = await parse_qr_codes_batch(state.qrParse.files);
+        state.qrParse.results = Array.isArray(results) ? results : [];
+    } catch (err) {
+        state.qrParse.results = state.qrParse.files.map((file) => ({
+            fileName: file.fileName,
+            results: [],
+            error: String(err?.message || err),
+        }));
+    }
+    renderQrParseResults();
+}
+
+// One group per image: its codes as rows, or why there are none.
+function renderQrParseResults() {
+    const results = state.qrParse.results;
+    elements.qrParseDrop.classList.toggle('compact', results.length > 0);
+    elements.qrParseResults.innerHTML = results
+        .map((entry) => {
+            const codes = Array.isArray(entry.results) ? entry.results : [];
+            const found = entry.error ? '' : formatCount(codes.length, 'QR code');
+            const head = `<h2 class="group-title">${escapeHTML(entry.fileName)} <span class="meta">${codes.length || entry.error ? found : 'no QR code found'}</span></h2>`;
+            if (entry.error) return `${head}<p class="notice">${escapeHTML(entry.error)}</p>`;
+            const rows = codes
+                .map((code, index) =>
+                    renderKvRow(
+                        [
+                            `#${index + 1}`,
+                            code.version && `v${code.version}`,
+                            code.eccLevel && `level ${code.eccLevel}`,
+                        ]
+                            .filter(Boolean)
+                            .join(' · '),
+                        code.payload
+                    )
+                )
+                .join('');
+            return `${head}<ul class="kv">${rows}</ul>`;
+        })
+        .join('');
 }
 
 function normalizeQrResult(result) {
@@ -5830,351 +4706,60 @@ function normalizeQrResult(result) {
     };
 }
 
-function handleQrGenerate() {
-    if (!isQrTool(state.currentTool)) {
-        setStatus('Select the QR Code tool first', true);
-        return;
-    }
-    if (!state.wasmReady) {
-        setStatus('Waiting for WebAssembly...', true);
-        return;
-    }
-    const payload = buildQrPayload();
-    try {
-        const raw = generate_qr_code(state.qr.mode, state.qr.format, payload);
-        const result = normalizeQrResult(raw);
-        if (!result.dataUrl) {
-            renderQrPlaceholder('No QR data returned');
-            setStatus('QR generation failed', true);
-            return;
-        }
-        state.qr.lastResult = result;
-        renderQrResult(result);
-        setStatus(`QR generated (${result.format.toUpperCase()})`, false);
-    } catch (err) {
-        console.error(err);
-        renderQrError(err?.message || String(err));
-        setStatus(`⚠️ ${err?.message || err}`, true);
-    }
+// SSH Key: Ed25519 takes no time, so the tool opens with a key; RSA waits for the button.
+function activateSshTool() {
+    renderSshType();
+    if (!state.ssh.key && state.ssh.type === 'ed25519') runSshGenerator();
 }
 
-function renderQrResult(result) {
-    if (!elements.qrPreview) return;
-    const size = Number(result.width || 250) || 250;
-    const height = Number(result.height || size) || size;
-    const payload = result.payload
-        ? escapeHTML(result.payload)
-        : '<span class="muted">(empty)</span>';
-    const meta = [];
-    if (result.kind) meta.push(`Kind: ${result.kind.toUpperCase()}`);
-    if (result.format) meta.push(`Format: ${result.format.toUpperCase()}`);
-    if (state.qr.ecc) meta.push(`ECC: ${state.qr.ecc}`);
-    meta.push(`Size: ${size} × ${height}`);
-    elements.qrPreview.innerHTML = `
-        <div class="qr-image-frame">
-            <img src="${escapeAttr(result.dataUrl || '')}" alt="QR code" width="${size}" height="${height}" loading="lazy" />
-        </div>
-        <div class="qr-payload">${payload}</div>
-    `;
-    if (elements.qrMeta) {
-        elements.qrMeta.innerHTML = meta.length
-            ? meta.map((item) => `<span>${escapeHTML(item)}</span>`).join('')
-            : '';
-    }
-    if (elements.qrDownload) {
-        elements.qrDownload.removeAttribute('disabled');
-    }
-    if (elements.qrError) {
-        elements.qrError.textContent = '';
-    }
+function setSshType(type) {
+    state.ssh.type = type;
+    renderSshType();
 }
 
-function renderQrPlaceholder(message) {
-    if (!elements.qrPreview) return;
-    elements.qrPreview.innerHTML = `<div class="muted">${escapeHTML(
-        message || 'Generate to see a QR preview'
-    )}</div>`;
-    if (elements.qrDownload) {
-        elements.qrDownload.setAttribute('disabled', 'disabled');
-    }
-    if (elements.qrMeta) {
-        elements.qrMeta.innerHTML = '';
-    }
-}
-
-function renderQrError(message) {
-    renderQrPlaceholder('QR generation failed');
-    if (elements.qrError) {
-        elements.qrError.textContent = message || 'Unable to generate QR code';
-    }
-}
-
-function downloadQrImage() {
-    const result = state.qr.lastResult;
-    if (!result || !result.dataUrl) {
-        setStatus('No QR code to download', true);
-        return;
-    }
-    saveFile(result.dataUrl, result.downloadName || `qr-code.${result.format || 'png'}`);
-    setStatus('QR downloaded', false);
-}
-
-function handleQrParseFileChange(event) {
-    const files = Array.from(event.target?.files || []);
-    if (files.length) {
-        handleQrParseSelectedFiles(files);
-    }
-}
-
-function handleQrParseSelectedFiles(files) {
-    if (!files.length || !isQrTool(state.currentTool)) return;
-    // Read all files up-front so batch decoding stays deterministic.
-    Promise.all(
-        files.map(
-            (file) =>
-                new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        resolve({
-                            name: file.name || 'uploaded',
-                            bytes: new Uint8Array(reader.result || new ArrayBuffer(0)),
-                        });
-                    };
-                    reader.onerror = () => {
-                        resolve({ name: file.name || 'uploaded', bytes: new Uint8Array() });
-                    };
-                    reader.readAsArrayBuffer(file);
-                })
-        )
-    ).then((loaded) => {
-        state.qrParse.files = loaded;
-        runQrParse();
-    });
-}
-
-// Decodes every queued QR image via the batch wasm helper.
-async function runQrParse() {
-    if (!isQrTool(state.currentTool) || state.currentTool !== 'generator-qr-parse') {
-        return;
-    }
-    if (!state.wasmReady) {
-        setStatus('Waiting for WebAssembly...', true);
-        return;
-    }
-    if (!state.qrParse.files || !state.qrParse.files.length) {
-        setStatus('Select an image to decode', true);
-        return;
-    }
-    try {
-        setStatus('Decoding QR batch...', false);
-        const payload = state.qrParse.files.map((file) => ({
-            fileName: file.name,
-            bytes: file.bytes,
-        }));
-        const result = await parse_qr_codes_batch(payload);
-        const entries = Array.isArray(result) ? result : [];
-        state.qrParse.results = entries;
-        renderQrParseResults(entries);
-        const decodedCount = entries.filter((item) => item?.results?.length).length;
-        setStatus(
-            decodedCount ? `Decoded ${decodedCount} file(s)` : 'No QR codes found',
-            decodedCount === 0
-        );
-    } catch (err) {
-        console.error(err);
-        setStatus(`⚠️ ${err?.message || err}`, true);
-        renderQrParseResults([]);
-    }
-}
-
-// Renders batch QR payloads grouped by source file.
-function renderQrParseResults(results) {
-    if (!elements.qrParseResults) return;
-    if (!results || !results.length) {
-        elements.qrParseResults.innerHTML =
-            '<div class="muted">Drop or choose images to decode QR payloads.</div>';
-        return;
-    }
-    const html = results
-        .map((entry, idx) => {
-            const name = escapeHTML(entry?.fileName || `File #${idx + 1}`);
-            const error = entry?.error || '';
-            const payloads = Array.isArray(entry?.results) ? entry.results : [];
-            const payloadHtml = payloads
-                .map((res, resIdx) => {
-                    const payload = res?.payload || '';
-                    const version = res?.version ? `v${res.version}` : '';
-                    const ecc = res?.eccLevel || res?.ecc_level || '';
-                    const meta = [version, ecc].filter(Boolean).join(' · ');
-                    return `<div class="qr-parse-card" data-file-index="${idx}" data-payload-index="${resIdx}">
-  <header>
-    <span class="qr-parse-label">QR #${resIdx + 1}${meta ? ` — ${escapeHTML(meta)}` : ''}</span>
-    <button class="ghost-btn" data-copy-qrcode="${idx}-${resIdx}" data-copy-value="${escapeAttr(
-        payload
-    )}">📋 Copy</button>
-  </header>
-  <pre class="qr-parse-payload">${escapeHTML(payload || '(empty)')}</pre>
-</div>`;
-                })
-                .join('');
-            const body =
-                payloadHtml ||
-                `<div class="qr-parse-card"><pre class="qr-parse-payload">No QR codes detected</pre></div>`;
-            const errorBlock = error
-                ? `<div class="qr-parse-error">⚠️ ${escapeHTML(error)}</div>`
-                : '';
-            return `<div class="qr-parse-file">
-  <div class="qr-parse-file-head">
-    <div class="qr-parse-file-name">${name}</div>
-    <div class="qr-parse-file-meta">${payloads.length} QR code(s)</div>
-  </div>
-  ${errorBlock}
-  <div class="qr-parse-file-results">${body}</div>
-</div>`;
-        })
-        .join('');
-    elements.qrParseResults.innerHTML = html;
-}
-
-function handleQrParseResultsClick(event) {
-    const button = event.target.closest('[data-copy-qrcode]');
-    if (!button) return;
-    const value = button.dataset.copyValue || '';
-    if (value) {
-        copyText(value, 'QR payload');
-        setStatus('Copied', false);
-    }
-}
-
-function handleSshTypeChange(event) {
-    state.sshType = event.target.value;
-    updateSshVisibility();
-}
-
-function handleSshBitsChange(event) {
-    const value = parseInt(event.target.value, 10);
-    state.sshBits = Number.isFinite(value) ? value : 4096;
-}
-
-function handleSshCommentChange(event) {
-    state.sshComment = event.target.value || '';
-}
-
-function handleSshFormatChange(event) {
-    state.sshFormat = event.target.value || 'openssh';
-    if (state.sshLastKey) {
-        renderSshOutputs();
-    }
-}
-
-function handleSshKdfChange(event) {
-    const value = parseInt(event.target.value, 10);
-    const clamped = Math.min(500, Math.max(16, Number.isFinite(value) ? value : 16));
-    state.sshKdf = clamped;
-    if (elements.sshKdf) elements.sshKdf.value = clamped;
-}
-
-function handleSshResidentChange(event) {
-    state.sshResident = Boolean(event?.target?.checked);
-}
-
-function handleSshVerifyChange(event) {
-    state.sshVerify = Boolean(event?.target?.checked);
+function renderSshType() {
+    const rsa = state.ssh.type === 'rsa';
+    elements.sshTypeEd25519.setAttribute('aria-pressed', String(!rsa));
+    elements.sshTypeRsa.setAttribute('aria-pressed', String(rsa));
+    elements.sshBitsWrap.hidden = !rsa;
 }
 
 function runSshGenerator() {
-    if (!state.wasmReady) {
-        setStatus('Waiting for WebAssembly...', true);
-        return;
-    }
-    const keyType = elements.sshType?.value || 'ed25519';
-    const rawBits = parseInt(elements.sshBits?.value || '4096', 10) || 4096;
-    const bits = keyType === 'rsa' ? Math.max(2048, rawBits) : rawBits;
-    const comment = elements.sshComment?.value || '';
-    const format = elements.sshFormat?.value || 'openssh';
-    const kdf = parseInt(elements.sshKdf?.value || '16', 10) || 16;
-    const resident = Boolean(elements.sshResident?.checked);
-    const verify = Boolean(elements.sshVerify?.checked);
-    try {
-        const result = generate_ssh_key(keyType, bits, comment, format, kdf, resident, verify);
-        const data = normalizeMapResult(result);
-        state.sshLastKey = data;
-        renderSshOutputs();
-        setStatus('SSH key generated', false);
-    } catch (err) {
-        setStatus(`⚠️ ${err?.message || err}`, true);
-    }
+    if (!isSshTool(state.currentTool) || !state.wasmReady) return;
+    // A 4096-bit RSA key takes seconds in wasm: let "Generating…" paint before the work starts.
+    setStatus('Generating…');
+    requestAnimationFrame(() =>
+        setTimeout(() => {
+            try {
+                const key = normalizeMapResult(
+                    generate_ssh_key(
+                        state.ssh.type,
+                        Number(elements.sshBits.value),
+                        elements.sshComment.value.trim()
+                    )
+                );
+                state.ssh.key = key;
+                elements.sshPublic.value = key.publicKey;
+                elements.sshPrivate.value = key.privateKey;
+                elements.sshFingerprint.textContent = key.fingerprint;
+                setStatus('');
+            } catch (err) {
+                setStatus(String(err?.message || err), true);
+            }
+        }, 0)
+    );
 }
 
-/**
- * Updates SSH UI visibility based on selected key type.
- * Shows/hides RSA bits input and Security Key options as needed.
- */
-function updateSshVisibility() {
-    const isRsa = state.sshType === 'rsa';
-    const isSk = state.sshType.endsWith('-sk');
-
-    // Show/hide RSA bits input
-    if (elements.sshBitsRow) {
-        elements.sshBitsRow.classList.toggle('hidden', !isRsa);
-    }
-    if (elements.sshBits) {
-        elements.sshBits.disabled = !isRsa;
-    }
-
-    // Show/hide Security Key options section
-    if (elements.sshSkOptions) {
-        elements.sshSkOptions.classList.toggle('hidden', !isSk);
-    }
-
-    // Legacy support: also update individual option elements
-    document.querySelectorAll('.ssh-sk-option').forEach((el) => {
-        el.classList.toggle('hidden', !isSk);
-    });
-}
-
-function renderSshOutputs() {
-    if (!state.sshLastKey) {
-        if (elements.sshPublic) elements.sshPublic.value = '';
-        if (elements.sshPrivate) elements.sshPrivate.value = '';
-        return;
-    }
-    const data = state.sshLastKey;
-    const format = state.sshFormat || data.format || 'openssh';
-    if (elements.sshPublic && typeof data.publicKey === 'string') {
-        elements.sshPublic.value = data.publicKey;
-    }
-    if (elements.sshPrivate && typeof data.privateKey === 'string') {
-        const base = data.privateKey;
-        const rendered =
-            format === 'pem'
-                ? base.replace('OPENSSH PRIVATE KEY', 'PRIVATE KEY').replace(/openssh/gi, 'pem')
-                : base;
-        elements.sshPrivate.value = rendered;
-    }
-}
-
-function handleHashEncodingChange(event) {
-    const value = event?.target?.value || 'base16';
-    state.hashEncoding = value;
-    updateCoderActionsVisibility();
-    if (state.lastHashResults) renderHashResults(state.lastHashResults);
-}
-
-function handleHashModeToggle(event) {
-    state.hashUseHmac = Boolean(event?.target?.checked);
-    if (elements.hashHmacSecret) {
-        elements.hashHmacSecret.classList.toggle('hidden', !state.hashUseHmac);
-    }
-    if (state.lastHashResults) renderHashResults(state.lastHashResults);
-    scheduleCoder(true);
-}
-
-function handleHashSecretInput(event) {
-    state.hashHmacSecret = event?.target?.value || '';
-    if (state.hashUseHmac) {
-        scheduleCoder(true);
-    }
+// The names ssh-keygen gives, so the files can go straight into ~/.ssh.
+function saveSshKey(part) {
+    const key = state.ssh.key;
+    if (!key) return;
+    const base = key.keyType === 'rsa' ? 'id_rsa' : 'id_ed25519';
+    const text = part === 'public' ? key.publicKey : key.privateKey;
+    saveFile(
+        new Blob([`${text}\n`], { type: 'text/plain' }),
+        part === 'public' ? `${base}.pub` : base
+    );
 }
 
 function initTimestampControls() {
@@ -6493,22 +5078,65 @@ function activateTimestampTool() {
     elements.timestampInput?.focus();
 }
 
+// TOTP: the code ticks while the tool is open; the bar under it is the time left.
 function activateTotpTool() {
-    if (elements.totpSecret) {
-        elements.totpSecret.value = state.totpSecret || '';
-    }
-    if (elements.totpAlgorithm) {
-        elements.totpAlgorithm.value = state.totpAlgorithm || 'SHA256';
-    }
-    if (elements.totpPeriod) {
-        elements.totpPeriod.value = state.totpPeriod;
-    }
-    if (elements.totpDigits) {
-        elements.totpDigits.value = state.totpDigits;
-    }
-    refreshTotp(true);
+    refreshTotp();
     stopTotpTimer();
-    state.totpTimer = setInterval(() => refreshTotp(true), 1000);
+    state.totpTimer = setInterval(refreshTotp, 1000);
+}
+
+// A whole otpauth:// link is what an issuer hands out: take its settings along with the secret.
+function handleTotpSecretInput() {
+    const text = elements.totpSecret.value.trim();
+    if (/^otpauth:\/\//i.test(text)) {
+        try {
+            const params = new URL(text).searchParams;
+            const algorithm = (params.get('algorithm') || 'SHA1').toUpperCase();
+            if ([...elements.totpAlgorithm.options].some((o) => o.value === algorithm)) {
+                elements.totpAlgorithm.value = algorithm;
+            }
+            elements.totpPeriod.value = params.get('period') || '30';
+            elements.totpDigits.value = params.get('digits') || '6';
+            elements.totpSecret.value = params.get('secret') || '';
+        } catch {
+            // Left as typed: the error under the field says what is wrong with it.
+        }
+    }
+    refreshTotp();
+}
+
+// Two halves, the way authenticator apps show it (123 456, 1234 5678); Copy takes the digits alone.
+function groupOtpDigits(code) {
+    const half = Math.ceil(code.length / 2);
+    return code.length > 4 ? `${code.slice(0, half)} ${code.slice(half)}` : code;
+}
+
+function refreshTotp() {
+    if (!isTotpTool(state.currentTool) || !state.wasmReady) return;
+    const secret = elements.totpSecret.value.trim();
+    if (!secret) {
+        elements.totpError.hidden = true;
+        elements.totpResult.hidden = true;
+        return;
+    }
+    try {
+        const result = totp_token(
+            secret,
+            elements.totpAlgorithm.value,
+            readNumber(elements.totpPeriod, 1, 300),
+            readNumber(elements.totpDigits, 4, 10)
+        );
+        elements.totpCode.textContent = groupOtpDigits(result.code);
+        elements.totpCode.dataset.copyText = result.code;
+        elements.totpBar.style.width = `${(result.remaining / result.period) * 100}%`;
+        elements.totpRemaining.textContent = `next code in ${result.remaining} s`;
+        elements.totpError.hidden = true;
+        elements.totpResult.hidden = false;
+    } catch (err) {
+        elements.totpError.textContent = String(err?.message || err);
+        elements.totpError.hidden = false;
+        elements.totpResult.hidden = true;
+    }
 }
 
 function stopTotpTimer() {
@@ -6518,105 +5146,135 @@ function stopTotpTimer() {
     }
 }
 
-function handleTotpFieldChange() {
-    if (elements.totpSecret) {
-        state.totpSecret = elements.totpSecret.value || '';
-    }
-    if (elements.totpAlgorithm) {
-        state.totpAlgorithm = elements.totpAlgorithm.value || 'SHA256';
-    }
-    if (elements.totpPeriod) {
-        let period = parseInt(elements.totpPeriod.value, 10);
-        if (!Number.isFinite(period)) period = 30;
-        period = Math.min(Math.max(period, 1), 300);
-        state.totpPeriod = period;
-        elements.totpPeriod.value = period;
-    }
-    if (elements.totpDigits) {
-        let digits = parseInt(elements.totpDigits.value, 10);
-        if (!Number.isFinite(digits)) digits = 6;
-        digits = Math.min(Math.max(digits, 4), 10);
-        state.totpDigits = digits;
-        elements.totpDigits.value = digits;
-    }
-    refreshTotp();
-}
-
-function refreshTotp(silent = false) {
-    // Runs RFC 6238 logic in wasm. We refresh every second while the workspace is active.
-    if (!elements.totpSecret) return;
-    const secret = elements.totpSecret.value || '';
-    if (!secret.trim()) {
-        renderTotpError('Enter a secret');
-        if (!silent) setStatus('Secret is required', true);
-        return;
-    }
-    if (!state.wasmReady) {
-        if (!silent) setStatus('Waiting for WebAssembly...', true);
-        return;
-    }
-    try {
-        const result = totp_token(
-            secret,
-            elements.totpAlgorithm?.value || 'SHA256',
-            state.totpPeriod,
-            state.totpDigits
-        );
-        renderTotpResult(result);
-        if (!silent) setStatus('Generated TOTP code', false);
-    } catch (err) {
-        renderTotpError(err?.message || String(err));
-        if (!silent) setStatus(`⚠️ ${err?.message || err}`, true);
-    }
-}
-
-function renderTotpResult(result) {
-    if (!result) return;
-    if (elements.totpCode) {
-        elements.totpCode.textContent = result.code || '';
-    }
-    if (elements.totpPeriodLabel) {
-        elements.totpPeriodLabel.textContent = `${
-            result.algorithm || 'SHA256'
-        } · every ${result.period || 30}s`;
-    }
-    if (elements.totpRemainingLabel) {
-        elements.totpRemainingLabel.textContent = `${result.remaining || 0}s remaining`;
-    }
-    if (elements.totpError) {
-        elements.totpError.textContent = '';
-    }
-}
-
-function renderTotpError(message) {
-    if (elements.totpCode) {
-        elements.totpCode.textContent = '——';
-    }
-    if (elements.totpError) {
-        elements.totpError.textContent = message || '';
-    }
-    if (elements.totpPeriodLabel) {
-        elements.totpPeriodLabel.textContent = '';
-    }
-    if (elements.totpRemainingLabel) {
-        elements.totpRemainingLabel.textContent = '';
-    }
-}
-
-function copyTotpCode() {
-    const value = elements.totpCode?.textContent?.trim();
-    if (!value) {
-        setStatus('No code to copy', true);
-        return;
-    }
-    copyText(value, 'TOTP code');
-}
-
+// SQL Inserts: rows follow the schema, the row count and the column settings; New draws again.
 function activateDataTool() {
-    if (elements.dataRows) {
-        elements.dataRows.value = state.dataRows;
+    parseDataSchema();
+}
+
+function scheduleDataSchema() {
+    clearTimeout(state.dataSchemaTimer);
+    state.dataSchemaTimer = setTimeout(parseDataSchema, 300);
+}
+
+function scheduleData() {
+    clearTimeout(state.dataTimer);
+    state.dataTimer = setTimeout(runDataGenerator, 150);
+}
+
+function parseDataSchema() {
+    if (!isDataTool(state.currentTool) || !state.wasmReady) return;
+    clearTimeout(state.dataSchemaTimer);
+    const schema = elements.dataSchema.value.trim();
+    state.dataTables = [];
+    state.dataError = '';
+    if (schema) {
+        try {
+            const tables = inspect_schema(schema);
+            state.dataTables = Array.isArray(tables) ? tables : [];
+        } catch (err) {
+            state.dataError = String(err?.message || err);
+        }
     }
-    handleDataSchemaInput();
+    pruneDataOverrides();
+    renderDataColumnEditor();
+    runDataGenerator();
+}
+
+function runDataGenerator() {
+    if (!isDataTool(state.currentTool) || !state.wasmReady) return;
+    clearTimeout(state.dataTimer);
+    const schema = elements.dataSchema.value.trim();
+    const rows = readNumber(elements.dataRows, 1, 100);
+    let output = '';
+    let error = state.dataError;
+    if (schema && !error) {
+        try {
+            output = generate_insert_statements(schema, rows, buildDataOverrides()) || '';
+        } catch (err) {
+            error = String(err?.message || err);
+        }
+    }
+    const json = output.trimStart().startsWith('[');
+    elements.dataOutput.value = output;
+    elements.dataOutputLabel.textContent = json ? 'JSON' : 'INSERT statements';
+    elements.dataOutputMeta.textContent = output
+        ? `${formatCount(rows, 'row')}${state.dataTables.length > 1 ? ' per table' : ''}`
+        : '';
+    elements.dataError.textContent = error;
+    elements.dataError.hidden = !error;
+}
+
+function saveDataOutput() {
+    const text = elements.dataOutput.value;
+    if (!text) return;
+    const json = text.trimStart().startsWith('[');
+    saveFile(
+        new Blob([text], { type: json ? 'application/json' : 'application/sql' }),
+        json ? 'rows.json' : 'rows.sql'
+    );
+}
+
+// One line per column, under its table: whether it is filled, and for numbers the range or
+// the only values to draw from.
+function renderDataColumnEditor() {
+    const tables = state.dataTables;
+    elements.dataColumnEditor.hidden = !tables.length;
+    elements.dataColumnEditor.innerHTML = tables
+        .map(
+            (table) =>
+                `<div class="params-head"><h2 class="group-title">${escapeHTML(table.name)} <span class="meta">${formatCount(table.columns.length, 'column')}</span></h2></div>${table.columns.map((column) => renderDataColumn(table.name, column)).join('')}`
+        )
+        .join('');
+}
+
+// What the generator puts in a column it has no range for.
+function describeDataColumn(column) {
+    const values = column.enum_values || [];
+    if (column.kind === 'enum' && values.length) return `one of ${values.join(', ')}`;
+    if (column.kind === 'set' && values.length) return `some of ${values.join(', ')}`;
+    if (column.kind === 'datetime') return 'sample dates and times';
+    if (column.kind === 'binary') return 'sample bytes';
+    return 'lorem ipsum';
+}
+
+function renderDataColumn(tableName, column) {
+    const overrides = state.dataOverrides[tableName]?.[column.name] || {};
+    const include = overrides.exclude !== true;
+    const off = include ? '' : ' disabled';
+    const field = (name) =>
+        `data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(column.name)}" data-field="${name}"`;
+    const type = [column.data_type, column.default_value && `default ${column.default_value}`]
+        .filter(Boolean)
+        .join(' · ');
+    const numeric = ['integer', 'decimal', 'float', 'boolean'].includes(column.kind);
+    const detail = numeric
+        ? `<input class="input mono" type="number" ${field('min')} value="${escapeAttr(overrides.min ?? '')}" placeholder="${escapeAttr(column.min_value || 'min')}" aria-label="Smallest value"${off} /><input class="input mono" type="number" ${field('max')} value="${escapeAttr(overrides.max ?? '')}" placeholder="${escapeAttr(column.max_value || 'max')}" aria-label="Largest value"${off} /><input class="input mono" ${field('allowed')} value="${escapeAttr(overrides.allowed ?? '')}" placeholder="or only: 1, 5, 10" aria-label="Only these values"${off} />`
+        : `<span class="meta detail">${escapeHTML(describeDataColumn(column))}</span>`;
+    return `<div class="column${include ? '' : ' off'}"><label class="check"><input type="checkbox" ${field('include')}${include ? ' checked' : ''} /><span class="name">${escapeHTML(column.name)}</span></label><span class="meta">${escapeHTML(type)}</span>${detail}</div>`;
+}
+
+function handleDataOverrideInput(event) {
+    const input = event.target.closest('[data-field]');
+    if (!input) return;
+    const { table, column, field } = input.dataset;
+    state.dataOverrides[table] ||= {};
+    state.dataOverrides[table][column] ||= {};
+    const entry = state.dataOverrides[table][column];
+    if (field === 'include') {
+        if (input.checked) delete entry.exclude;
+        else entry.exclude = true;
+        const row = input.closest('.column');
+        row.classList.toggle('off', !input.checked);
+        row.querySelectorAll('input:not([data-field="include"])').forEach((el) => {
+            el.disabled = !input.checked;
+        });
+    } else if (input.value.trim()) {
+        entry[field] = input.value;
+    } else {
+        delete entry[field];
+    }
+    cleanupDataOverrideEntry(table, column);
+    scheduleData();
 }
 
 function activateDiffTool() {
@@ -6715,87 +5373,6 @@ function handleDiffClear() {
     scheduleDiff(true);
 }
 
-function handleDataRowsChange() {
-    getClampedDataRows();
-    if (isDataTool(state.currentTool)) {
-        markDataDirty('Rows updated. Click Generate to refresh.');
-    }
-}
-
-function getClampedDataRows() {
-    let value = state.dataRows;
-    if (elements.dataRows) {
-        const parsed = parseInt(elements.dataRows.value, 10);
-        if (Number.isFinite(parsed)) {
-            value = parsed;
-        }
-    }
-    value = Math.min(Math.max(value || 1, 1), 100);
-    state.dataRows = value;
-    if (elements.dataRows) {
-        elements.dataRows.value = value;
-    }
-    return value;
-}
-
-function handleDataSchemaInput() {
-    // Debounce schema parsing to keep typing snappy on large CREATE TABLE blobs.
-    if (!elements.dataSchema) return;
-    if (!isDataTool(state.currentTool)) return;
-    const schema = elements.dataSchema.value || '';
-    clearTimeout(state.dataSchemaTimer);
-    state.dataSchemaTimer = setTimeout(() => parseDataSchema(schema), 400);
-}
-
-function parseDataSchema(schemaText) {
-    // Let the wasm helper crunch the schema and mirror whatever it finds in the editor UI.
-    if (!state.wasmReady) return;
-    const trimmed = schemaText.trim();
-    if (!trimmed) {
-        state.dataTables = [];
-        state.dataOverrides = {};
-        state.dataDirty = false;
-        renderDataColumnEditor();
-        if (elements.dataOutput) elements.dataOutput.value = '';
-        return;
-    }
-    state.dataKind = detectDataKind(trimmed);
-    try {
-        const tables = inspect_schema(trimmed);
-        if (Array.isArray(tables)) {
-            state.dataTables = tables;
-            pruneDataOverrides();
-            renderDataColumnEditor();
-            markDataDirty('Schema parsed. Click Generate to refresh.');
-        } else {
-            state.dataTables = [];
-            state.dataDirty = false;
-            renderDataColumnEditor();
-            setStatus('No tables detected', true);
-        }
-    } catch (err) {
-        console.error(err);
-        state.dataDirty = false;
-        setStatus(`⚠️ ${err?.message || err}`, true);
-    }
-}
-
-function detectDataKind(text) {
-    if (!text) return 'sql';
-    const trimmed = text.trim();
-    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-        try {
-            const parsed = JSON.parse(trimmed);
-            if (Array.isArray(parsed) || parsed?.type) {
-                return 'json';
-            }
-        } catch (err) {
-            // Fall through to SQL when JSON parsing fails.
-        }
-    }
-    return 'sql';
-}
-
 function pruneDataOverrides() {
     if (!state.dataTables?.length) {
         state.dataOverrides = {};
@@ -6821,124 +5398,6 @@ function pruneDataOverrides() {
     });
 }
 
-function renderDataColumnEditor() {
-    // Rebuild the column cards every time so include/override controls stay aligned with the schema snapshot.
-    if (!elements.dataColumnEditor) return;
-    if (!state.dataTables?.length) {
-        elements.dataColumnEditor.innerHTML =
-            '<div class="muted">Paste a schema to configure column ranges.</div>';
-        return;
-    }
-    const groups = state.dataTables
-        .map((table) => {
-            const cards = table.columns
-                .map((column) => renderDataColumnCard(table.name, column))
-                .join('');
-            return `<div class="data-column-group"><h3>${escapeHTML(
-                table.name
-            )}</h3>${cards}</div>`;
-        })
-        .join('');
-    elements.dataColumnEditor.innerHTML = groups;
-}
-
-function renderDataColumnCard(tableName, column) {
-    // Numeric fields get min/max/allowed inputs; textual fields surface metadata only.
-    const kind = column.kind || 'string';
-    const overrides = state.dataOverrides?.[tableName]?.[column.name] || {};
-    const include = overrides.exclude !== true;
-    const disabledAttr = include ? '' : ' disabled';
-    const cardClass = include ? 'data-column-card' : 'data-column-card excluded';
-    const isNumeric = ['integer', 'decimal', 'float', 'boolean'].includes(kind);
-    const defaultValue = column.default_value ? escapeHTML(column.default_value) : '—';
-    const minPlaceholder = column.min_value || '';
-    const maxPlaceholder = column.max_value || '';
-    const minValue = overrides.min ?? '';
-    const maxValue = overrides.max ?? '';
-    const allowedValue = overrides.allowed ?? '';
-    const controls = isNumeric
-        ? `<div class="data-override-row">
-        <label>
-          <span>Min</span>
-          <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(
-              column.name
-          )}" data-field="min" value="${escapeAttr(
-              minValue
-          )}" placeholder="${escapeAttr(minPlaceholder)}"${disabledAttr} />
-        </label>
-        <label>
-          <span>Max</span>
-          <input type="number" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(
-              column.name
-          )}" data-field="max" value="${escapeAttr(
-              maxValue
-          )}" placeholder="${escapeAttr(maxPlaceholder)}"${disabledAttr} />
-        </label>
-        <label>
-          <span>Allowed (comma)</span>
-          <input type="text" data-table="${escapeAttr(tableName)}" data-column="${escapeAttr(
-              column.name
-          )}" data-field="allowed" value="${escapeAttr(
-              allowedValue
-          )}" placeholder="e.g. 10,20"${disabledAttr} />
-        </label>
-      </div>`
-        : column.enum_values?.length
-          ? `<div class="muted">Enum values: ${escapeHTML(column.enum_values.join(', '))}</div>`
-          : '<div class="muted">Text columns use lorem ipsum</div>';
-    return `<div class="${cardClass}">
-    <header>
-      <div class="data-column-header-info">
-        <strong>${escapeHTML(column.name)}</strong>
-        <span>${escapeHTML(column.data_type || '')}</span>
-      </div>
-      <label class="data-include-toggle">
-        <input type="checkbox" data-table="${escapeAttr(
-            tableName
-        )}" data-column="${escapeAttr(column.name)}" data-field="include" ${
-            include ? 'checked' : ''
-        } />
-        <span>Include</span>
-      </label>
-    </header>
-    <div class="muted">Default: ${defaultValue}</div>
-    ${controls}
-  </div>`;
-}
-
-function handleDataOverrideInput(event) {
-    // Persist override tweaks so Generate can replay the exact same numbers.
-    const input = event.target.closest('[data-field]');
-    if (!input) return;
-    const table = input.dataset.table;
-    const column = input.dataset.column;
-    const field = input.dataset.field;
-    if (!table || !column || !field) return;
-    if (!state.dataOverrides[table]) state.dataOverrides[table] = {};
-    if (!state.dataOverrides[table][column]) state.dataOverrides[table][column] = {};
-    const entry = state.dataOverrides[table][column];
-    if (field === 'include') {
-        const include = input.checked !== false;
-        if (!include) {
-            entry.exclude = true;
-        } else {
-            delete entry.exclude;
-        }
-        cleanupDataOverrideEntry(table, column);
-        syncDataColumnCardState(input.closest('.data-column-card'), include);
-        markDataDirty('Column selection updated. Click Generate to refresh.');
-        return;
-    }
-    const value = input.value || '';
-    if (!value.trim()) {
-        delete entry[field];
-    } else {
-        entry[field] = value;
-    }
-    cleanupDataOverrideEntry(table, column);
-    markDataDirty('Overrides updated. Click Generate to refresh.');
-}
-
 function cleanupDataOverrideEntry(table, column) {
     if (!state.dataOverrides[table]) return;
     if (
@@ -6951,22 +5410,6 @@ function cleanupDataOverrideEntry(table, column) {
     if (!Object.keys(state.dataOverrides[table]).length) {
         delete state.dataOverrides[table];
     }
-}
-
-function markDataDirty(message) {
-    state.dataDirty = true;
-    if (message && isDataTool(state.currentTool)) {
-        setStatus(message, false);
-    }
-}
-
-function syncDataColumnCardState(card, include) {
-    if (!card) return;
-    card.classList.toggle('excluded', !include);
-    const inputs = card.querySelectorAll('input[data-field]:not([data-field="include"])');
-    inputs.forEach((el) => {
-        el.disabled = !include;
-    });
 }
 
 function buildDataOverrides() {
@@ -7003,642 +5446,369 @@ function parseAllowedNumbers(value) {
         .filter((num) => Number.isFinite(num));
 }
 
-function runDataGenerator() {
-    if (!isDataTool(state.currentTool)) {
-        setStatus('Select the SQL Inserts tool', true);
-        return;
-    }
-    if (!state.wasmReady) {
-        setStatus('Waiting for WebAssembly...', true);
-        return;
-    }
-    if (!elements.dataSchema) return;
-    const rows = getClampedDataRows();
-    const schema = elements.dataSchema.value || '';
-    if (!schema.trim()) {
-        setStatus('Schema is empty', true);
-        state.dataDirty = false;
-        return;
-    }
-    if (state.dataSchemaTimer) {
-        clearTimeout(state.dataSchemaTimer);
-        state.dataSchemaTimer = null;
-        parseDataSchema(schema);
-    } else if (!state.dataTables?.length) {
-        parseDataSchema(schema);
-    }
-    if (!state.dataTables?.length) {
-        setStatus('No tables detected', true);
-        return;
-    }
-    try {
-        const overrides = buildDataOverrides();
-        const result = generate_insert_statements(schema, rows, overrides) || '';
-        if (elements.dataOutput) {
-            elements.dataOutput.value = result;
-        }
-        state.dataDirty = false;
-        const isJson = state.dataKind === 'json' || result.trim().startsWith('[');
-        setStatus(isJson ? 'Generated JSON rows' : 'Generated INSERT statements', false);
-    } catch (err) {
-        console.error(err);
-        setStatus(`⚠️ ${err?.message || err}`, true);
-        if (elements.dataOutput) {
-            elements.dataOutput.value = '';
-        }
-    }
-}
-
-function copyDataOutput() {
-    const value = elements.dataOutput?.value || '';
-    if (!value.trim()) {
-        setStatus('No INSERT statements to copy', true);
-        return;
-    }
-    copyText(value, 'INSERT statements');
-    setStatus('Copied', false);
-}
-
 function activateKdfTool() {
-    seedKdfInputs();
-    setKdfAlgorithm(state.kdf.active || 'bcrypt');
-    clearKdfStatuses();
-    if (!state.wasmReady) {
-        setStatus('Waiting for WebAssembly...', true);
-    } else {
-        setStatus('Ready', false);
-    }
-}
-
-function refreshKdfSalts() {
-    seedKdfInputs(true);
-    setStatus('Salts regenerated', false);
+    renderKdfAlgorithm();
+    elements.kdfPassword.focus();
 }
 
 function setKdfAlgorithm(algo) {
     state.kdf.active = algo;
-    if (elements.kdfAlgoSelect) {
-        elements.kdfAlgoSelect.value = algo;
-    }
-    const cards = elements.kdfCards || [];
-    cards.forEach((card) => {
-        const match = card.dataset.algo === algo;
-        card.classList.toggle('hidden', !match);
-    });
+    // A hash made with the other algorithm no longer describes the options in view.
+    elements.kdfOutput.textContent = '';
+    elements.kdfOutputMeta.textContent = '';
+    renderKdfAlgorithm();
 }
 
-function seedKdfInputs(forceSalt = false) {
-    // Keep both Argon2 and Bcrypt salts populated; button click forces regeneration.
-    if (elements.argonSalt) {
-        if (forceSalt || !elements.argonSalt.value.trim()) {
-            state.kdf.salts.argon = randomSaltBase64(16);
-            elements.argonSalt.value = state.kdf.salts.argon;
-        } else {
-            state.kdf.salts.argon = elements.argonSalt.value.trim();
-        }
-    }
-    if (elements.bcryptSalt) {
-        if (forceSalt || !elements.bcryptSalt.value.trim()) {
-            state.kdf.salts.bcrypt = randomBcryptSalt();
-            elements.bcryptSalt.value = state.kdf.salts.bcrypt;
-        } else {
-            state.kdf.salts.bcrypt = elements.bcryptSalt.value.trim();
-        }
-    }
+function renderKdfAlgorithm() {
+    const argon = state.kdf.active === 'argon2';
+    elements.kdfAlgoBcrypt.setAttribute('aria-pressed', String(!argon));
+    elements.kdfAlgoArgon.setAttribute('aria-pressed', String(argon));
+    elements.bcryptOptions.hidden = argon;
+    elements.argonOptions.hidden = !argon;
+    elements.kdfOutputLabel.textContent = argon ? 'PHC string' : 'Bcrypt';
+    elements.kdfSalt.placeholder = argon
+        ? 'Base64 · new for every hash'
+        : '22 characters of bcrypt Base64 · new for every hash';
 }
 
-// KDF flows:
-// - Hash: uses wasm functions to generate hashes. Output field stays editable so users can tweak/replace.
-// - Verify: if input starts with scheme ($2... or $argon2...), verify via wasm; otherwise treat input as plain text and compare to password (utility for quick equality checks like "apple111").
-// - Salts: empty salt triggers secure random generation; "Random salt" button clears bcrypt salt and regenerates Argon2/S crypt salts.
-async function runBcryptHash() {
-    if (!state.wasmReady) {
-        setKdfStatus('bcryptStatus', 'Wasm not loaded', true);
-        return;
-    }
-    const password = readPassword(elements.bcryptPassword, 'bcryptStatus');
-    if (!password) return;
-    const cost = clampNumber(elements.bcryptCost?.value, 4, 31, state.kdf.bcryptCost);
-    state.kdf.bcryptCost = cost;
-    if (elements.bcryptCost) elements.bcryptCost.value = cost;
-    try {
-        setKdfStatus('bcryptStatus', 'Generating...');
-        const saltInput = getInputValue(elements.bcryptSalt);
-        const hash = await bcrypt_hash(password, cost, saltInput || undefined);
-        if (elements.bcryptSalt) {
-            const salt = bcryptSaltFromHash(hash);
-            if (salt) elements.bcryptSalt.value = salt;
-        }
-        if (elements.bcryptOutput) elements.bcryptOutput.value = hash || '';
-        if (elements.bcryptVerifyHash) {
-            elements.bcryptVerifyHash.value = hash || '';
-        }
-        setKdfStatus('bcryptStatus', 'Hash generated', 'ok');
-    } catch (err) {
-        console.error(err);
-        setKdfStatus('bcryptStatus', err?.message || 'Generate failed', true);
-    }
-}
-
-async function verifyBcrypt() {
-    if (!state.wasmReady) {
-        setKdfStatus('bcryptStatus', 'Wasm not loaded', true);
-        return;
-    }
-    const password = readPassword(elements.bcryptPassword, 'bcryptStatus');
-    const verifyInput = getInputValue(elements.bcryptVerifyHash);
-    const outputHash = getInputValue(elements.bcryptOutput);
-    const hash = verifyInput || outputHash;
-
-    // If password is empty, allow direct comparison between the two lower fields.
-    if (!password) {
-        if (!verifyInput || !outputHash) {
-            setKdfStatus('bcryptStatus', 'Fill both fields to compare', true);
-            setStatus('Fill both fields to compare', true);
-            return;
-        }
-        let ok = false;
-        const topIsHash = outputHash.startsWith('$2');
-        const bottomIsHash = verifyInput.startsWith('$2');
-        if (topIsHash && bottomIsHash) {
-            // Both are hashes; direct equality
-            ok = verifyInput === outputHash;
-        } else if (topIsHash) {
-            // Top is hash, bottom plain
-            ok = await bcrypt_verify(verifyInput, outputHash);
-        } else if (bottomIsHash) {
-            // Bottom is hash, top plain
-            ok = await bcrypt_verify(outputHash, verifyInput);
-        } else {
-            // both plain strings
-            ok = verifyInput === outputHash;
-        }
-        setKdfStatus('bcryptStatus', ok ? 'Match' : 'Mismatch', ok ? 'ok' : true);
-        setStatus(ok ? 'Match' : 'Mismatch', !ok);
-        return;
-    }
-
-    if (!hash) {
-        setKdfStatus('bcryptStatus', 'Please paste or generate a bcrypt hash', true);
-        return;
-    }
-    try {
-        setKdfStatus('bcryptStatus', 'Verifying…');
-        let ok = false;
-        if (hash.startsWith('$2')) {
-            ok = await bcrypt_verify(password, hash);
-        } else {
-            ok = hash === password;
-        }
-        setKdfStatus('bcryptStatus', ok ? 'Match' : 'Mismatch', ok ? 'ok' : true);
-    } catch (err) {
-        console.error(err);
-        setKdfStatus('bcryptStatus', err?.message || 'Verify failed', true);
-    }
-}
-
-async function runArgonHash() {
-    if (!state.wasmReady) {
-        setKdfStatus('argonStatus', 'Wasm not loaded', true);
-        return;
-    }
-    const password = readPassword(elements.argonPassword, 'argonStatus');
-    if (!password) {
-        setKdfStatus('argonStatus', 'Please enter password', true);
-        return;
-    }
-    const time = clampNumber(elements.argonTime?.value, 1, 12, state.kdf.argonTime);
-    const mem = clampNumber(elements.argonMem?.value, 4096, 1048576, state.kdf.argonMem);
-    const parallelism = clampNumber(
-        elements.argonParallelism?.value,
-        1,
-        8,
-        state.kdf.argonParallelism
+function runKdfHash() {
+    if (!state.wasmReady) return;
+    elements.kdfOutput.classList.remove('error');
+    elements.kdfOutputMeta.textContent = 'Hashing…';
+    elements.kdfGenerate.disabled = true;
+    // Let "Hashing…" paint: the hash holds the page for as long as its cost says.
+    requestAnimationFrame(() =>
+        setTimeout(() => {
+            const started = performance.now();
+            try {
+                elements.kdfOutput.textContent = hashPassword(elements.kdfPassword.value);
+                const ms = Math.round(performance.now() - started);
+                // The time is the point of the cost options: a login waits this long.
+                elements.kdfOutputMeta.textContent = `took ${ms} ms in this browser`;
+            } catch (err) {
+                elements.kdfOutput.textContent = String(err?.message || err);
+                elements.kdfOutput.classList.add('error');
+                elements.kdfOutputMeta.textContent = '';
+            } finally {
+                elements.kdfGenerate.disabled = false;
+            }
+        })
     );
-    const hashLen = clampNumber(elements.argonHashLen?.value, 8, 128, state.kdf.argonHashLen);
-    state.kdf.argonTime = time;
-    state.kdf.argonMem = mem;
-    state.kdf.argonParallelism = parallelism;
-    state.kdf.argonHashLen = hashLen;
-    const saltInput = getInputValue(elements.argonSalt);
-    const salt = saltInput || randomSaltBase64(16);
-    if (!saltInput && elements.argonSalt) elements.argonSalt.value = salt;
+}
+
+function hashPassword(password) {
+    const salt = elements.kdfSalt.value.trim() || undefined;
+    if (state.kdf.active !== 'argon2') {
+        return bcrypt_hash(password, clampField(elements.bcryptCost, 4, 31), salt);
+    }
+    return argon2_hash(
+        password,
+        salt,
+        clampField(elements.argonTime, 1, 12),
+        clampField(elements.argonMem, 4, 1024) * 1024,
+        clampField(elements.argonParallelism, 1, 8),
+        clampField(elements.argonHashLen, 16, 64),
+        elements.argonType.value
+    );
+}
+
+// Out-of-range numbers are pulled back into range where the user can see it.
+function readNumber(input, min, max) {
+    return clampNumber(input.value, min, max, Number(input.defaultValue));
+}
+
+function clampField(input, min, max) {
+    const value = clampNumber(input.value, min, max, Number(input.defaultValue));
+    input.value = String(value);
+    return value;
+}
+
+function scheduleKdfVerify() {
+    clearTimeout(state.kdf.verifyTimer);
+    state.kdf.verifyTimer = setTimeout(runKdfVerify, 300);
+}
+
+function runKdfVerify() {
+    const hash = elements.kdfVerifyHash.value.trim();
+    const verdict = elements.kdfVerdict;
+    verdict.hidden = !hash;
+    if (!hash || !state.wasmReady) return;
+    const password = elements.kdfPassword.value;
+    let text;
+    let kind;
     try {
-        setKdfStatus('argonStatus', 'Generating…');
-        const variant = elements.argonType?.value || 'argon2id';
-        const encoded = await argon2_hash(password, salt, time, mem, parallelism, hashLen, variant);
-        if (elements.argonOutput) elements.argonOutput.value = encoded || '';
-        if (elements.argonVerifyHash) {
-            elements.argonVerifyHash.value = encoded || '';
-        }
-        setKdfStatus('argonStatus', 'Hash generated', 'ok');
+        // A stored hash names its own algorithm, whichever one the switch above shows.
+        let matches;
+        if (/^\$2[abxy]?\$/.test(hash)) matches = bcrypt_verify(password, hash);
+        else if (hash.startsWith('$argon2')) matches = argon2_verify(password, hash);
+        else throw new Error('Not a bcrypt ($2b$…) or Argon2 ($argon2id$…) hash');
+        text = matches ? 'Matches the password' : 'Does not match the password';
+        kind = matches ? 'ok' : 'bad';
     } catch (err) {
-        console.error(err);
-        setKdfStatus('argonStatus', err?.message || 'Generate failed', true);
+        text = String(err?.message || err);
+        kind = 'bad';
     }
+    verdict.textContent = text;
+    verdict.className = `verdict ${kind}`;
 }
 
-async function verifyArgon() {
-    if (!state.wasmReady) {
-        setKdfStatus('argonStatus', 'Wasm not loaded', true);
-        return;
-    }
-    const password = readPassword(elements.argonPassword, 'argonStatus');
-    const verifyInput = getInputValue(elements.argonVerifyHash);
-    const outputHash = getInputValue(elements.argonOutput);
-    const encoded = verifyInput || outputHash;
-
-    if (!password) {
-        if (!verifyInput || !outputHash) {
-            setKdfStatus('argonStatus', 'Fill both fields to compare', true);
-            setStatus('Fill both fields to compare', true);
-            return;
-        }
-        let ok = false;
-        const topIsHash = outputHash.startsWith('$argon2');
-        const bottomIsHash = verifyInput.startsWith('$argon2');
-        if (topIsHash && bottomIsHash) {
-            ok = verifyInput === outputHash;
-        } else if (topIsHash) {
-            ok = await argon2_verify(verifyInput, outputHash);
-        } else if (bottomIsHash) {
-            ok = await argon2_verify(outputHash, verifyInput);
-        } else {
-            ok = verifyInput === outputHash;
-        }
-        setKdfStatus('argonStatus', ok ? 'Match' : 'Mismatch', ok ? 'ok' : true);
-        setStatus(ok ? 'Match' : 'Mismatch', !ok);
-        return;
-    }
-
-    if (!encoded) {
-        setKdfStatus('argonStatus', 'Please paste or generate Argon2 PHC string', true);
-        return;
-    }
-    try {
-        setKdfStatus('argonStatus', 'Verifying…');
-        let ok = false;
-        if (encoded.startsWith('$argon2')) {
-            ok = await argon2_verify(password, encoded);
-        } else {
-            ok = encoded === password;
-        }
-        setKdfStatus('argonStatus', ok ? 'Match' : 'Mismatch', ok ? 'ok' : true);
-    } catch (err) {
-        console.error(err);
-        setKdfStatus('argonStatus', err?.message || 'Verify failed', true);
-    }
+function toggleKdfPassword() {
+    const show = elements.kdfPassword.type === 'password';
+    elements.kdfPassword.type = show ? 'text' : 'password';
+    elements.kdfShowPassword.setAttribute('aria-pressed', String(show));
+    elements.kdfShowPassword.title = show ? 'Hide password' : 'Show password';
 }
 
-function setKdfStatus(key, message, intent = '') {
-    const el = elements[key];
-    if (!el) return;
-    el.textContent = message;
-    el.classList.remove('ok', 'error');
-    if (intent === 'ok') el.classList.add('ok');
-    else if (intent) el.classList.add('error');
-}
-
-function clearKdfStatuses() {
-    setKdfStatus('bcryptStatus', 'Idle');
-    setKdfStatus('argonStatus', 'Idle');
-}
-
-// Crypto tool: routes UI controls to wasm AES/ChaCha encrypt/decrypt helpers.
+// Crypto tool: one direction at a time, text or files, with wasm doing AES-GCM and (X)ChaCha20.
 function activateCryptoTool() {
-    const algo = state.crypto.algorithm || 'aes-256-gcm';
-    if (elements.cryptoAlgorithm) {
-        elements.cryptoAlgorithm.value = algo;
-    }
-    handleCryptoAlgorithmChange();
-    setCryptoInputMode(state.crypto.inputMode || 'text');
-    renderCryptoFileMeta();
-    if (!state.wasmReady) {
-        setStatus('Waiting for WebAssembly...', true);
-    } else {
-        setStatus('Ready', false);
-    }
+    renderCryptoMode();
 }
 
-function handleCryptoAlgorithmChange() {
-    const algo = elements.cryptoAlgorithm?.value || 'aes-256-gcm';
-    state.crypto.algorithm = algo;
-    const suite = cryptoSuites[algo] || cryptoSuites['aes-256-gcm'];
-    if (elements.cryptoNonce) {
-        elements.cryptoNonce.placeholder = `Leave blank to auto-generate ${suite.nonceLen}-byte nonce (Base64)`;
+function setCryptoDirection(direction) {
+    if (state.crypto.direction === direction) return;
+    state.crypto.direction = direction;
+    // The result becomes the next input, so a round trip is one click.
+    if (state.crypto.inputMode === 'text' && elements.cryptoOutput.value) {
+        elements.cryptoInput.value = elements.cryptoOutput.value;
     }
-}
-
-function seedCryptoKey() {
-    const suite = cryptoSuites[state.crypto.algorithm] || cryptoSuites['aes-256-gcm'];
-    const key = randomSaltBase64(suite.keyLen);
-    if (elements.cryptoKey) {
-        elements.cryptoKey.value = key;
-    }
-    setStatus('Generated random key', false);
-}
-
-function seedCryptoNonce() {
-    const suite = cryptoSuites[state.crypto.algorithm] || cryptoSuites['aes-256-gcm'];
-    const nonce = randomSaltBase64(suite.nonceLen);
-    if (elements.cryptoNonce) {
-        elements.cryptoNonce.value = nonce;
-    }
-    setStatus('Generated random nonce', false);
+    elements.cryptoOutput.value = '';
+    state.crypto.textResult = null;
+    state.crypto.results = [];
+    renderCryptoMode();
 }
 
 function setCryptoInputMode(mode) {
     state.crypto.inputMode = mode;
-    const isFile = mode === 'file';
-    if (elements.cryptoModeText) {
-        elements.cryptoModeText.checked = !isFile;
-    }
-    if (elements.cryptoModeFile) {
-        elements.cryptoModeFile.checked = isFile;
-    }
-    elements.cryptoPlaintext?.classList.toggle('hidden', isFile);
-    elements.cryptoFile?.classList.toggle('hidden', !isFile);
-    if (!isFile) {
-        state.crypto.fileBytes = null;
-        state.crypto.fileName = '';
-        state.crypto.fileSize = 0;
-        state.crypto.files = [];
-        state.crypto.results = [];
-        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
-    }
-    renderCryptoFileMeta();
+    renderCryptoMode();
 }
 
-async function handleCryptoFileChange(event) {
-    const files = Array.from(event?.target?.files || []);
-    if (!files.length) {
-        state.crypto.fileBytes = null;
-        state.crypto.fileName = '';
-        state.crypto.fileSize = 0;
-        state.crypto.files = [];
-        state.crypto.results = [];
-        renderCryptoFileMeta();
-        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
+function renderCryptoMode() {
+    const decrypt = state.crypto.direction === 'decrypt';
+    const files = state.crypto.inputMode === 'files';
+    elements.cryptoDirEncrypt.setAttribute('aria-pressed', String(!decrypt));
+    elements.cryptoDirDecrypt.setAttribute('aria-pressed', String(decrypt));
+    elements.cryptoModeText.setAttribute('aria-pressed', String(!files));
+    elements.cryptoModeFile.setAttribute('aria-pressed', String(files));
+    elements.cryptoText.hidden = files;
+    elements.cryptoFiles.hidden = !files;
+    // Files carry their nonce in front of the ciphertext; only text needs the field.
+    elements.cryptoNonceWrap.hidden = files;
+    elements.cryptoInputLabel.textContent = decrypt ? 'Ciphertext' : 'Plaintext';
+    elements.cryptoOutputLabel.textContent = decrypt ? 'Plaintext' : 'Ciphertext';
+    elements.cryptoInput.placeholder = decrypt
+        ? 'Paste Base64 ciphertext'
+        : 'Type or paste text to encrypt';
+    elements.cryptoNonce.placeholder = decrypt
+        ? 'Base64 · the nonce it was encrypted with'
+        : 'Base64 · new for every run';
+    elements.cryptoKey.placeholder = decrypt
+        ? 'Base64 · the key it was encrypted with'
+        : 'Base64 · made for you on the first run';
+    elements.cryptoDropMeta.textContent = decrypt
+        ? 'Files this page encrypted, with the key above · nothing leaves this page'
+        : 'Each file gets its own nonce, stored at its start · nothing leaves this page';
+    // Decrypting text gives the same answer every time, so it follows the typing;
+    // encrypting draws a fresh nonce, so it waits to be asked.
+    elements.cryptoRun.hidden = decrypt && !files;
+    renderCryptoRunLabel();
+    renderCryptoFiles();
+    renderCryptoInputMeta();
+    if (decrypt && !files) runCryptoDecryptText();
+}
+
+function renderCryptoRunLabel() {
+    const verb = state.crypto.direction === 'decrypt' ? 'Decrypt' : 'Encrypt';
+    const count = state.crypto.files.length;
+    const files = state.crypto.inputMode === 'files';
+    elements.cryptoRunLabel.textContent =
+        files && count ? `${verb} ${formatCount(count, 'file')}` : verb;
+    elements.cryptoRun.disabled = files && !count;
+}
+
+function renderCryptoInputMeta() {
+    const text = elements.cryptoInput.value;
+    elements.cryptoInputMeta.textContent =
+        text && state.crypto.direction === 'encrypt' ? `${utf8ToBytes(text).length} bytes` : '';
+}
+
+function handleCryptoInput() {
+    renderCryptoInputMeta();
+    if (state.crypto.direction === 'decrypt') {
+        clearTimeout(state.crypto.timer);
+        state.crypto.timer = setTimeout(runCryptoDecryptText, 150);
+    }
+}
+
+function handleCryptoKeyChange() {
+    if (state.crypto.direction === 'decrypt' && state.crypto.inputMode === 'text') {
+        handleCryptoInput();
+    }
+}
+
+function runCrypto() {
+    if (!state.wasmReady) return;
+    if (state.crypto.inputMode === 'files') runCryptoFiles();
+    else if (state.crypto.direction === 'encrypt') runCryptoEncryptText();
+    else runCryptoDecryptText();
+}
+
+function showCryptoResult(value, meta) {
+    elements.cryptoError.hidden = true;
+    elements.cryptoOutput.value = value;
+    elements.cryptoOutputMeta.textContent = meta;
+}
+
+function showCryptoError(err) {
+    elements.cryptoOutput.value = '';
+    elements.cryptoOutputMeta.textContent = '';
+    state.crypto.textResult = null;
+    elements.cryptoError.textContent = cryptoErrorText(err);
+    elements.cryptoError.hidden = false;
+}
+
+// The AEAD error says nothing a person can act on; these are the only ways it happens.
+function cryptoErrorText(err) {
+    const message = String(err?.message || err);
+    return message.startsWith('decryption failed')
+        ? 'Wrong key, nonce or algorithm, or the ciphertext was changed'
+        : message;
+}
+
+function runCryptoEncryptText() {
+    const algo = elements.cryptoAlgorithm.value;
+    const key = elements.cryptoKey.value.trim() || undefined;
+    // A nonce this page drew is never used twice with a key; one the user typed is theirs to reuse.
+    const typed = elements.cryptoNonce.value.trim();
+    const nonce = typed && typed !== state.crypto.madeNonce ? typed : undefined;
+    try {
+        const plaintext = utf8ToBytes(elements.cryptoInput.value);
+        const result = encrypt_bytes(algo, plaintext, key, nonce);
+        elements.cryptoKey.value = result.keyB64;
+        elements.cryptoNonce.value = result.nonceB64;
+        if (!nonce) state.crypto.madeNonce = result.nonceB64;
+        state.crypto.textResult = {
+            name: 'ciphertext.txt',
+            bytes: utf8ToBytes(result.ciphertextB64),
+        };
+        showCryptoResult(result.ciphertextB64, `Base64 · ${plaintext.length} bytes + 16-byte tag`);
+    } catch (err) {
+        showCryptoError(err);
+    }
+}
+
+function runCryptoDecryptText() {
+    const cipher = elements.cryptoInput.value.trim();
+    const key = elements.cryptoKey.value.trim();
+    const nonce = elements.cryptoNonce.value.trim();
+    state.crypto.textResult = null;
+    if (!cipher || !key || !nonce || !state.wasmReady) {
+        showCryptoResult('', cipher ? 'needs the key and nonce it was encrypted with' : '');
         return;
     }
     try {
-        setStatus(`Loading ${files.length} file(s)...`, false);
-        const buffers = await Promise.all(files.map((file) => file.arrayBuffer()));
-        state.crypto.files = files.map((file, idx) => ({
-            name: file.name,
-            bytes: new Uint8Array(buffers[idx]),
-            size: file.size,
-        }));
-        // Keep backward compatibility for single file mode
-        if (files.length === 1) {
-            state.crypto.fileBytes = state.crypto.files[0].bytes;
-            state.crypto.fileName = state.crypto.files[0].name;
-            state.crypto.fileSize = state.crypto.files[0].size;
+        const bytes = decrypt_bytes(elements.cryptoAlgorithm.value, cipher, key, nonce);
+        const text = readableText(bytes);
+        state.crypto.textResult = {
+            name: text === null ? 'decrypted.bin' : 'decrypted.txt',
+            bytes,
+        };
+        if (text === null) {
+            showCryptoResult('', `${formatBytes(bytes.length)} of binary data · save it as a file`);
         } else {
-            state.crypto.fileBytes = null;
-            state.crypto.fileName = '';
-            state.crypto.fileSize = 0;
+            showCryptoResult(text, `${bytes.length} bytes`);
         }
-        state.crypto.results = [];
-        renderCryptoFileMeta();
-        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
-        setStatus(`${files.length} file(s) loaded`, false);
     } catch (err) {
-        console.error(err);
-        state.crypto.files = [];
-        state.crypto.results = [];
-        setStatus(`⚠️ Failed to read files: ${err?.message || err}`, true);
-        renderCryptoFileMeta();
-        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
+        showCryptoError(err);
     }
 }
 
-function renderCryptoFileMeta() {
-    if (!elements.cryptoFileMeta) return;
-    if (state.crypto.inputMode !== 'file') {
-        elements.cryptoFileMeta.classList.add('hidden');
-        elements.cryptoFileMeta.textContent = 'No file selected';
-        return;
-    }
-    elements.cryptoFileMeta.classList.remove('hidden');
-    const files = state.crypto.files || [];
-    if (files.length === 0) {
-        elements.cryptoFileMeta.textContent = 'No file selected';
-    } else if (files.length === 1) {
-        const file = files[0];
-        elements.cryptoFileMeta.textContent = `${file.name} (${file.size} bytes)`;
-    } else {
-        const totalSize = files.reduce((sum, f) => sum + f.size, 0);
-        elements.cryptoFileMeta.textContent = `${files.length} files selected (${totalSize} bytes total)`;
-    }
+function saveCryptoText() {
+    const result = state.crypto.textResult;
+    if (!result) return;
+    saveFile(new Blob([result.bytes], { type: 'application/octet-stream' }), result.name);
 }
 
-function handleCryptoEncrypt() {
-    if (!state.wasmReady) {
-        setStatus('Waiting for WebAssembly...', true);
-        return;
-    }
-    const algo = elements.cryptoAlgorithm?.value || 'aes-256-gcm';
-    state.crypto.algorithm = algo;
-    const key = elements.cryptoKey?.value?.trim();
-    const nonce = elements.cryptoNonce?.value?.trim();
-
-    if (state.crypto.inputMode === 'file') {
-        const files = state.crypto.files || [];
-        if (!files.length) {
-            setStatus('Select file(s) to encrypt', true);
-            return;
-        }
-
-        // Batch encryption
-        if (files.length > 1) {
-            try {
-                setStatus(`Encrypting ${files.length} file(s)...`, false);
-                state.crypto.results = [];
-                let sharedKey = key;
-                let sharedNonce = nonce;
-
-                files.forEach((file, idx) => {
-                    setStatus(`Encrypting ${file.name} (${idx + 1}/${files.length})...`, false);
-                    const result = encrypt_bytes(
-                        algo,
-                        file.bytes,
-                        sharedKey || undefined,
-                        sharedNonce || undefined
-                    );
-
-                    // Use the same key/nonce for all files if not provided
-                    if (!sharedKey && result.keyB64) {
-                        sharedKey = result.keyB64;
-                        if (elements.cryptoKey) elements.cryptoKey.value = sharedKey;
-                    }
-                    if (!sharedNonce && result.nonceB64) {
-                        sharedNonce = result.nonceB64;
-                        if (elements.cryptoNonce) elements.cryptoNonce.value = sharedNonce;
-                    }
-
-                    // Decode ciphertext to bytes for download
-                    const cipherB64 = result.ciphertextB64 || '';
-                    const binaryString = atob(cipherB64);
-                    const cipherBytes = new Uint8Array(binaryString.length);
-                    for (let i = 0; i < binaryString.length; i++) {
-                        cipherBytes[i] = binaryString.charCodeAt(i);
-                    }
-                    state.crypto.results.push({
-                        name: file.name + '.encrypted',
-                        blob: new Blob([cipherBytes], { type: 'application/octet-stream' }),
-                        ciphertextB64: cipherB64,
-                    });
-                });
-
-                // For batch mode, show first result in textarea or summary
-                if (elements.cryptoCiphertext && state.crypto.results.length > 0) {
-                    elements.cryptoCiphertext.value = `${state.crypto.results.length} file(s) encrypted. Use Download button to save.`;
-                }
-                if (elements.cryptoDownload) elements.cryptoDownload.disabled = false;
-                setStatus(`${files.length} file(s) encrypted successfully`, false);
-            } catch (err) {
-                console.error(err);
-                state.crypto.results = [];
-                setStatus(`⚠️ ${err?.message || err}`, true);
-                if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
-            }
-            return;
-        }
-
-        // Single file mode (backward compatibility)
-        if (!state.crypto.fileBytes?.length) {
-            setStatus('Select a file to encrypt', true);
-            return;
-        }
-    }
-
-    // Text mode or single file mode
-    let payload = new Uint8Array();
-    if (state.crypto.inputMode === 'file') {
-        payload = state.crypto.fileBytes;
-    } else {
-        const text = elements.cryptoPlaintext?.value || '';
-        payload = utf8ToBytes(text);
-    }
-
-    try {
-        const result = encrypt_bytes(algo, payload, key || undefined, nonce || undefined);
-        const cipher = result.ciphertextB64 || '';
-        if (elements.cryptoCiphertext) {
-            elements.cryptoCiphertext.value = cipher;
-        }
-        if (elements.cryptoKey && result.keyB64) {
-            elements.cryptoKey.value = result.keyB64;
-        }
-        if (elements.cryptoNonce && result.nonceB64) {
-            elements.cryptoNonce.value = result.nonceB64;
-        }
-
-        // Store result for single file download
-        if (state.crypto.inputMode === 'file' && state.crypto.fileName) {
-            const binaryString = atob(cipher);
-            const cipherBytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                cipherBytes[i] = binaryString.charCodeAt(i);
-            }
-            state.crypto.results = [
-                {
-                    name: state.crypto.fileName + '.encrypted',
-                    blob: new Blob([cipherBytes], { type: 'application/octet-stream' }),
-                    ciphertextB64: cipher,
-                },
-            ];
-            if (elements.cryptoDownload) elements.cryptoDownload.disabled = false;
-        }
-
-        setStatus('Encrypted', false);
-    } catch (err) {
-        console.error(err);
-        setStatus(`⚠️ ${err?.message || err}`, true);
-        state.crypto.results = [];
-        if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
-    }
+async function addCryptoFiles(list) {
+    if (!list.length) return;
+    const buffers = await Promise.all(list.map((file) => file.arrayBuffer()));
+    state.crypto.files = list.map((file, i) => ({
+        name: file.name,
+        bytes: new Uint8Array(buffers[i]),
+    }));
+    state.crypto.results = [];
+    renderCryptoFiles();
+    renderCryptoRunLabel();
 }
 
-function handleCryptoDecrypt() {
-    if (!state.wasmReady) {
-        setStatus('Waiting for WebAssembly...', true);
-        return;
-    }
-    const algo = elements.cryptoAlgorithm?.value || 'aes-256-gcm';
-    const key = elements.cryptoKey?.value?.trim();
-    const nonce = elements.cryptoNonce?.value?.trim();
-    const isFileMode = state.crypto.inputMode === 'file';
-
-    if (!key || !nonce) {
-        setStatus('Key and nonce are required to decrypt', true);
-        return;
-    }
-
-    if (isFileMode) {
-        const files = state.crypto.files || [];
-        if (!files.length) {
-            setStatus('Select encrypted file(s) to decrypt', true);
-            return;
-        }
+function runCryptoFiles() {
+    const algo = elements.cryptoAlgorithm.value;
+    const { nonceLen } = cryptoSuites[algo];
+    const decrypt = state.crypto.direction === 'decrypt';
+    let key = elements.cryptoKey.value.trim() || undefined;
+    state.crypto.results = state.crypto.files.map((file) => {
         try {
-            state.crypto.results = [];
-            files.forEach((file, idx) => {
-                setStatus(`Decrypting ${file.name} (${idx + 1}/${files.length})...`, false);
-                const cipherB64 = bytesToBase64(file.bytes);
-                const plainBytes = decrypt_bytes(algo, cipherB64, key, nonce);
-                const decoded = bytesToUtf8Strict(plainBytes);
-                const name = deriveDecryptedName(file.name);
-                state.crypto.results.push({
-                    name,
-                    blob: new Blob([plainBytes], { type: 'application/octet-stream' }),
-                    plaintext: decoded,
-                    bytes: plainBytes,
-                });
-            });
-            if (elements.cryptoDecryptOutput) {
-                if (state.crypto.results.length === 1) {
-                    const first = state.crypto.results[0];
-                    const text = first.plaintext;
-                    const bytes = first.bytes || new Uint8Array();
-                    elements.cryptoDecryptOutput.value =
-                        text !== null ? text : toBase64(bytes, false);
-                } else {
-                    elements.cryptoDecryptOutput.value = `${state.crypto.results.length} file(s) decrypted. Use Download.`;
-                }
+            if (!decrypt) {
+                // No nonce passed: each file gets a fresh one, kept in front of its ciphertext.
+                const out = encrypt_bytes(algo, file.bytes, key, undefined);
+                key = out.keyB64;
+                const bytes = concatBytes(
+                    base64ToBytes(out.nonceB64),
+                    base64ToBytes(out.ciphertextB64)
+                );
+                return { name: `${file.name}.encrypted`, bytes };
             }
-            if (elements.cryptoDownload) elements.cryptoDownload.disabled = false;
-            setStatus(`${files.length} file(s) decrypted`, false);
+            if (!key) throw new Error('Needs the key it was encrypted with');
+            if (file.bytes.length < nonceLen + 16)
+                throw new Error('Too short to be a file this page encrypted');
+            const nonce = bytesToBase64(file.bytes.subarray(0, nonceLen));
+            const cipher = bytesToBase64(file.bytes.subarray(nonceLen));
+            return {
+                name: deriveDecryptedName(file.name),
+                bytes: decrypt_bytes(algo, cipher, key, nonce),
+            };
         } catch (err) {
-            console.error(err);
-            state.crypto.results = [];
-            if (elements.cryptoDownload) elements.cryptoDownload.disabled = true;
-            setStatus(`⚠️ ${err?.message || err}`, true);
+            return { error: cryptoErrorText(err) };
         }
-        return;
-    }
+    });
+    if (key) elements.cryptoKey.value = key;
+    renderCryptoFiles();
+}
 
-    // Text mode
-    const cipher = elements.cryptoDecryptInput?.value?.trim();
-    if (!cipher) {
-        setStatus('Paste ciphertext to decrypt', true);
-        return;
-    }
-    try {
-        const bytes = decrypt_bytes(algo, cipher, key, nonce);
-        const decoded = bytesToUtf8Strict(bytes);
-        if (elements.cryptoDecryptOutput) {
-            elements.cryptoDecryptOutput.value =
-                decoded !== null ? decoded : toBase64(bytes, false);
-        }
-        state.crypto.results = [];
-        const okMsg = decoded !== null ? 'Decrypted' : 'Decrypted (displayed as Base64)';
-        setStatus(okMsg, false);
-    } catch (err) {
-        console.error(err);
-        setStatus(`⚠️ ${err?.message || err}`, true);
-    }
+function renderCryptoFiles() {
+    const { files, results } = state.crypto;
+    elements.cryptoDrop.classList.toggle('compact', files.length > 0);
+    elements.cryptoFileTable.hidden = !files.length;
+    elements.cryptoDownload.hidden = results.filter((r) => r.bytes).length < 2;
+    elements.cryptoFileList.innerHTML = files
+        .map((file, i) => {
+            const result = results[i];
+            const outcome = !result
+                ? ''
+                : result.error
+                  ? `<span class="error">${escapeHTML(result.error)}</span>`
+                  : `<span class="ok">${escapeHTML(result.name)} · ${formatBytes(result.bytes.length)}</span>`;
+            const save = result?.bytes
+                ? `<button class="icon-btn" type="button" title="Save ${escapeAttr(result.name)}" data-crypto-save="${i}"><svg class="i"><use href="#i-save" /></svg></button>`
+                : '';
+            return `<tr><td>${escapeHTML(file.name)}</td><td>${formatBytes(file.bytes.length)}</td><td>${outcome}</td><td>${save}</td></tr>`;
+        })
+        .join('');
+}
+
+function saveCryptoResult(result) {
+    saveFile(new Blob([result.bytes], { type: 'application/octet-stream' }), result.name);
+}
+
+function handleCryptoFileListClick(event) {
+    const button = event.target.closest('[data-crypto-save]');
+    const result = button && state.crypto.results[Number(button.dataset.cryptoSave)];
+    if (result?.bytes) saveCryptoResult(result);
+}
+
+function handleCryptoDownload() {
+    state.crypto.results
+        .filter((result) => result.bytes)
+        .forEach((result, i) => setTimeout(() => saveCryptoResult(result), i * 100));
 }
 
 function deriveDecryptedName(original = '') {
@@ -7651,44 +5821,24 @@ function deriveDecryptedName(original = '') {
     return `${original || 'decrypted'}.decrypted`;
 }
 
-function copyCryptoCiphertext() {
-    const value = elements.cryptoCiphertext?.value || '';
-    if (!value.trim()) {
-        setStatus('No ciphertext to copy', true);
-        return;
-    }
-    copyText(value, 'ciphertext');
-    setStatus('Copied', false);
+function seedCryptoKey() {
+    const suite = cryptoSuites[elements.cryptoAlgorithm.value];
+    elements.cryptoKey.value = randomSaltBase64(suite.keyLen);
+    handleCryptoKeyChange();
 }
 
-function handleCryptoDownload() {
-    const results = state.crypto.results || [];
-    if (!results.length) {
-        setStatus('No files to download', true);
-        return;
-    }
-
-    if (results.length === 1) {
-        const single = results[0];
-        saveFile(single.blob, single.name || 'encrypted');
-        setStatus('Downloaded', false);
-        return;
-    }
-
-    // Batch download
-    results.forEach((result, idx) => {
-        setTimeout(() => saveFile(result.blob, result.name || `encrypted-${idx + 1}`), idx * 100);
-    });
-    setStatus(`${results.length} file(s) downloaded`, false);
+function base64ToBytes(b64) {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes;
 }
 
-function getInputValue(el) {
-    return el?.value?.trim() || '';
-}
-
-function readPassword(el, _statusKey) {
-    const value = el?.value || '';
-    return value;
+function concatBytes(a, b) {
+    const out = new Uint8Array(a.length + b.length);
+    out.set(a);
+    out.set(b, a.length);
+    return out;
 }
 
 function clampNumber(value, min, max, fallback) {
@@ -7723,22 +5873,6 @@ function randomSaltBase64(byteLength = 16) {
     const arr = new Uint8Array(byteLength);
     crypto.getRandomValues(arr);
     return bytesToBase64(arr);
-}
-
-function randomBcryptSalt(byteLength = 16) {
-    const arr = new Uint8Array(byteLength);
-    crypto.getRandomValues(arr);
-    const std = bytesToBase64(arr).replace(/=+$/g, '');
-    // Bcrypt uses crypt-base64 alphabet: ./A-Za-z0-9
-    return std.replace(/\+/g, '.').replace(/\//g, '/');
-}
-
-function bcryptSaltFromHash(hash) {
-    if (!hash || !hash.startsWith('$')) return '';
-    const parts = hash.split('$');
-    if (parts.length < 4) return '';
-    const saltAndHash = parts[3] || '';
-    return saltAndHash.slice(0, 22);
 }
 
 function sanitizeRandomExclude(value) {
@@ -7788,10 +5922,6 @@ function escapeHTML(value = '') {
 
 function escapeAttr(value = '') {
     return escapeHTML(value).replace(/'/g, '&#39;');
-}
-
-function normalizeUuidResult(value) {
-    return normalizeMapResult(value);
 }
 
 function normalizeMapResult(value) {

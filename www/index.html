@@ -48,6 +48,13 @@
             <symbol id="i-down" viewBox="0 0 16 16">
                 <path d="M8 3v10M4.5 9.5 8 13l3.5-3.5" />
             </symbol>
+            <symbol id="i-refresh" viewBox="0 0 16 16">
+                <path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" />
+            </symbol>
+            <symbol id="i-eye" viewBox="0 0 16 16">
+                <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" />
+                <circle cx="8" cy="8" r="2" />
+            </symbol>
         </svg>
         <div class="app" id="app">
             <nav class="nav" aria-label="Tools">
@@ -372,438 +379,421 @@
                     </div>
                 </div>
 
-                <div id="coderWorkspace" class="tool-view legacy" hidden>
-                    <section class="panel">
-                        <div class="panel-header coder-header">
-                            <div>
-                                <h2 id="coderWorkspaceTitle">Encode</h2>
-                                <p id="coderModeHint">Encode text into multiple bases.</p>
-                            </div>
-                            <label class="decode-select hidden" id="decodeVariantWrap">
-                                <span>Decoder</span>
-                                <select id="decodeVariant"></select>
+                <!-- Base Encoders, Base Decoders and Hash: text or a file in, every form of it out. -->
+                <div id="coderWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <div class="seg" id="coderSource" role="group" aria-label="Input">
+                            <button type="button" id="coderModeText" aria-pressed="true">
+                                Text
+                            </button>
+                            <button type="button" id="coderModeFile" aria-pressed="false">
+                                File
+                            </button>
+                        </div>
+                        <label class="field" id="decodeVariantWrap" hidden>
+                            <span class="label">Read as</span>
+                            <select id="decodeVariant"></select>
+                        </label>
+                        <label class="check" id="encodeLowerWrap" hidden
+                            ><input type="checkbox" id="encodeLower" />Lowercase Base16 and
+                            Base32</label
+                        >
+                        <div class="options" id="hashControls" hidden>
+                            <label class="field">
+                                <span class="label">Digest as</span>
+                                <select id="hashEncoding">
+                                    <option value="base16">Hex</option>
+                                    <option value="base64">Base64</option>
+                                    <option value="base64_raw">Base64, no padding</option>
+                                    <option value="base64_url">Base64 URL</option>
+                                    <option value="base64_url_raw">Base64 URL, no padding</option>
+                                </select>
                             </label>
-                            <div class="hash-controls hidden" id="hashControls">
-                                <label>
-                                    <span>Digest Output</span>
-                                    <select id="hashEncoding">
-                                        <option value="base16">Base16</option>
-                                        <option value="base64">Base64</option>
-                                        <option value="base64_raw">Base64 (no padding)</option>
-                                        <option value="base64_url">Base64 URL</option>
-                                        <option value="base64_url_raw">
-                                            Base64 URL (no padding)
-                                        </option>
-                                    </select>
-                                </label>
-                                <label class="hash-hmac-toggle">
-                                    <input type="checkbox" id="hashUseHmac" />
-                                    <span>Use HMAC</span>
-                                </label>
+                            <label class="check" id="hashUpperWrap"
+                                ><input type="checkbox" id="hashUpper" />Uppercase</label
+                            >
+                            <label class="check"
+                                ><input type="checkbox" id="hashUseHmac" />HMAC</label
+                            >
+                            <label class="field grow" id="hashSecretWrap" hidden>
+                                <span class="label">Key</span>
                                 <input
                                     type="password"
                                     id="hashHmacSecret"
-                                    class="hidden"
-                                    placeholder="Secret key"
+                                    class="input mono"
+                                    placeholder="HMAC key"
                                     spellcheck="false"
+                                    autocomplete="off"
                                 />
-                            </div>
-                        </div>
-                        <div class="coder-mode-row" id="coderInputControls">
-                            <label class="checkbox">
-                                <input
-                                    type="radio"
-                                    name="coderInputMode"
-                                    id="coderModeText"
-                                    value="text"
-                                    checked
-                                />
-                                <span>Use text</span>
                             </label>
-                            <label class="checkbox">
-                                <input
-                                    type="radio"
-                                    name="coderInputMode"
-                                    id="coderModeFile"
-                                    value="file"
-                                />
-                                <span>Use file</span>
-                            </label>
-                            <input type="file" id="coderFile" class="hidden" />
-                            <div id="coderFileMeta" class="muted hidden">No file selected</div>
                         </div>
-                        <textarea
-                            id="coderInput"
-                            spellcheck="false"
-                            placeholder="Type or paste text..."
-                        ></textarea>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2 id="coderResultHeading">Encodings</h2>
-                                <p id="coderResultHint">Base32 / Base64 / Base85 / Base91 / Hex</p>
+                    </div>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="coderInputLabel">Text</h2>
+                                <span class="meta" id="coderInputMeta"></span>
+                            </header>
+                            <textarea
+                                id="coderInput"
+                                class="editor wrap"
+                                spellcheck="false"
+                                placeholder="Type or paste text"
+                            ></textarea>
+                            <div class="sheet" id="coderFilePane" hidden>
+                                <label class="drop" id="coderDrop">
+                                    <svg class="i"><use href="#i-upload" /></svg>
+                                    <span
+                                        ><strong>Drop a file here</strong> or
+                                        <u>choose one</u></span
+                                    >
+                                    <span class="meta">Any file · nothing leaves this page</span>
+                                    <input type="file" id="coderFile" hidden />
+                                </label>
                             </div>
-                            <div class="panel-actions hidden" id="coderResultActions">
-                                <button
-                                    class="ghost-btn hidden"
-                                    id="hashToggleCase"
-                                    data-upper="false"
-                                >
-                                    Toggle Case
-                                </button>
-                                <button
-                                    class="ghost-btn hidden"
-                                    id="coderDownloadDecoded"
-                                    type="button"
-                                >
-                                    Download decoded file
-                                </button>
-                            </div>
-                        </div>
-                        <div id="coderDecodeMeta" class="muted hidden"></div>
-                        <div id="coderResults" class="coder-results">
-                            <div class="muted">Enter content to see results</div>
-                        </div>
-                    </section>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="coderResultHeading">Encodings</h2>
+                                <span class="meta" id="coderResultMeta"></span>
+                                <div class="pane-actions" id="coderResultActions" hidden>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="coderOutput"
+                                    >
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        id="coderDownloadDecoded"
+                                        title="Save the decoded bytes"
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <textarea
+                                id="coderOutput"
+                                class="editor wrap"
+                                spellcheck="false"
+                                readonly
+                                hidden
+                            ></textarea>
+                            <div class="sheet" id="coderResults"></div>
+                        </section>
+                    </div>
                 </div>
 
-                <div id="kdfWorkspace" class="tool-view legacy" hidden>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Password Hashers</h2>
-                                <p>Bcrypt / Argon2 — generate and verify.</p>
-                            </div>
-                            <div class="panel-actions">
-                                <button id="kdfRefreshSalts">Random salt</button>
-                                <select id="kdfAlgoSelect">
-                                    <option value="bcrypt">Bcrypt</option>
-                                    <option value="argon2">Argon2</option>
+                <!-- Password Hashers: hash a password, or check one against a stored hash. -->
+                <div id="kdfWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <div class="seg" role="group" aria-label="Algorithm">
+                            <button type="button" id="kdfAlgoBcrypt" aria-pressed="true">
+                                Bcrypt
+                            </button>
+                            <button type="button" id="kdfAlgoArgon" aria-pressed="false">
+                                Argon2
+                            </button>
+                        </div>
+                        <div class="options" id="bcryptOptions">
+                            <label
+                                class="field"
+                                title="Each step doubles the work: 10 is about 0.1 s"
+                            >
+                                <span class="label">Cost</span>
+                                <input
+                                    id="bcryptCost"
+                                    class="input mono num"
+                                    type="number"
+                                    min="4"
+                                    max="31"
+                                    value="10"
+                                />
+                            </label>
+                        </div>
+                        <div class="options" id="argonOptions" hidden>
+                            <label class="field">
+                                <span class="label">Variant</span>
+                                <select id="argonType">
+                                    <option value="argon2id">Argon2id</option>
+                                    <option value="argon2i">Argon2i</option>
+                                    <option value="argon2d">Argon2d</option>
                                 </select>
-                            </div>
+                            </label>
+                            <label class="field">
+                                <span class="label">Memory</span>
+                                <input
+                                    id="argonMem"
+                                    class="input mono num"
+                                    type="number"
+                                    min="4"
+                                    max="1024"
+                                    value="64"
+                                />
+                                <span class="label">MiB</span>
+                            </label>
+                            <label class="field">
+                                <span class="label">Passes</span>
+                                <input
+                                    id="argonTime"
+                                    class="input mono num"
+                                    type="number"
+                                    min="1"
+                                    max="12"
+                                    value="3"
+                                />
+                            </label>
+                            <label class="field">
+                                <span class="label">Lanes</span>
+                                <input
+                                    id="argonParallelism"
+                                    class="input mono num"
+                                    type="number"
+                                    min="1"
+                                    max="8"
+                                    value="1"
+                                />
+                            </label>
+                            <label class="field">
+                                <span class="label">Length</span>
+                                <input
+                                    id="argonHashLen"
+                                    class="input mono num"
+                                    type="number"
+                                    min="16"
+                                    max="64"
+                                    value="32"
+                                />
+                            </label>
                         </div>
-                        <p class="muted kdf-note">
-                            Enter a password to hash. Paste an existing hash (or plain text) to
-                            verify against the password. Empty salt will be auto-generated.
-                        </p>
-                        <div class="kdf-grid">
-                            <div class="kdf-card" data-algo="bcrypt">
-                                <div class="kdf-card-head">
-                                    <div>
-                                        <h3>Bcrypt</h3>
-                                        <p class="muted">Good for login flows, cost 4-31</p>
-                                    </div>
-                                    <span id="bcryptStatus" class="kdf-status muted">Idle</span>
-                                </div>
-                                <label>
-                                    <span>Password</span>
-                                    <input
-                                        id="bcryptPassword"
-                                        type="password"
-                                        spellcheck="false"
-                                        placeholder="Enter password"
-                                    />
-                                </label>
-                                <div class="kdf-inline">
-                                    <label>
-                                        <span>Cost</span>
-                                        <input
-                                            id="bcryptCost"
-                                            type="number"
-                                            min="4"
-                                            max="31"
-                                            value="10"
-                                        />
-                                    </label>
-                                    <label class="flex-1">
-                                        <span>Salt (leave blank for random)</span>
-                                        <input
-                                            id="bcryptSalt"
-                                            spellcheck="false"
-                                            placeholder="Auto-generate salt when empty"
-                                        />
-                                    </label>
-                                </div>
-                                <div class="kdf-actions">
-                                    <button id="bcryptHashBtn">Generate</button>
-                                </div>
-                                <textarea
-                                    id="bcryptOutput"
-                                    spellcheck="false"
-                                    placeholder="Bcrypt hash will appear here (editable)"
-                                ></textarea>
-                                <div class="kdf-verify">
-                                    <input
-                                        id="bcryptVerifyHash"
-                                        spellcheck="false"
-                                        placeholder="Paste bcrypt hash OR plain text to verify"
-                                    />
-                                    <button class="ghost-btn" id="bcryptVerifyBtn">Verify</button>
-                                </div>
-                            </div>
-
-                            <div class="kdf-card" data-algo="argon2">
-                                <div class="kdf-card-head">
-                                    <div>
-                                        <h3>Argon2</h3>
-                                        <p class="muted">
-                                            Default Argon2id, modern password hashing
-                                        </p>
-                                    </div>
-                                    <span id="argonStatus" class="kdf-status muted">Idle</span>
-                                </div>
-                                <label>
-                                    <span>Password</span>
-                                    <input
-                                        id="argonPassword"
-                                        type="password"
-                                        spellcheck="false"
-                                        placeholder="Enter password"
-                                    />
-                                </label>
-                                <div class="kdf-inline">
-                                    <label>
-                                        <span>Time cost (t)</span>
-                                        <input id="argonTime" type="number" min="1" value="3" />
-                                    </label>
-                                    <label>
-                                        <span>Memory (KiB)</span>
-                                        <input
-                                            id="argonMem"
-                                            type="number"
-                                            min="4096"
-                                            step="1024"
-                                            value="65536"
-                                        />
-                                    </label>
-                                </div>
-                                <div class="kdf-inline">
-                                    <label>
-                                        <span>Parallelism</span>
-                                        <input
-                                            id="argonParallelism"
-                                            type="number"
-                                            min="1"
-                                            max="8"
-                                            value="1"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>Hash length</span>
-                                        <input
-                                            id="argonHashLen"
-                                            type="number"
-                                            min="16"
-                                            max="64"
-                                            value="32"
-                                        />
-                                    </label>
-                                    <label class="flex-1">
-                                        <span>Variant</span>
-                                        <select id="argonType">
-                                            <option value="argon2id">Argon2id</option>
-                                            <option value="argon2i">Argon2i</option>
-                                            <option value="argon2d">Argon2d</option>
-                                        </select>
-                                    </label>
-                                </div>
-                                <label>
-                                    <span>Salt (Base64)</span>
-                                    <input
-                                        id="argonSalt"
-                                        spellcheck="false"
-                                        placeholder="Leave blank to auto-generate 16-byte salt"
-                                    />
-                                </label>
-                                <div class="kdf-actions">
-                                    <button id="argonHashBtn">Generate</button>
-                                </div>
-                                <textarea
-                                    id="argonOutput"
-                                    spellcheck="false"
-                                    placeholder="Argon2 PHC string will appear here (editable)"
-                                ></textarea>
-                                <div class="kdf-verify">
-                                    <input
-                                        id="argonVerifyHash"
-                                        spellcheck="false"
-                                        placeholder="Paste Argon2 PHC string OR plain text to verify"
-                                    />
-                                    <button class="ghost-btn" id="argonVerifyBtn">Verify</button>
-                                </div>
-                            </div>
+                        <div class="bar-end">
+                            <button id="kdfGenerate" class="btn primary" type="button" data-run>
+                                Hash <kbd data-keys="run">⌘↵</kbd>
+                            </button>
                         </div>
-                    </section>
+                    </div>
+                    <div class="sheet">
+                        <ul class="kv edit">
+                            <li>
+                                <label class="k" for="kdfPassword">Password</label>
+                                <input
+                                    id="kdfPassword"
+                                    class="input mono"
+                                    type="password"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                />
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    id="kdfShowPassword"
+                                    title="Show password"
+                                    aria-pressed="false"
+                                >
+                                    <svg class="i"><use href="#i-eye" /></svg>
+                                </button>
+                            </li>
+                            <li>
+                                <label class="k" for="kdfSalt">Salt</label>
+                                <input
+                                    id="kdfSalt"
+                                    class="input mono"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                    placeholder="New for every hash"
+                                />
+                                <span></span>
+                            </li>
+                        </ul>
+                        <h2 class="group-title">
+                            Hash <span class="meta" id="kdfOutputMeta"></span>
+                        </h2>
+                        <ul class="kv">
+                            <li>
+                                <span class="k" id="kdfOutputLabel">Bcrypt</span>
+                                <span class="v" id="kdfOutput"></span>
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Copy"
+                                    data-copy-from="kdfOutput"
+                                >
+                                    <svg class="i"><use href="#i-copy" /></svg>
+                                </button>
+                            </li>
+                        </ul>
+                        <h2 class="group-title">
+                            Verify
+                            <span class="meta">a stored hash against the password above</span>
+                        </h2>
+                        <ul class="kv edit">
+                            <li>
+                                <label class="k" for="kdfVerifyHash">Stored hash</label>
+                                <input
+                                    id="kdfVerifyHash"
+                                    class="input mono"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                    placeholder="$2b$10$… or $argon2id$v=19$…"
+                                />
+                                <span></span>
+                            </li>
+                        </ul>
+                        <p class="verdict" id="kdfVerdict" role="status" hidden></p>
+                    </div>
                 </div>
 
-                <!-- Crypto workspace: encrypt/decrypt text or files with modern AEAD ciphers. -->
-                <div id="cryptoWorkspace" class="tool-view legacy" hidden>
-                    <!-- Configuration Section -->
-                    <section class="panel crypto-config">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Configuration</h2>
-                                <p>Select algorithm and manage keys.</p>
-                            </div>
-                            <div class="panel-actions">
-                                <label class="algo-select">
-                                    <span>Algorithm</span>
-                                    <select id="cryptoAlgorithm">
-                                        <option value="aes-256-gcm">AES-256-GCM</option>
-                                        <option value="chacha20-poly1305">ChaCha20-Poly1305</option>
-                                        <option value="xchacha20-poly1305">
-                                            XChaCha20-Poly1305
-                                        </option>
-                                    </select>
-                                </label>
-                            </div>
+                <!-- Encrypt / Decrypt: one direction at a time; the key stays in view because decrypting needs it back. -->
+                <div id="cryptoWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <div class="seg" role="group" aria-label="Direction">
+                            <button type="button" id="cryptoDirEncrypt" aria-pressed="true">
+                                Encrypt
+                            </button>
+                            <button type="button" id="cryptoDirDecrypt" aria-pressed="false">
+                                Decrypt
+                            </button>
                         </div>
-                        <div class="crypto-params">
-                            <div class="param-group">
-                                <label for="cryptoKey">Key (Base64)</label>
-                                <div class="input-with-action">
-                                    <input
-                                        id="cryptoKey"
-                                        spellcheck="false"
-                                        placeholder="Auto-generated if empty"
-                                    />
-                                    <button
-                                        id="cryptoGenerateKey"
-                                        type="button"
-                                        class="ghost-btn"
-                                        title="Generate Random Key"
-                                    >
-                                        ↻
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="param-group">
-                                <label for="cryptoNonce">Nonce (Base64)</label>
-                                <div class="input-with-action">
-                                    <input
-                                        id="cryptoNonce"
-                                        spellcheck="false"
-                                        placeholder="Auto-generated if empty"
-                                    />
-                                    <button
-                                        id="cryptoGenerateNonce"
-                                        type="button"
-                                        class="ghost-btn"
-                                        title="Generate Random Nonce"
-                                    >
-                                        ↻
-                                    </button>
-                                </div>
-                            </div>
+                        <label class="field">
+                            <span class="label">Algorithm</span>
+                            <select id="cryptoAlgorithm">
+                                <option value="aes-256-gcm">AES-256-GCM</option>
+                                <option value="chacha20-poly1305">ChaCha20-Poly1305</option>
+                                <option value="xchacha20-poly1305">XChaCha20-Poly1305</option>
+                            </select>
+                        </label>
+                        <div class="seg" role="group" aria-label="Input">
+                            <button type="button" id="cryptoModeText" aria-pressed="true">
+                                Text
+                            </button>
+                            <button type="button" id="cryptoModeFile" aria-pressed="false">
+                                Files
+                            </button>
                         </div>
-                    </section>
-
-                    <!-- Operations Section -->
-                    <div class="crypto-operations">
-                        <!-- Encrypt Column -->
-                        <section class="panel crypto-panel">
-                            <div class="panel-header">
-                                <h3>Encrypt</h3>
-                                <div class="crypto-mode-switch">
-                                    <label
-                                        ><input
-                                            type="radio"
-                                            name="cryptoInputMode"
-                                            id="cryptoModeText"
-                                            value="text"
-                                            checked
-                                        />
-                                        Text</label
+                        <div class="bar-end">
+                            <button id="cryptoRun" class="btn primary" type="button" data-run>
+                                <span id="cryptoRunLabel">Encrypt</span>
+                                <kbd data-keys="run">⌘↵</kbd>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="bar">
+                        <label class="field grow">
+                            <span class="label">Key</span>
+                            <input
+                                id="cryptoKey"
+                                class="input mono"
+                                spellcheck="false"
+                                autocomplete="off"
+                                placeholder="Base64 · made for you on the first run"
+                            />
+                            <button
+                                class="icon-btn"
+                                type="button"
+                                id="cryptoGenerateKey"
+                                title="New key"
+                            >
+                                <svg class="i"><use href="#i-refresh" /></svg>
+                            </button>
+                            <button
+                                class="icon-btn"
+                                type="button"
+                                title="Copy key"
+                                data-copy-from="cryptoKey"
+                            >
+                                <svg class="i"><use href="#i-copy" /></svg>
+                            </button>
+                        </label>
+                        <label class="field grow" id="cryptoNonceWrap">
+                            <span class="label">Nonce</span>
+                            <input
+                                id="cryptoNonce"
+                                class="input mono"
+                                spellcheck="false"
+                                autocomplete="off"
+                                placeholder="Base64 · new for every run"
+                            />
+                            <button
+                                class="icon-btn"
+                                type="button"
+                                title="Copy nonce"
+                                data-copy-from="cryptoNonce"
+                            >
+                                <svg class="i"><use href="#i-copy" /></svg>
+                            </button>
+                        </label>
+                    </div>
+                    <div class="split" id="cryptoText">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="cryptoInputLabel">Plaintext</h2>
+                                <span class="meta" id="cryptoInputMeta"></span>
+                            </header>
+                            <textarea
+                                id="cryptoInput"
+                                class="editor wrap"
+                                spellcheck="false"
+                                placeholder="Type or paste text to encrypt"
+                            ></textarea>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="cryptoOutputLabel">Ciphertext</h2>
+                                <span class="meta" id="cryptoOutputMeta"></span>
+                                <div class="pane-actions">
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="cryptoOutput"
                                     >
-                                    <label
-                                        ><input
-                                            type="radio"
-                                            name="cryptoInputMode"
-                                            id="cryptoModeFile"
-                                            value="file"
-                                        />
-                                        File</label
-                                    >
-                                </div>
-                            </div>
-                            <div class="panel-body">
-                                <input type="file" id="cryptoFile" class="hidden" multiple />
-                                <div id="cryptoFileMeta" class="file-meta hidden">
-                                    No file selected
-                                </div>
-
-                                <textarea
-                                    id="cryptoPlaintext"
-                                    spellcheck="false"
-                                    placeholder="Enter text to encrypt..."
-                                ></textarea>
-
-                                <div class="action-row">
-                                    <button id="cryptoEncrypt" type="button" class="primary-btn">
-                                        Encrypt 🔒
+                                        <svg class="i"><use href="#i-copy" /></svg>
                                     </button>
                                     <button
-                                        id="cryptoDownload"
+                                        class="icon-btn"
                                         type="button"
-                                        class="ghost-btn"
-                                        disabled
+                                        id="cryptoSaveText"
+                                        title="Save"
                                     >
-                                        Download
+                                        <svg class="i"><use href="#i-save" /></svg>
                                     </button>
                                 </div>
-
-                                <div class="result-box">
-                                    <label>Ciphertext (Output)</label>
-                                    <div class="textarea-wrapper">
-                                        <textarea
-                                            id="cryptoCiphertext"
-                                            spellcheck="false"
-                                            placeholder="Result will appear here..."
-                                        ></textarea>
-                                        <button
-                                            id="cryptoCopyCiphertext"
-                                            type="button"
-                                            class="ghost-btn sm-btn copy-overlay copy-btn"
-                                            title="Copy ciphertext"
-                                        >
-                                            📋 Copy
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+                            </header>
+                            <p class="notice" id="cryptoError" hidden></p>
+                            <textarea
+                                id="cryptoOutput"
+                                class="editor wrap"
+                                spellcheck="false"
+                                readonly
+                            ></textarea>
                         </section>
-
-                        <!-- Decrypt Column -->
-                        <section class="panel crypto-panel">
-                            <div class="panel-header">
-                                <h3>Decrypt</h3>
-                            </div>
-                            <div class="panel-body">
-                                <label class="input-label">Ciphertext (Input)</label>
-                                <textarea
-                                    id="cryptoDecryptInput"
-                                    spellcheck="false"
-                                    placeholder="Paste ciphertext here..."
-                                ></textarea>
-
-                                <div class="action-row">
-                                    <button id="cryptoDecrypt" type="button" class="primary-btn">
-                                        Unlock 🔓
-                                    </button>
-                                </div>
-
-                                <div class="result-box">
-                                    <label>Plaintext (Output)</label>
-                                    <textarea
-                                        id="cryptoDecryptOutput"
-                                        spellcheck="false"
-                                        readonly
-                                        placeholder="Decrypted text..."
-                                    ></textarea>
-                                </div>
-                            </div>
-                        </section>
+                    </div>
+                    <div class="sheet" id="cryptoFiles" hidden>
+                        <label class="drop" id="cryptoDrop">
+                            <svg class="i"><use href="#i-upload" /></svg>
+                            <span><strong>Drop files here</strong> or <u>choose files</u></span>
+                            <span class="meta" id="cryptoDropMeta"
+                                >Each file carries its own nonce · nothing leaves this page</span
+                            >
+                            <input type="file" id="cryptoFile" multiple hidden />
+                        </label>
+                        <table class="files" id="cryptoFileTable" hidden>
+                            <thead>
+                                <tr>
+                                    <th>File</th>
+                                    <th>Size</th>
+                                    <th>Result</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="cryptoFileList"></tbody>
+                        </table>
+                        <button id="cryptoDownload" class="btn" type="button" hidden>
+                            <svg class="i"><use href="#i-save" /></svg>Save all
+                        </button>
                     </div>
                 </div>
 
@@ -1252,931 +1242,768 @@
                     <div class="sheet" id="ipv4Results"></div>
                 </div>
 
-                <div id="uuidWorkspace" class="tool-view legacy" hidden>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>UUID</h2>
-                                <p>Generate UUID v1 ~ v8, GUID, and ULID</p>
-                            </div>
-                            <div class="generator-actions">
-                                <button id="uuidToggleCase" data-upper="false">Toggle Case</button>
-                                <button id="uuidRegenerate">Regenerate</button>
-                            </div>
+                <!-- UUID: one of every version, new on demand. -->
+                <div id="uuidWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="check"
+                            ><input type="checkbox" id="uuidUpper" />Uppercase</label
+                        >
+                        <div class="bar-end">
+                            <button id="uuidRegenerate" class="btn primary" type="button" data-run>
+                                <svg class="i"><use href="#i-refresh" /></svg>New
+                                <kbd data-keys="run">⌘↵</kbd>
+                            </button>
                         </div>
-                        <div id="uuidList" class="uuid-list"></div>
-                    </section>
+                    </div>
+                    <div class="sheet"><ul class="kv" id="uuidList"></ul></div>
                 </div>
 
-                <div id="userAgentWorkspace" class="tool-view legacy" hidden>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>User-Agent Generator</h2>
-                                <p>Generate realistic browser user agent strings</p>
-                            </div>
-                        </div>
-
-                        <!-- Filters Section -->
-                        <div class="ua-filters">
-                            <h3 class="ua-section-title">Filters</h3>
-                            <div class="ua-filters-grid">
-                                <label class="ua-filter-field">
-                                    <span>Browser</span>
-                                    <select id="uaBrowser">
-                                        <option value="">All Browsers</option>
-                                        <option value="chrome">Chrome</option>
-                                        <option value="firefox">Firefox</option>
-                                        <option value="safari">Safari</option>
-                                        <option value="edge">Edge</option>
-                                        <option value="vivaldi">Vivaldi</option>
-                                        <option value="yandex">Yandex</option>
-                                    </select>
-                                </label>
-                                <label class="ua-filter-field">
-                                    <span>Platform</span>
-                                    <select id="uaOS">
-                                        <option value="">All Platforms</option>
-                                        <option value="windows">Windows</option>
-                                        <option value="macos">macOS</option>
-                                        <option value="android">Android</option>
-                                        <option value="ios">iOS</option>
-                                    </select>
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- Results Section -->
-                        <div class="ua-results-section">
-                            <div class="ua-results-header">
-                                <h3 class="ua-section-title">Generated User Agents</h3>
-                                <span class="ua-count" id="uaCount"></span>
-                            </div>
-                            <div id="uaResults" class="ua-results">
-                                <div class="ua-placeholder">
-                                    Choose filters above to generate user agents
-                                </div>
-                            </div>
-                        </div>
-                    </section>
+                <!-- User-Agent: current strings from the table the weekly workflow refreshes. -->
+                <div id="userAgentWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field">
+                            <span class="label">Browser</span>
+                            <select id="uaBrowser">
+                                <option value="">Any</option>
+                                <option value="chrome">Chrome</option>
+                                <option value="firefox">Firefox</option>
+                                <option value="safari">Safari</option>
+                                <option value="edge">Edge</option>
+                                <option value="vivaldi">Vivaldi</option>
+                                <option value="yandex">Yandex</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span class="label">Platform</span>
+                            <select id="uaOS">
+                                <option value="">Any</option>
+                                <option value="windows">Windows</option>
+                                <option value="macos">macOS</option>
+                                <option value="linux">Linux</option>
+                                <option value="android">Android</option>
+                                <option value="ios">iOS</option>
+                            </select>
+                        </label>
+                        <span class="meta" id="uaCount"></span>
+                    </div>
+                    <div class="sheet"><ul class="kv" id="uaResults"></ul></div>
                 </div>
 
-                <div id="sshWorkspace" class="tool-view legacy" hidden>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>SSH Key Generator</h2>
-                                <p>
-                                    Generate OpenSSH public/private key pairs for secure
-                                    authentication
-                                </p>
-                            </div>
-                            <div class="generator-actions">
-                                <button id="sshGenerate">Generate</button>
-                            </div>
+                <!-- SSH Key: a key pair in OpenSSH format, public and private side by side. -->
+                <div id="sshWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <div class="seg" role="group" aria-label="Key type">
+                            <button type="button" id="sshTypeEd25519" aria-pressed="true">
+                                Ed25519
+                            </button>
+                            <button type="button" id="sshTypeRsa" aria-pressed="false">RSA</button>
                         </div>
-
-                        <!-- Key Type & Format Section -->
-                        <div class="ssh-section">
-                            <h3 class="ssh-section-title">Key Configuration</h3>
-                            <div class="ssh-config-grid">
-                                <label class="ssh-config-field">
-                                    <span>Key Type</span>
-                                    <select id="sshType">
-                                        <option value="ed25519" selected>Ed25519</option>
-                                        <option value="ed25519-sk">Ed25519 SK</option>
-                                        <option value="rsa">RSA</option>
-                                    </select>
-                                    <small class="ssh-field-hint">Recommended: Ed25519</small>
-                                </label>
-                                <label class="ssh-config-field ssh-bits-row">
-                                    <span>Key Size (RSA)</span>
-                                    <input
-                                        type="number"
-                                        id="sshBits"
-                                        min="2048"
-                                        max="8192"
-                                        value="4096"
-                                        disabled
-                                    />
-                                    <small class="ssh-field-hint">2048-8192 bits</small>
-                                </label>
-                                <label class="ssh-config-field">
-                                    <span>Format</span>
-                                    <select id="sshFormat">
-                                        <option value="openssh" selected>OpenSSH</option>
-                                        <option value="pem">PEM</option>
-                                    </select>
-                                    <small class="ssh-field-hint">Output format</small>
-                                </label>
-                                <label class="ssh-config-field">
-                                    <span>KDF Rounds</span>
-                                    <input
-                                        type="number"
-                                        id="sshKdf"
-                                        min="16"
-                                        max="500"
-                                        value="16"
-                                    />
-                                    <small class="ssh-field-hint">16-500 (higher = slower)</small>
-                                </label>
-                            </div>
+                        <label class="field" id="sshBitsWrap" hidden>
+                            <span class="label">Bits</span>
+                            <select id="sshBits">
+                                <option value="2048">2048</option>
+                                <option value="3072">3072</option>
+                                <option value="4096" selected>4096</option>
+                            </select>
+                        </label>
+                        <label class="field grow">
+                            <span class="label">Comment</span>
+                            <input
+                                id="sshComment"
+                                class="input mono"
+                                spellcheck="false"
+                                autocomplete="off"
+                                placeholder="you@host"
+                            />
+                        </label>
+                        <div class="bar-end">
+                            <button id="sshGenerate" class="btn primary" type="button" data-run>
+                                Generate <kbd data-keys="run">⌘↵</kbd>
+                            </button>
                         </div>
-
-                        <!-- Comment Section -->
-                        <div class="ssh-section">
-                            <h3 class="ssh-section-title">Key Comment</h3>
-                            <div class="ssh-comment-wrapper">
-                                <label class="ssh-comment-field">
-                                    <span>Comment (optional)</span>
-                                    <input
-                                        type="text"
-                                        id="sshComment"
-                                        spellcheck="false"
-                                        placeholder="user@host (e.g., alice@server.example.com)"
-                                    />
-                                    <small class="ssh-field-hint"
-                                        >Helps identify the key's purpose or owner</small
-                                    >
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- Security Key Options (for ed25519-sk) -->
-                        <div class="ssh-section ssh-sk-section hidden" id="sshSkOptions">
-                            <h3 class="ssh-section-title">Security Key Options</h3>
-                            <div class="ssh-sk-options">
-                                <label class="ssh-checkbox-option ssh-sk-resident">
-                                    <input type="checkbox" id="sshResident" />
-                                    <div class="ssh-checkbox-content">
-                                        <span class="ssh-checkbox-label">Resident Key</span>
-                                        <small class="ssh-checkbox-hint"
-                                            >Store key on hardware token</small
-                                        >
-                                    </div>
-                                </label>
-                                <label class="ssh-checkbox-option ssh-sk-verify">
-                                    <input type="checkbox" id="sshVerify" />
-                                    <div class="ssh-checkbox-content">
-                                        <span class="ssh-checkbox-label">Verify Required</span>
-                                        <small class="ssh-checkbox-hint"
-                                            >Require touch on each use</small
-                                        >
-                                    </div>
-                                </label>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- Keys Section (Public + Private) -->
-                    <section class="panel">
-                        <!-- Public Key Section -->
-                        <div class="ssh-key-section">
-                            <div class="panel-header">
-                                <div>
-                                    <h2>Public Key</h2>
-                                    <p>Add this to authorized_keys on remote servers</p>
-                                </div>
-                                <div class="panel-actions">
+                    </div>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">Public key</h2>
+                                <span class="meta" id="sshFingerprint"></span>
+                                <div class="pane-actions">
                                     <button
-                                        class="ghost-btn copy-btn"
-                                        id="sshCopyPublic"
-                                        title="Copy public key"
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="sshPublic"
                                     >
-                                        📋 Copy
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        id="sshSavePublic"
+                                        title="Save"
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
                                     </button>
                                 </div>
-                            </div>
-                            <div class="ssh-key-display">
-                                <textarea
-                                    id="sshPublic"
-                                    spellcheck="false"
-                                    readonly
-                                    placeholder="Public key will appear here after generation"
-                                ></textarea>
-                                <div class="ssh-key-hint">
-                                    <span>💡</span>
-                                    <span
-                                        >Paste this into ~/.ssh/authorized_keys on your server</span
-                                    >
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Private Key Section -->
-                        <div class="ssh-key-section ssh-key-section-divider">
-                            <div class="panel-header">
-                                <div>
-                                    <h2>Private Key</h2>
-                                    <p>Keep this secure and never share it</p>
-                                </div>
-                                <div class="panel-actions">
+                            </header>
+                            <textarea
+                                id="sshPublic"
+                                class="editor wrap"
+                                spellcheck="false"
+                                readonly
+                                placeholder="Goes in ~/.ssh/authorized_keys on the server"
+                            ></textarea>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">Private key</h2>
+                                <span class="meta">stays with you, unencrypted</span>
+                                <div class="pane-actions">
                                     <button
-                                        class="ghost-btn copy-btn"
-                                        id="sshCopyPrivate"
-                                        title="Copy private key"
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="sshPrivate"
                                     >
-                                        📋 Copy
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        id="sshSavePrivate"
+                                        title="Save"
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
                                     </button>
                                 </div>
-                            </div>
-                            <div class="ssh-key-display">
-                                <textarea
-                                    id="sshPrivate"
-                                    spellcheck="false"
-                                    readonly
-                                    placeholder="Private key will appear here after generation"
-                                ></textarea>
-                                <div class="ssh-key-hint ssh-key-warning">
-                                    <span>⚠️</span>
-                                    <span
-                                        >Keep this private key secure. Save it to
-                                        ~/.ssh/id_ed25519</span
-                                    >
+                            </header>
+                            <textarea
+                                id="sshPrivate"
+                                class="editor"
+                                spellcheck="false"
+                                readonly
+                            ></textarea>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- Browser Fingerprint: what this browser tells a page without asking. -->
+                <div id="fingerprintWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field grow search">
+                            <svg class="i"><use href="#i-search" /></svg>
+                            <input
+                                id="fingerprintSearch"
+                                class="input"
+                                type="search"
+                                spellcheck="false"
+                                autocomplete="off"
+                                placeholder="Filter by name or value"
+                            />
+                        </label>
+                        <span class="meta" id="fingerprintCount"></span>
+                        <div class="bar-end">
+                            <button id="fingerprintRefresh" class="btn" type="button">
+                                <svg class="i"><use href="#i-refresh" /></svg>Read again
+                            </button>
+                            <button
+                                id="fingerprintCopyAll"
+                                class="icon-btn"
+                                type="button"
+                                title="Copy all"
+                            >
+                                <svg class="i"><use href="#i-copy" /></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="sheet"><div class="groups flow" id="fingerprintGrid"></div></div>
+                </div>
+
+                <!-- SSL Inspector: a PEM certificate or chain in, each certificate's fields out. -->
+                <div id="certWorkspace" class="tool-body" hidden>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">PEM</h2>
+                                <span class="meta">a certificate or a whole chain</span>
+                                <div class="pane-actions">
+                                    <button id="certSample" class="btn quiet" type="button">
+                                        Sample chain
+                                    </button>
                                 </div>
-                            </div>
-                        </div>
-                    </section>
+                            </header>
+                            <textarea
+                                id="certInput"
+                                class="editor"
+                                spellcheck="false"
+                                placeholder="-----BEGIN CERTIFICATE-----"
+                            ></textarea>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">Certificates</h2>
+                                <span class="meta" id="certSummary"></span>
+                            </header>
+                            <div class="sheet" id="certResults"></div>
+                        </section>
+                    </div>
                 </div>
 
-                <!-- Browser Fingerprint surface: shows passive signals we can read without permissions. -->
-                <div id="fingerprintWorkspace" class="tool-view legacy" hidden>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Browser Fingerprint</h2>
-                                <p>
-                                    Inspect what the browser exposes without permissions via
-                                    standard Web APIs
-                                </p>
-                            </div>
-                            <div class="panel-actions">
-                                <button class="ghost-btn" id="fingerprintRefresh">Refresh</button>
-                                <button
-                                    class="ghost-btn copy-btn hidden"
-                                    id="fingerprintCopyAll"
-                                    title="Copy all fingerprint data"
-                                >
-                                    📋 Copy All
-                                </button>
-                            </div>
+                <!-- Random: strings from the characters picked, new on every change. -->
+                <div id="randomWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field">
+                            <span class="label">Length</span>
+                            <input
+                                id="randomLength"
+                                class="input mono num"
+                                type="number"
+                                min="1"
+                                max="2048"
+                                value="24"
+                            />
+                        </label>
+                        <label class="field">
+                            <span class="label">Count</span>
+                            <input
+                                id="randomCount"
+                                class="input mono num"
+                                type="number"
+                                min="1"
+                                max="256"
+                                value="5"
+                            />
+                        </label>
+                        <label class="check"
+                            ><input type="checkbox" id="randomIncludeDigits" checked />0–9</label
+                        >
+                        <label class="check"
+                            ><input type="checkbox" id="randomIncludeLower" />a–z</label
+                        >
+                        <label class="check"
+                            ><input type="checkbox" id="randomIncludeUpper" />A–Z</label
+                        >
+                        <label class="check"
+                            ><input type="checkbox" id="randomIncludeSymbols" />Symbols</label
+                        >
+                        <label class="field">
+                            <span class="label">Leave out</span>
+                            <input
+                                id="randomExclude"
+                                class="input mono pattern"
+                                spellcheck="false"
+                                autocomplete="off"
+                                placeholder="e.g. O0Il1"
+                            />
+                        </label>
+                        <div class="bar-end">
+                            <button id="randomGenerate" class="btn primary" type="button" data-run>
+                                <svg class="i"><use href="#i-refresh" /></svg>New
+                                <kbd data-keys="run">⌘↵</kbd>
+                            </button>
                         </div>
-                        <div class="fingerprint-controls">
-                            <div id="fingerprintSummary" class="fingerprint-summary">
-                                <span class="fingerprint-summary-text"
-                                    >Loading fingerprint data…</span
-                                >
-                                <span class="fingerprint-count" id="fingerprintCount"></span>
-                            </div>
-                            <div class="fingerprint-search">
-                                <input
-                                    type="text"
-                                    id="fingerprintSearch"
-                                    placeholder="Search fingerprint data..."
-                                    spellcheck="false"
-                                />
-                            </div>
-                        </div>
-                        <div id="fingerprintGrid" class="fingerprint-grid">
-                            <div class="muted">Loading…</div>
-                        </div>
-                    </section>
-                </div>
-
-                <!-- SSL Inspector workspace: decodes PEM certificates or chains. -->
-                <div id="certWorkspace" class="tool-view legacy" hidden>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>SSL Inspector</h2>
-                                <p>Paste a PEM certificate or chain to view decoded fields.</p>
-                            </div>
-                            <div class="panel-actions">
-                                <button class="ghost-btn" id="certSample">Load sample</button>
-                                <button id="certParse">Parse</button>
-                            </div>
-                        </div>
-                        <textarea
-                            id="certInput"
-                            spellcheck="false"
-                            placeholder="-----BEGIN CERTIFICATE-----"
-                        ></textarea>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Certificates</h2>
-                                <p id="certSummary" class="muted">No certificates parsed yet.</p>
-                            </div>
-                        </div>
-                        <div id="certResults" class="cert-grid">
-                            <div class="muted">Paste a certificate to see details.</div>
-                        </div>
-                    </section>
-                </div>
-
-                <div id="randomWorkspace" class="tool-view legacy" hidden>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Random String Generator</h2>
-                                <p>
-                                    Generate random strings with customizable character sets and
-                                    rules
-                                </p>
-                            </div>
-                            <div class="generator-actions">
-                                <button id="randomGenerate">Generate</button>
-                            </div>
-                        </div>
-
-                        <!-- Basic Settings Section -->
-                        <div class="random-basic-settings">
-                            <h3 class="random-section-title">Basic Settings</h3>
-                            <div class="random-basic-grid">
-                                <label class="random-basic-field">
-                                    <span>String Length</span>
+                    </div>
+                    <div class="sheet">
+                        <section id="randomSymbolsGroup" hidden>
+                            <h2 class="group-title">
+                                Symbols <span class="meta">the ones to draw from</span>
+                            </h2>
+                            <div class="toggles" id="randomSymbolToggles"></div>
+                        </section>
+                        <section id="randomMinimums" hidden>
+                            <h2 class="group-title">
+                                At least <span class="meta">in every string</span>
+                            </h2>
+                            <ul class="kv edit narrow">
+                                <li id="randomMinDigitsRow">
+                                    <label class="k" for="randomMinDigits">Digits</label>
                                     <input
+                                        id="randomMinDigits"
+                                        class="input mono num"
                                         type="number"
-                                        min="1"
-                                        max="2048"
-                                        value="24"
-                                        id="randomLength"
+                                        min="0"
+                                        value="0"
                                     />
-                                    <small class="random-field-hint">1-2048 characters</small>
-                                </label>
-                                <label class="random-basic-field">
-                                    <span>Count</span>
+                                </li>
+                                <li id="randomMinLowerRow">
+                                    <label class="k" for="randomMinLower">Lowercase</label>
                                     <input
+                                        id="randomMinLower"
+                                        class="input mono num"
                                         type="number"
-                                        min="1"
-                                        max="256"
-                                        value="5"
-                                        id="randomCount"
+                                        min="0"
+                                        value="0"
                                     />
-                                    <small class="random-field-hint"
-                                        >Number of strings to generate</small
-                                    >
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- Character Sets Section -->
-                        <div class="random-charsets">
-                            <h3 class="random-section-title">Character Sets</h3>
-                            <div class="random-charset-grid">
-                                <!-- Digits Card -->
-                                <div class="random-charset-card" data-charset="digits">
-                                    <div class="random-charset-header">
-                                        <label class="checkbox random-charset-toggle">
-                                            <input
-                                                type="checkbox"
-                                                id="randomIncludeDigits"
-                                                checked
-                                            />
-                                            <span class="random-charset-label">Digits (0-9)</span>
-                                        </label>
-                                    </div>
-                                    <div class="random-charset-options" id="randomDigitsOptions">
-                                        <div class="random-option-row" id="randomMinDigitsRow">
-                                            <label for="randomMinDigits">Minimum count</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value="0"
-                                                id="randomMinDigits"
-                                                class="min-count"
-                                            />
-                                        </div>
-                                        <div class="random-option-row" id="randomAllowZeroRow">
-                                            <label class="checkbox">
-                                                <input
-                                                    type="checkbox"
-                                                    id="randomAllowZero"
-                                                    checked
-                                                />
-                                                <span>Allow leading zero</span>
-                                            </label>
-                                        </div>
-                                        <div
-                                            class="random-option-row range-row hidden"
-                                            id="randomDigitRangeRow"
-                                        >
-                                            <div class="range-field">
-                                                <label for="randomDigitMin">Min value</label>
-                                                <input type="number" id="randomDigitMin" />
-                                            </div>
-                                            <div class="range-field">
-                                                <label for="randomDigitMax">Max value</label>
-                                                <input type="number" id="randomDigitMax" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Lowercase Letters Card -->
-                                <div class="random-charset-card" data-charset="lower">
-                                    <div class="random-charset-header">
-                                        <label class="checkbox random-charset-toggle">
-                                            <input type="checkbox" id="randomIncludeLower" />
-                                            <span class="random-charset-label"
-                                                >Lowercase (a-z)</span
-                                            >
-                                        </label>
-                                    </div>
-                                    <div class="random-charset-options" id="randomLowerOptions">
-                                        <div class="random-option-row" id="randomMinLowerRow">
-                                            <label for="randomMinLower">Minimum count</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value="0"
-                                                id="randomMinLower"
-                                                class="min-count"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Uppercase Letters Card -->
-                                <div class="random-charset-card" data-charset="upper">
-                                    <div class="random-charset-header">
-                                        <label class="checkbox random-charset-toggle">
-                                            <input type="checkbox" id="randomIncludeUpper" />
-                                            <span class="random-charset-label"
-                                                >Uppercase (A-Z)</span
-                                            >
-                                        </label>
-                                    </div>
-                                    <div class="random-charset-options" id="randomUpperOptions">
-                                        <div class="random-option-row" id="randomMinUpperRow">
-                                            <label for="randomMinUpper">Minimum count</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value="0"
-                                                id="randomMinUpper"
-                                                class="min-count"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Symbols Card -->
-                                <div class="random-charset-card" data-charset="symbols">
-                                    <div class="random-charset-header">
-                                        <span class="random-charset-label">Symbols</span>
-                                    </div>
-                                    <div class="random-charset-options">
-                                        <div
-                                            class="symbol-toggle-grid"
-                                            id="randomSymbolToggles"
-                                        ></div>
-                                        <div
-                                            class="random-option-row symbol-min hidden"
-                                            id="randomSymbolMinRow"
-                                        >
-                                            <label for="randomMinSymbols">Minimum count</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value="0"
-                                                id="randomMinSymbols"
-                                                class="min-count"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Advanced Options Section -->
-                        <div class="random-advanced">
-                            <h3 class="random-section-title">Advanced Options</h3>
-                            <div class="random-exclude">
-                                <label>
-                                    <span>Exclude characters</span>
+                                </li>
+                                <li id="randomMinUpperRow">
+                                    <label class="k" for="randomMinUpper">Uppercase</label>
                                     <input
-                                        type="text"
-                                        id="randomExclude"
-                                        spellcheck="false"
-                                        placeholder="e.g. O0Il (characters to exclude from generation)"
-                                    />
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- Results Section -->
-                        <div class="random-results-section">
-                            <div class="random-results-header">
-                                <h3 class="random-section-title">Generated Strings</h3>
-                                <button
-                                    class="ghost-btn copy-btn hidden"
-                                    id="randomCopyAll"
-                                    title="Copy all generated strings"
-                                >
-                                    📋 Copy All
-                                </button>
-                            </div>
-                            <div id="randomResults" class="random-results">
-                                <div class="random-placeholder">
-                                    Click Generate to produce strings
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-
-                <div id="asciiWorkspace" class="tool-view legacy" hidden>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>ASCII Art Generator</h2>
-                                <p>Turn text into FIGlet-style ASCII art.</p>
-                            </div>
-                            <div class="generator-actions">
-                                <button id="asciiGenerate">Generate</button>
-                                <button class="ghost-btn copy-btn" id="asciiCopy" disabled>
-                                    📋 Copy
-                                </button>
-                                <button class="ghost-btn" id="asciiDownload" disabled>
-                                    Download .txt
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="ascii-controls">
-                            <label class="ascii-textarea">
-                                <span>Text</span>
-                                <textarea
-                                    id="asciiInput"
-                                    spellcheck="false"
-                                    placeholder="Hello, Transform!"
-                                ></textarea>
-                            </label>
-
-                            <div class="ascii-form-grid">
-                                <label>
-                                    <span>Font</span>
-                                    <select id="asciiFont"></select>
-                                </label>
-                                <label>
-                                    <span>Wrap width (chars)</span>
-                                    <input
+                                        id="randomMinUpper"
+                                        class="input mono num"
                                         type="number"
-                                        id="asciiWidth"
-                                        min="1"
-                                        max="120"
-                                        value="80"
+                                        min="0"
+                                        value="0"
                                     />
-                                </label>
-                                <fieldset class="ascii-align">
-                                    <legend>Align</legend>
-                                    <label>
-                                        <input
-                                            type="radio"
-                                            name="asciiAlign"
-                                            id="asciiAlignLeft"
-                                            value="left"
+                                </li>
+                                <li id="randomMinSymbolsRow">
+                                    <label class="k" for="randomMinSymbols">Symbols</label>
+                                    <input
+                                        id="randomMinSymbols"
+                                        class="input mono num"
+                                        type="number"
+                                        min="0"
+                                        value="0"
+                                    />
+                                </li>
+                            </ul>
+                        </section>
+                        <section id="randomDigitOptions">
+                            <h2 class="group-title">Numbers</h2>
+                            <ul class="kv edit narrow">
+                                <li id="randomAllowZeroRow">
+                                    <span class="k">Leading zero</span>
+                                    <label class="check"
+                                        ><input
+                                            type="checkbox"
+                                            id="randomAllowZero"
                                             checked
-                                        />
-                                        <span>Left</span>
-                                    </label>
-                                    <label>
+                                        />Allowed</label
+                                    >
+                                </li>
+                                <li id="randomDigitRangeRow" hidden>
+                                    <span class="k">Between</span>
+                                    <span class="range-pair">
                                         <input
-                                            type="radio"
-                                            name="asciiAlign"
-                                            id="asciiAlignCenter"
-                                            value="center"
+                                            id="randomDigitMin"
+                                            class="input mono"
+                                            inputmode="numeric"
+                                            aria-label="Smallest number"
+                                            placeholder="1"
                                         />
-                                        <span>Center</span>
-                                    </label>
-                                    <label>
+                                        <span class="meta">and</span>
                                         <input
-                                            type="radio"
-                                            name="asciiAlign"
-                                            id="asciiAlignRight"
-                                            value="right"
+                                            id="randomDigitMax"
+                                            class="input mono"
+                                            inputmode="numeric"
+                                            aria-label="Largest number"
+                                            placeholder="999999"
                                         />
-                                        <span>Right</span>
-                                    </label>
-                                </fieldset>
-                            </div>
-                        </div>
-
-                        <div class="ascii-output-card">
-                            <div class="panel-header">
-                                <div>
-                                    <h3>Output</h3>
-                                    <p class="muted" id="asciiStatus">Enter text to render</p>
-                                </div>
-                            </div>
-                            <pre id="asciiOutput" class="ascii-output" aria-live="polite"></pre>
-                        </div>
-                    </section>
+                                    </span>
+                                </li>
+                            </ul>
+                        </section>
+                        <h2 class="group-title">
+                            Strings <span class="meta" id="randomMeta"></span>
+                            <button
+                                id="randomCopyAll"
+                                class="icon-btn"
+                                type="button"
+                                title="Copy all, one per line"
+                            >
+                                <svg class="i"><use href="#i-copy" /></svg>
+                            </button>
+                        </h2>
+                        <p class="notice" id="randomError" hidden></p>
+                        <ul class="kv bare" id="randomResults"></ul>
+                    </div>
                 </div>
 
-                <!-- QR Code workspace: generates OTP/WiFi/custom payloads into 250×250 images. -->
-                <div id="qrWorkspace" class="tool-view legacy" hidden>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>QR Code</h2>
-                                <p>Create 250×250 QR images for OTP, WiFi, or custom text.</p>
-                            </div>
-                            <div class="generator-actions">
-                                <button class="ghost-btn" id="qrDownload" disabled>Download</button>
-                                <button id="qrGenerate">Generate</button>
-                            </div>
+                <!-- ASCII Art: text drawn in a FIGlet font as it is typed. -->
+                <div id="asciiWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field">
+                            <span class="label">Font</span>
+                            <select id="asciiFont"></select>
+                        </label>
+                        <label class="field">
+                            <span class="label">Wrap at</span>
+                            <input
+                                id="asciiWidth"
+                                class="input mono num"
+                                type="number"
+                                min="10"
+                                max="200"
+                                value="80"
+                            />
+                            <span class="label">columns</span>
+                        </label>
+                        <div class="seg" role="group" aria-label="Align">
+                            <button type="button" id="asciiAlignLeft" aria-pressed="true">
+                                Left
+                            </button>
+                            <button type="button" id="asciiAlignCenter" aria-pressed="false">
+                                Center
+                            </button>
+                            <button type="button" id="asciiAlignRight" aria-pressed="false">
+                                Right
+                            </button>
                         </div>
-                        <div class="qr-grid">
-                            <div class="qr-controls">
-                                <div class="qr-modes" role="group" aria-label="QR payload type">
-                                    <label class="checkbox">
-                                        <input
-                                            type="radio"
-                                            name="qrMode"
-                                            id="qrModeOtp"
-                                            value="otp"
-                                            checked
-                                        />
-                                        <span>OTP</span>
-                                    </label>
-                                    <label class="checkbox">
-                                        <input
-                                            type="radio"
-                                            name="qrMode"
-                                            id="qrModeWifi"
-                                            value="wifi"
-                                        />
-                                        <span>WiFi</span>
-                                    </label>
-                                    <label class="checkbox">
-                                        <input
-                                            type="radio"
-                                            name="qrMode"
-                                            id="qrModeCustom"
-                                            value="custom"
-                                        />
-                                        <span>Custom</span>
-                                    </label>
+                    </div>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">Text</h2>
+                            </header>
+                            <textarea
+                                id="asciiInput"
+                                class="editor"
+                                spellcheck="false"
+                                placeholder="Type the text to draw"
+                            ></textarea>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">Art</h2>
+                                <span class="meta" id="asciiMeta"></span>
+                                <div class="pane-actions">
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="asciiOutput"
+                                    >
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        id="asciiDownload"
+                                        title="Save as ascii-art.txt"
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
+                                    </button>
                                 </div>
-                                <div class="qr-row" data-mode="otp">
-                                    <label>
-                                        <span>Account</span>
+                            </header>
+                            <p class="notice" id="asciiError" hidden></p>
+                            <pre id="asciiOutput" class="editor" aria-live="polite"></pre>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- QR Code: an authenticator entry, a Wi-Fi network or any text, drawn as it is typed. -->
+                <div id="qrWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <div class="seg" role="group" aria-label="Content">
+                            <button type="button" id="qrModeOtp" aria-pressed="true">
+                                Authenticator
+                            </button>
+                            <button type="button" id="qrModeWifi" aria-pressed="false">
+                                Wi-Fi
+                            </button>
+                            <button type="button" id="qrModeCustom" aria-pressed="false">
+                                Text
+                            </button>
+                        </div>
+                        <label
+                            class="field"
+                            title="How much of the code can be damaged and still read"
+                        >
+                            <span class="label">Error correction</span>
+                            <select id="qrEccLevel">
+                                <option value="L">L (7%)</option>
+                                <option value="M">M (15%)</option>
+                                <option value="Q" selected>Q (25%)</option>
+                                <option value="H">H (30%)</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span class="label">Format</span>
+                            <select id="qrFormat">
+                                <option value="png">PNG</option>
+                                <option value="svg">SVG</option>
+                                <option value="webp">WebP</option>
+                                <option value="jpg">JPG</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="qrContentLabel">Account</h2>
+                            </header>
+                            <div class="sheet" id="qrFields">
+                                <ul class="kv edit" data-mode="otp">
+                                    <li>
+                                        <label class="k" for="qrOtpIssuer">Issuer</label>
                                         <input
-                                            type="text"
-                                            id="qrOtpAccount"
-                                            spellcheck="false"
-                                            placeholder="user@example.com"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>Secret</span>
-                                        <input
-                                            type="text"
-                                            id="qrOtpSecret"
-                                            spellcheck="false"
-                                            placeholder="JBSWY3DPEHPK3PXP"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>Issuer</span>
-                                        <input
-                                            type="text"
                                             id="qrOtpIssuer"
+                                            class="input"
                                             spellcheck="false"
-                                            placeholder="Transform"
+                                            autocomplete="off"
+                                            placeholder="Example Inc."
                                         />
-                                    </label>
-                                    <label>
-                                        <span>Algorithm</span>
+                                    </li>
+                                    <li>
+                                        <label class="k" for="qrOtpAccount">Account</label>
+                                        <input
+                                            id="qrOtpAccount"
+                                            class="input"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="you@example.com"
+                                        />
+                                    </li>
+                                    <li>
+                                        <label class="k" for="qrOtpSecret">Secret</label>
+                                        <input
+                                            id="qrOtpSecret"
+                                            class="input mono"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="Base32, e.g. JBSWY3DPEHPK3PXP"
+                                        />
+                                    </li>
+                                    <li>
+                                        <label class="k" for="qrOtpAlgorithm">Algorithm</label>
                                         <select id="qrOtpAlgorithm">
-                                            <option value="SHA1" selected>SHA1</option>
-                                            <option value="SHA256">SHA256</option>
-                                            <option value="SHA512">SHA512</option>
+                                            <option value="SHA1" selected>SHA-1</option>
+                                            <option value="SHA256">SHA-256</option>
+                                            <option value="SHA512">SHA-512</option>
                                         </select>
-                                    </label>
-                                    <label>
-                                        <span>Period (seconds)</span>
+                                    </li>
+                                    <li>
+                                        <label class="k" for="qrOtpPeriod">Period</label>
+                                        <span class="field">
+                                            <input
+                                                id="qrOtpPeriod"
+                                                class="input mono num"
+                                                type="number"
+                                                min="1"
+                                                max="300"
+                                                value="30"
+                                            />
+                                            <span class="label">seconds</span>
+                                        </span>
+                                    </li>
+                                    <li>
+                                        <label class="k" for="qrOtpDigits">Digits</label>
                                         <input
-                                            type="number"
-                                            id="qrOtpPeriod"
-                                            min="1"
-                                            max="300"
-                                            value="30"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>Digits</span>
-                                        <input
-                                            type="number"
                                             id="qrOtpDigits"
+                                            class="input mono num"
+                                            type="number"
                                             min="4"
                                             max="10"
                                             value="6"
                                         />
-                                    </label>
-                                </div>
-                                <div class="qr-row hidden" data-mode="wifi">
-                                    <label>
-                                        <span>Type</span>
+                                    </li>
+                                </ul>
+                                <ul class="kv edit" data-mode="wifi" hidden>
+                                    <li>
+                                        <label class="k" for="qrWifiSsid">Network</label>
+                                        <input
+                                            id="qrWifiSsid"
+                                            class="input"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="The name it broadcasts"
+                                        />
+                                    </li>
+                                    <li>
+                                        <label class="k" for="qrWifiType">Security</label>
                                         <select id="qrWifiType">
-                                            <option value="WPA" selected>WPA/WPA2</option>
+                                            <option value="WPA" selected>WPA / WPA2 / WPA3</option>
                                             <option value="WEP">WEP</option>
                                             <option value="nopass">None</option>
                                         </select>
-                                    </label>
-                                    <label>
-                                        <span>SSID</span>
+                                    </li>
+                                    <li id="qrWifiPassRow">
+                                        <label class="k" for="qrWifiPass">Password</label>
                                         <input
-                                            type="text"
-                                            id="qrWifiSsid"
-                                            spellcheck="false"
-                                            placeholder="MyNetwork"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>Password</span>
-                                        <input
-                                            type="text"
                                             id="qrWifiPass"
+                                            class="input mono"
                                             spellcheck="false"
-                                            placeholder="Optional if open"
+                                            autocomplete="off"
                                         />
-                                    </label>
-                                </div>
-                                <div class="qr-row hidden" data-mode="custom">
-                                    <label>
-                                        <span>Text</span>
-                                        <input
-                                            type="text"
-                                            id="qrCustomString"
-                                            spellcheck="false"
-                                            placeholder="Any text to encode"
-                                        />
-                                    </label>
-                                </div>
-                                <div class="qr-row">
-                                    <label>
-                                        <span>Error correction</span>
-                                        <select id="qrEccLevel">
-                                            <option value="L">L (7%)</option>
-                                            <option value="M">M (15%)</option>
-                                            <option value="Q" selected>Q (25%)</option>
-                                            <option value="H">H (30%)</option>
-                                        </select>
-                                    </label>
-                                </div>
-                                <div class="qr-row qr-format-row">
-                                    <label>
-                                        <span>Format</span>
-                                        <select id="qrFormat">
-                                            <option value="png">PNG</option>
-                                            <option value="jpg">JPG</option>
-                                            <option value="webp">WEBP</option>
-                                            <option value="svg">SVG</option>
-                                        </select>
-                                    </label>
-                                    <p class="muted qr-size-hint">
-                                        Output size fixed at 250 × 250.
-                                    </p>
-                                </div>
+                                    </li>
+                                </ul>
                             </div>
-                            <div class="qr-preview-wrap">
-                                <div class="qr-preview" id="qrPreview">
-                                    <div class="muted">Generate to see a 250 × 250 QR preview.</div>
+                            <textarea
+                                id="qrCustomString"
+                                class="editor wrap"
+                                spellcheck="false"
+                                placeholder="A link or any text"
+                                hidden
+                            ></textarea>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">QR code</h2>
+                                <span class="meta" id="qrMeta"></span>
+                                <div class="pane-actions">
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        id="qrDownload"
+                                        title="Save"
+                                        disabled
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
+                                    </button>
                                 </div>
-                                <div class="qr-meta" id="qrMeta"></div>
-                                <div class="qr-error" id="qrError"></div>
-                            </div>
-                        </div>
-                    </section>
+                            </header>
+                            <p class="notice" id="qrError" hidden></p>
+                            <div class="qr-stage" id="qrPreview"></div>
+                            <ul class="kv qr-payload" id="qrPayload" hidden></ul>
+                        </section>
+                    </div>
                 </div>
 
-                <!-- QR Parse workspace: upload images to decode embedded QR payloads. -->
-                <div id="qrParseWorkspace" class="tool-view legacy" hidden>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>QR Parse</h2>
-                                <p>Upload PNG/JPG/WebP/AVIF to extract all QR payloads.</p>
-                            </div>
-                        </div>
-                        <div class="qr-parse-grid">
-                            <div id="qrParseDrop" class="qr-parse-drop">
-                                <p>Drag & drop images here, or choose files</p>
-                                <input
-                                    type="file"
-                                    id="qrParseFile"
-                                    multiple
-                                    accept="image/png,image/jpeg,image/webp,image/avif"
-                                />
-                                <button class="ghost-btn">Browse</button>
-                            </div>
-                            <div id="qrParseResults" class="qr-parse-results">
-                                <div class="muted">Drop images to see decoded payloads.</div>
-                            </div>
-                        </div>
-                    </section>
+                <!-- QR Parse: every QR code in every image dropped. -->
+                <div id="qrParseWorkspace" class="tool-body" hidden>
+                    <div class="sheet">
+                        <label class="drop" id="qrParseDrop">
+                            <svg class="i"><use href="#i-upload" /></svg>
+                            <span><strong>Drop images here</strong> or <u>choose them</u></span>
+                            <span class="meta"
+                                >PNG, JPG, WebP or AVIF · as many as you like · nothing leaves this
+                                page</span
+                            >
+                            <input
+                                type="file"
+                                id="qrParseFile"
+                                multiple
+                                accept="image/png,image/jpeg,image/webp,image/avif"
+                                hidden
+                            />
+                        </label>
+                        <div id="qrParseResults"></div>
+                    </div>
                 </div>
 
-                <!-- TOTP workspace: computes RFC 6238 codes based on user-selected algorithm/period/digits. -->
-                <div id="totpWorkspace" class="tool-view legacy" hidden>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>TOTP</h2>
-                                <p>Compute time-based OTP codes from a Base32 secret.</p>
-                            </div>
-                        </div>
-                        <div class="totp-form">
-                            <label>
-                                <span>Secret</span>
+                <!-- TOTP: the current code for a secret, ticking. -->
+                <div id="totpWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field">
+                            <span class="label">Algorithm</span>
+                            <select id="totpAlgorithm">
+                                <option value="SHA1" selected>SHA-1</option>
+                                <option value="SHA256">SHA-256</option>
+                                <option value="SHA512">SHA-512</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span class="label">Period</span>
+                            <input
+                                id="totpPeriod"
+                                class="input mono num"
+                                type="number"
+                                min="1"
+                                max="300"
+                                value="30"
+                            />
+                            <span class="label">seconds</span>
+                        </label>
+                        <label class="field">
+                            <span class="label">Digits</span>
+                            <input
+                                id="totpDigits"
+                                class="input mono num"
+                                type="number"
+                                min="4"
+                                max="10"
+                                value="6"
+                            />
+                        </label>
+                    </div>
+                    <div class="sheet">
+                        <ul class="kv edit">
+                            <li>
+                                <label class="k" for="totpSecret">Secret</label>
                                 <input
-                                    type="text"
                                     id="totpSecret"
+                                    class="input mono"
                                     spellcheck="false"
-                                    placeholder="6BDRT7ATRRCZV5ISFLOHAHQLYF4ZORG7"
+                                    autocomplete="off"
+                                    placeholder="Base32, or a whole otpauth:// link"
                                 />
-                            </label>
-                            <label>
-                                <span>Algorithm</span>
-                                <select id="totpAlgorithm">
-                                    <option value="SHA256" selected>SHA256</option>
-                                    <option value="SHA1">SHA1</option>
-                                    <option value="SHA512">SHA512</option>
-                                </select>
-                            </label>
-                            <label>
-                                <span>Period (seconds)</span>
-                                <input type="number" id="totpPeriod" min="1" max="300" value="30" />
-                            </label>
-                            <label>
-                                <span>Digits</span>
-                                <input type="number" id="totpDigits" min="4" max="10" value="6" />
-                            </label>
-                        </div>
-                        <div class="totp-result" id="totpResult">
-                            <code id="totpCode" title="Click to copy"></code>
-                            <div class="totp-meta">
-                                <span id="totpPeriodLabel"></span>
-                                <span id="totpRemainingLabel"></span>
+                                <span></span>
+                            </li>
+                        </ul>
+                        <p class="notice" id="totpError" hidden></p>
+                        <div class="otp" id="totpResult" hidden>
+                            <button
+                                class="otp-code"
+                                type="button"
+                                id="totpCode"
+                                title="Copy"
+                            ></button>
+                            <div class="otp-time">
+                                <span class="otp-bar"><span id="totpBar"></span></span>
+                                <span class="meta" id="totpRemaining"></span>
                             </div>
-                            <div class="totp-error" id="totpError"></div>
                         </div>
-                    </section>
+                    </div>
                 </div>
 
-                <div id="dataWorkspace" class="tool-view legacy" hidden>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>SQL Inserts</h2>
-                                <p>
-                                    Paste MySQL DDL or JSON / JSON Schema to generate sample data.
-                                </p>
-                            </div>
-                            <div class="generator-actions data-actions">
-                                <label>
-                                    <span>Rows</span>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        max="100"
-                                        value="5"
-                                        id="dataRows"
-                                    />
-                                </label>
-                                <button id="dataGenerate">Generate</button>
-                            </div>
+                <!-- SQL Inserts: sample rows for a schema, its columns adjustable one by one. -->
+                <div id="dataWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field">
+                            <span class="label">Rows</span>
+                            <input
+                                id="dataRows"
+                                class="input mono num"
+                                type="number"
+                                min="1"
+                                max="100"
+                                value="5"
+                            />
+                        </label>
+                        <div class="bar-end">
+                            <button id="dataGenerate" class="btn primary" type="button" data-run>
+                                <svg class="i"><use href="#i-refresh" /></svg>New
+                                <kbd data-keys="run">⌘↵</kbd>
+                            </button>
                         </div>
-                        <textarea
-                            id="dataSchema"
-                            spellcheck="false"
-                            placeholder="CREATE TABLE users (\n  id INT PRIMARY KEY,\n  name VARCHAR(64),\n  created_at DATETIME\n);"
-                        ></textarea>
-                        <div id="dataColumnEditor" class="data-column-editor">
-                            <div class="muted">Paste a schema to configure column ranges.</div>
-                        </div>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2>Generated Data</h2>
-                                <p>Outputs INSERT SQL for DDL, JSON array for JSON inputs.</p>
-                            </div>
-                            <div class="panel-actions">
-                                <button id="dataCopy" class="copy-btn" title="Copy data">
-                                    📋 Copy
-                                </button>
-                            </div>
-                        </div>
-                        <textarea id="dataOutput" spellcheck="false" readonly></textarea>
-                    </section>
+                    </div>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">Schema</h2>
+                                <span class="meta">MySQL CREATE TABLE, JSON or JSON Schema</span>
+                            </header>
+                            <textarea
+                                id="dataSchema"
+                                class="editor"
+                                spellcheck="false"
+                                placeholder="CREATE TABLE users (&#10;  id INT PRIMARY KEY,&#10;  name VARCHAR(64),&#10;  created_at DATETIME&#10;);"
+                            ></textarea>
+                            <div class="params" id="dataColumnEditor" hidden></div>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="dataOutputLabel">Rows</h2>
+                                <span class="meta" id="dataOutputMeta"></span>
+                                <div class="pane-actions">
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="dataOutput"
+                                    >
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        id="dataSave"
+                                        title="Save"
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <p class="notice" id="dataError" hidden></p>
+                            <textarea
+                                id="dataOutput"
+                                class="editor"
+                                spellcheck="false"
+                                readonly
+                            ></textarea>
+                        </section>
+                    </div>
                 </div>
 
-                <!-- Text Diff workspace: compares two texts using patience diff algorithm. -->
                 <!-- Text Diff: two texts above, their unified diff below. -->
                 <div id="diffWorkspace" class="tool-body" hidden>
                     <div class="split">
