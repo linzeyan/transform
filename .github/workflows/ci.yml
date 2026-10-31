@@ -68,4 +68,4 @@ jobs:
             --exclude='./*.cjs' --exclude='./*.json' --exclude='./pkg/*.d.ts' \
             -C www . -C "$GITHUB_WORKSPACE" LICENSE
           tar -tzf transform-www.tar.gz
-          gh release create "$GITHUB_REF_NAME" --generate-notes transform-www.tar.gz
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes transform-www.tar.gz
