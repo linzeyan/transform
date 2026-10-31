@@ -1,0 +1,2092 @@
+<!doctype html>
+<html lang="en-US">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>transform</title>
+        <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+        <link rel="stylesheet" href="css/main.css" />
+    </head>
+
+    <body class="ui">
+        <!-- Icons stroke in currentcolor, so each takes the colour of the control it sits in. -->
+        <svg class="sprite" width="0" height="0" aria-hidden="true">
+            <symbol id="i-copy" viewBox="0 0 16 16">
+                <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+                <path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />
+            </symbol>
+            <symbol id="i-save" viewBox="0 0 16 16">
+                <path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10" />
+            </symbol>
+            <symbol id="i-swap" viewBox="0 0 16 16">
+                <path d="M3 5.5h10M10.5 3 13 5.5 10.5 8M13 10.5H3M5.5 8 3 10.5 5.5 13" />
+            </symbol>
+            <symbol id="i-clear" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" /></symbol>
+            <symbol id="i-search" viewBox="0 0 16 16">
+                <circle cx="7" cy="7" r="4.5" />
+                <path d="M10.5 10.5 14 14" />
+            </symbol>
+            <symbol id="i-upload" viewBox="0 0 24 24">
+                <path
+                    d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"
+                />
+            </symbol>
+            <symbol id="i-replace" viewBox="0 0 16 16">
+                <path d="M13 3v4.5a2 2 0 0 1-2 2H3M6 6.5 3 9.5l3 3" />
+            </symbol>
+            <symbol id="i-clock" viewBox="0 0 16 16">
+                <circle cx="8" cy="8" r="5.5" />
+                <path d="M8 5v3l2 1.5" />
+            </symbol>
+            <symbol id="i-menu" viewBox="0 0 16 16">
+                <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+            </symbol>
+            <symbol id="i-arrow" viewBox="0 0 16 16">
+                <path d="M3 8h10M9.5 4.5 13 8l-3.5 3.5" />
+            </symbol>
+            <symbol id="i-up" viewBox="0 0 16 16"><path d="M8 13V3M4.5 6.5 8 3l3.5 3.5" /></symbol>
+            <symbol id="i-down" viewBox="0 0 16 16">
+                <path d="M8 3v10M4.5 9.5 8 13l3.5-3.5" />
+            </symbol>
+            <symbol id="i-refresh" viewBox="0 0 16 16">
+                <path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" />
+            </symbol>
+            <symbol id="i-eye" viewBox="0 0 16 16">
+                <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" />
+                <circle cx="8" cy="8" r="2" />
+            </symbol>
+        </svg>
+        <div class="app" id="app">
+            <nav class="nav" aria-label="Tools">
+                <div class="brand"><span class="brand-mark">t</span>transform</div>
+                <label class="nav-search">
+                    <svg class="i"><use href="#i-search" /></svg>
+                    <input
+                        id="toolSearch"
+                        class="input"
+                        type="search"
+                        placeholder="Search tools"
+                        aria-label="Search tools"
+                        autocomplete="off"
+                    />
+                    <kbd>/</kbd>
+                </label>
+                <div class="nav-list" id="toolGroups"></div>
+            </nav>
+            <main class="tool">
+                <header class="tool-head">
+                    <button
+                        id="navToggle"
+                        class="icon-btn nav-toggle"
+                        type="button"
+                        aria-label="Tools"
+                        aria-expanded="false"
+                    >
+                        <svg class="i"><use href="#i-menu" /></svg>
+                    </button>
+                    <h1 id="toolName" class="tool-title">Format Converter</h1>
+                    <p id="toolDesc" class="tool-hint">
+                        JSON, YAML, TOML, XML, Go, Protobuf, GraphQL and more, either way
+                    </p>
+                    <span id="status" class="tool-status" role="status"></span>
+                </header>
+
+                <!-- Format Converter: text either way, or data files in batches. -->
+                <div id="converterWorkspace" class="tool-body">
+                    <div class="bar">
+                        <div class="seg" role="group" aria-label="Source">
+                            <button id="formatModeText" type="button" aria-pressed="true">
+                                Text
+                            </button>
+                            <button id="formatModeFiles" type="button" aria-pressed="false">
+                                Files
+                            </button>
+                        </div>
+                        <div class="field" id="textFormats">
+                            <select id="fromSelect" aria-label="From">
+                                <option value="JSON">JSON</option>
+                                <option value="Go Struct">Go Struct</option>
+                                <option value="YAML">YAML</option>
+                                <option value="TOML">TOML</option>
+                                <option value="XML">XML</option>
+                                <option value="JSON Schema">JSON Schema</option>
+                                <option value="GraphQL Schema">GraphQL Schema</option>
+                                <option value="Protobuf">Protobuf</option>
+                                <option value="TOON">TOON</option>
+                                <option value="MsgPack">MsgPack</option>
+                            </select>
+                            <button id="swap" class="icon-btn" type="button" title="Swap">
+                                <svg class="i"><use href="#i-swap" /></svg>
+                            </button>
+                            <select id="toSelect" aria-label="To">
+                                <option value="Go Struct">Go Struct</option>
+                                <option value="JSON">JSON</option>
+                                <option value="YAML">YAML</option>
+                                <option value="TOML">TOML</option>
+                                <option value="XML">XML</option>
+                                <option value="JSON Schema">JSON Schema</option>
+                                <option value="GraphQL Schema">GraphQL Schema</option>
+                                <option value="Protobuf">Protobuf</option>
+                                <option value="TOON">TOON</option>
+                                <option value="MsgPack">MsgPack</option>
+                            </select>
+                        </div>
+                        <div class="field" id="fileFormats" hidden>
+                            <select id="tabularFrom" aria-label="From"></select>
+                            <svg class="i meta"><use href="#i-arrow" /></svg>
+                            <select id="tabularTo" aria-label="To"></select>
+                        </div>
+                        <div class="bar-end" id="fileActions" hidden>
+                            <button id="tabularDownload" class="btn" type="button" disabled>
+                                <svg class="i"><use href="#i-save" /></svg>Save all
+                            </button>
+                            <button
+                                id="tabularConvert"
+                                class="btn primary"
+                                type="button"
+                                data-run
+                                disabled
+                            >
+                                Convert <kbd data-keys="run">⌘↵</kbd>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="split" id="formatText">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="inputLabel">JSON</h2>
+                                <span class="meta" id="inputMeta"></span>
+                                <div class="pane-actions">
+                                    <button id="formatInput" class="btn quiet" type="button">
+                                        Format
+                                    </button>
+                                    <button id="minifyInput" class="btn quiet" type="button">
+                                        Minify
+                                    </button>
+                                    <button id="clear" class="icon-btn" type="button" title="Clear">
+                                        <svg class="i"><use href="#i-clear" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <textarea
+                                id="input"
+                                class="editor"
+                                spellcheck="false"
+                                placeholder="Paste or type JSON"
+                            ></textarea>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="outputLabel">Go Struct</h2>
+                                <span class="meta" id="outputMeta"></span>
+                                <div class="pane-actions">
+                                    <button id="formatOutput" class="btn quiet" type="button">
+                                        Format
+                                    </button>
+                                    <button id="minifyOutput" class="btn quiet" type="button">
+                                        Minify
+                                    </button>
+                                    <button id="copy" class="icon-btn" type="button" title="Copy">
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                    <button
+                                        id="saveOutput"
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Save"
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <textarea
+                                id="output"
+                                class="editor"
+                                spellcheck="false"
+                                readonly
+                                hidden
+                            ></textarea>
+                            <div class="empty" id="outputEmpty">
+                                <strong id="outputEmptyTitle"
+                                    >Go Struct appears here as you type</strong
+                                >
+                                <span>or drop a file on the input</span>
+                            </div>
+                        </section>
+                    </div>
+                    <div class="sheet" id="formatFiles" hidden>
+                        <label class="drop" id="tabularDrop">
+                            <svg class="i"><use href="#i-upload" /></svg>
+                            <span><strong>Drop files here</strong> or <u>choose files</u></span>
+                            <span class="meta"
+                                >Parquet, Avro, Arrow IPC / Feather, CSV, TSV and JSON · nothing
+                                leaves this page</span
+                            >
+                            <input type="file" id="tabularFile" multiple hidden />
+                        </label>
+                        <p class="notice" id="tabularStatus" hidden></p>
+                        <table class="files" id="tabularFiles" hidden>
+                            <thead>
+                                <tr>
+                                    <th>File</th>
+                                    <th>Rows</th>
+                                    <th>Size</th>
+                                    <th>Result</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabularFileList"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Image Converter: a batch of images to one format, with an optional watermark. -->
+                <div id="imageWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field">
+                            <span class="label">Convert to</span>
+                            <select id="imageTargetFormat"></select>
+                        </label>
+                        <div class="options" id="imageOptions"></div>
+                        <label class="check"
+                            ><input type="checkbox" id="watermarkToggle" />Watermark</label
+                        >
+                        <div class="bar-end">
+                            <button id="imageDownload" class="btn" type="button" disabled>
+                                <svg class="i"><use href="#i-save" /></svg>Save all
+                            </button>
+                            <button
+                                id="imageConvert"
+                                class="btn primary"
+                                type="button"
+                                data-run
+                                disabled
+                            >
+                                Convert <kbd data-keys="run">⌘↵</kbd>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="bar" id="imageWatermarkControls" hidden>
+                        <label class="field grow">
+                            <span class="label">Text</span>
+                            <input
+                                id="watermarkText"
+                                class="input"
+                                placeholder="Watermark text"
+                                spellcheck="false"
+                            />
+                        </label>
+                        <label class="range">
+                            <span class="label">Opacity</span>
+                            <input
+                                type="range"
+                                id="watermarkOpacity"
+                                min="0"
+                                max="100"
+                                value="35"
+                            />
+                            <output id="watermarkOpacityValue">35</output>
+                        </label>
+                        <label class="range">
+                            <span class="label">Rotation</span>
+                            <input
+                                type="range"
+                                id="watermarkRotation"
+                                min="-90"
+                                max="90"
+                                value="30"
+                            />
+                            <output id="watermarkRotationValue">30</output>
+                        </label>
+                        <label class="range">
+                            <span class="label">Spacing</span>
+                            <input
+                                type="range"
+                                id="watermarkSpacing"
+                                min="10"
+                                max="200"
+                                value="32"
+                            />
+                            <output id="watermarkSpacingValue">32</output>
+                        </label>
+                        <label class="range">
+                            <span class="label">Size</span>
+                            <input
+                                type="range"
+                                id="watermarkFontSize"
+                                min="8"
+                                max="96"
+                                value="32"
+                            />
+                            <output id="watermarkFontSizeValue">32</output>
+                        </label>
+                        <label class="field">
+                            <span class="label">Colour</span>
+                            <input type="color" id="watermarkColor" value="#ffffff" />
+                        </label>
+                        <label class="field">
+                            <span class="label">Repeat</span>
+                            <select id="watermarkDirection">
+                                <option value="both">Both ways</option>
+                                <option value="horizontal">Across</option>
+                                <option value="vertical">Down</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="sheet">
+                        <label class="drop" id="imageDrop">
+                            <svg class="i"><use href="#i-upload" /></svg>
+                            <span><strong>Drop images here</strong> or <u>choose files</u></span>
+                            <span class="meta" id="imageInputMeta"
+                                >JPG, PNG, WebP or AVIF · nothing leaves this page</span
+                            >
+                            <input
+                                type="file"
+                                id="imageFile"
+                                multiple
+                                accept=".png,.jpg,.jpeg,.webp,.avif,image/*"
+                                hidden
+                            />
+                        </label>
+                        <p class="notice" id="imageError" hidden></p>
+                        <div class="previews" id="imagePreviews" hidden>
+                            <figure class="preview">
+                                <figcaption>
+                                    <span class="group-title">Original</span>
+                                    <span class="meta" id="imageOriginalMeta"></span>
+                                </figcaption>
+                                <div class="preview-frame" id="imageOriginalPreview"></div>
+                            </figure>
+                            <figure class="preview">
+                                <figcaption>
+                                    <span class="group-title">Converted</span>
+                                    <span class="meta" id="imageOutputMeta"></span>
+                                </figcaption>
+                                <div class="preview-frame" id="imageOutputPreview"></div>
+                            </figure>
+                        </div>
+                        <table class="files" id="imageBatchTable" hidden>
+                            <thead>
+                                <tr>
+                                    <th>File</th>
+                                    <th>Size</th>
+                                    <th>Result</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="imageBatchList"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Base Encoders, Base Decoders and Hash: text or a file in, every form of it out. -->
+                <div id="coderWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <div class="seg" id="coderSource" role="group" aria-label="Input">
+                            <button type="button" id="coderModeText" aria-pressed="true">
+                                Text
+                            </button>
+                            <button type="button" id="coderModeFile" aria-pressed="false">
+                                File
+                            </button>
+                        </div>
+                        <label class="field" id="decodeVariantWrap" hidden>
+                            <span class="label">Read as</span>
+                            <select id="decodeVariant"></select>
+                        </label>
+                        <label class="check" id="encodeLowerWrap" hidden
+                            ><input type="checkbox" id="encodeLower" />Lowercase Base16 and
+                            Base32</label
+                        >
+                        <div class="options" id="hashControls" hidden>
+                            <label class="field">
+                                <span class="label">Digest as</span>
+                                <select id="hashEncoding">
+                                    <option value="base16">Hex</option>
+                                    <option value="base64">Base64</option>
+                                    <option value="base64_raw">Base64, no padding</option>
+                                    <option value="base64_url">Base64 URL</option>
+                                    <option value="base64_url_raw">Base64 URL, no padding</option>
+                                </select>
+                            </label>
+                            <label class="check" id="hashUpperWrap"
+                                ><input type="checkbox" id="hashUpper" />Uppercase</label
+                            >
+                            <label class="check"
+                                ><input type="checkbox" id="hashUseHmac" />HMAC</label
+                            >
+                            <label class="field grow" id="hashSecretWrap" hidden>
+                                <span class="label">Key</span>
+                                <input
+                                    type="password"
+                                    id="hashHmacSecret"
+                                    class="input mono"
+                                    placeholder="HMAC key"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                />
+                            </label>
+                        </div>
+                    </div>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="coderInputLabel">Text</h2>
+                                <span class="meta" id="coderInputMeta"></span>
+                            </header>
+                            <textarea
+                                id="coderInput"
+                                class="editor wrap"
+                                spellcheck="false"
+                                placeholder="Type or paste text"
+                            ></textarea>
+                            <div class="sheet" id="coderFilePane" hidden>
+                                <label class="drop" id="coderDrop">
+                                    <svg class="i"><use href="#i-upload" /></svg>
+                                    <span
+                                        ><strong>Drop a file here</strong> or
+                                        <u>choose one</u></span
+                                    >
+                                    <span class="meta">Any file · nothing leaves this page</span>
+                                    <input type="file" id="coderFile" hidden />
+                                </label>
+                            </div>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="coderResultHeading">Encodings</h2>
+                                <span class="meta" id="coderResultMeta"></span>
+                                <div class="pane-actions" id="coderResultActions" hidden>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="coderOutput"
+                                    >
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        id="coderDownloadDecoded"
+                                        title="Save the decoded bytes"
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <textarea
+                                id="coderOutput"
+                                class="editor wrap"
+                                spellcheck="false"
+                                readonly
+                                hidden
+                            ></textarea>
+                            <div class="sheet" id="coderResults"></div>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- Password Hashers: hash a password, or check one against a stored hash. -->
+                <div id="kdfWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <div class="seg" role="group" aria-label="Algorithm">
+                            <button type="button" id="kdfAlgoBcrypt" aria-pressed="true">
+                                Bcrypt
+                            </button>
+                            <button type="button" id="kdfAlgoArgon" aria-pressed="false">
+                                Argon2
+                            </button>
+                        </div>
+                        <div class="options" id="bcryptOptions">
+                            <label
+                                class="field"
+                                title="Each step doubles the work: 10 is about 0.1 s"
+                            >
+                                <span class="label">Cost</span>
+                                <input
+                                    id="bcryptCost"
+                                    class="input mono num"
+                                    type="number"
+                                    min="4"
+                                    max="31"
+                                    value="10"
+                                />
+                            </label>
+                        </div>
+                        <div class="options" id="argonOptions" hidden>
+                            <label class="field">
+                                <span class="label">Variant</span>
+                                <select id="argonType">
+                                    <option value="argon2id">Argon2id</option>
+                                    <option value="argon2i">Argon2i</option>
+                                    <option value="argon2d">Argon2d</option>
+                                </select>
+                            </label>
+                            <label class="field">
+                                <span class="label">Memory</span>
+                                <input
+                                    id="argonMem"
+                                    class="input mono num"
+                                    type="number"
+                                    min="4"
+                                    max="1024"
+                                    value="64"
+                                />
+                                <span class="label">MiB</span>
+                            </label>
+                            <label class="field">
+                                <span class="label">Passes</span>
+                                <input
+                                    id="argonTime"
+                                    class="input mono num"
+                                    type="number"
+                                    min="1"
+                                    max="12"
+                                    value="3"
+                                />
+                            </label>
+                            <label class="field">
+                                <span class="label">Lanes</span>
+                                <input
+                                    id="argonParallelism"
+                                    class="input mono num"
+                                    type="number"
+                                    min="1"
+                                    max="8"
+                                    value="1"
+                                />
+                            </label>
+                            <label class="field">
+                                <span class="label">Length</span>
+                                <input
+                                    id="argonHashLen"
+                                    class="input mono num"
+                                    type="number"
+                                    min="16"
+                                    max="64"
+                                    value="32"
+                                />
+                            </label>
+                        </div>
+                        <div class="bar-end">
+                            <button id="kdfGenerate" class="btn primary" type="button" data-run>
+                                Hash <kbd data-keys="run">⌘↵</kbd>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="sheet">
+                        <ul class="kv edit">
+                            <li>
+                                <label class="k" for="kdfPassword">Password</label>
+                                <input
+                                    id="kdfPassword"
+                                    class="input mono"
+                                    type="password"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                />
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    id="kdfShowPassword"
+                                    title="Show password"
+                                    aria-pressed="false"
+                                >
+                                    <svg class="i"><use href="#i-eye" /></svg>
+                                </button>
+                            </li>
+                            <li>
+                                <label class="k" for="kdfSalt">Salt</label>
+                                <input
+                                    id="kdfSalt"
+                                    class="input mono"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                    placeholder="New for every hash"
+                                />
+                                <span></span>
+                            </li>
+                        </ul>
+                        <h2 class="group-title">
+                            Hash <span class="meta" id="kdfOutputMeta"></span>
+                        </h2>
+                        <ul class="kv">
+                            <li>
+                                <span class="k" id="kdfOutputLabel">Bcrypt</span>
+                                <span class="v" id="kdfOutput"></span>
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Copy"
+                                    data-copy-from="kdfOutput"
+                                >
+                                    <svg class="i"><use href="#i-copy" /></svg>
+                                </button>
+                            </li>
+                        </ul>
+                        <h2 class="group-title">
+                            Verify
+                            <span class="meta">a stored hash against the password above</span>
+                        </h2>
+                        <ul class="kv edit">
+                            <li>
+                                <label class="k" for="kdfVerifyHash">Stored hash</label>
+                                <input
+                                    id="kdfVerifyHash"
+                                    class="input mono"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                    placeholder="$2b$10$… or $argon2id$v=19$…"
+                                />
+                                <span></span>
+                            </li>
+                        </ul>
+                        <p class="verdict" id="kdfVerdict" role="status" hidden></p>
+                    </div>
+                </div>
+
+                <!-- Encrypt / Decrypt: one direction at a time; the key stays in view because decrypting needs it back. -->
+                <div id="cryptoWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <div class="seg" role="group" aria-label="Direction">
+                            <button type="button" id="cryptoDirEncrypt" aria-pressed="true">
+                                Encrypt
+                            </button>
+                            <button type="button" id="cryptoDirDecrypt" aria-pressed="false">
+                                Decrypt
+                            </button>
+                        </div>
+                        <label class="field">
+                            <span class="label">Algorithm</span>
+                            <select id="cryptoAlgorithm">
+                                <option value="aes-256-gcm">AES-256-GCM</option>
+                                <option value="chacha20-poly1305">ChaCha20-Poly1305</option>
+                                <option value="xchacha20-poly1305">XChaCha20-Poly1305</option>
+                            </select>
+                        </label>
+                        <div class="seg" role="group" aria-label="Input">
+                            <button type="button" id="cryptoModeText" aria-pressed="true">
+                                Text
+                            </button>
+                            <button type="button" id="cryptoModeFile" aria-pressed="false">
+                                Files
+                            </button>
+                        </div>
+                        <div class="bar-end">
+                            <button id="cryptoRun" class="btn primary" type="button" data-run>
+                                <span id="cryptoRunLabel">Encrypt</span>
+                                <kbd data-keys="run">⌘↵</kbd>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="bar">
+                        <label class="field grow">
+                            <span class="label">Key</span>
+                            <input
+                                id="cryptoKey"
+                                class="input mono"
+                                spellcheck="false"
+                                autocomplete="off"
+                                placeholder="Base64 · made for you on the first run"
+                            />
+                            <button
+                                class="icon-btn"
+                                type="button"
+                                id="cryptoGenerateKey"
+                                title="New key"
+                            >
+                                <svg class="i"><use href="#i-refresh" /></svg>
+                            </button>
+                            <button
+                                class="icon-btn"
+                                type="button"
+                                title="Copy key"
+                                data-copy-from="cryptoKey"
+                            >
+                                <svg class="i"><use href="#i-copy" /></svg>
+                            </button>
+                        </label>
+                        <label class="field grow" id="cryptoNonceWrap">
+                            <span class="label">Nonce</span>
+                            <input
+                                id="cryptoNonce"
+                                class="input mono"
+                                spellcheck="false"
+                                autocomplete="off"
+                                placeholder="Base64 · new for every run"
+                            />
+                            <button
+                                class="icon-btn"
+                                type="button"
+                                title="Copy nonce"
+                                data-copy-from="cryptoNonce"
+                            >
+                                <svg class="i"><use href="#i-copy" /></svg>
+                            </button>
+                        </label>
+                    </div>
+                    <div class="split" id="cryptoText">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="cryptoInputLabel">Plaintext</h2>
+                                <span class="meta" id="cryptoInputMeta"></span>
+                            </header>
+                            <textarea
+                                id="cryptoInput"
+                                class="editor wrap"
+                                spellcheck="false"
+                                placeholder="Type or paste text to encrypt"
+                            ></textarea>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="cryptoOutputLabel">Ciphertext</h2>
+                                <span class="meta" id="cryptoOutputMeta"></span>
+                                <div class="pane-actions">
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="cryptoOutput"
+                                    >
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        id="cryptoSaveText"
+                                        title="Save"
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <p class="notice" id="cryptoError" hidden></p>
+                            <textarea
+                                id="cryptoOutput"
+                                class="editor wrap"
+                                spellcheck="false"
+                                readonly
+                            ></textarea>
+                        </section>
+                    </div>
+                    <div class="sheet" id="cryptoFiles" hidden>
+                        <label class="drop" id="cryptoDrop">
+                            <svg class="i"><use href="#i-upload" /></svg>
+                            <span><strong>Drop files here</strong> or <u>choose files</u></span>
+                            <span class="meta" id="cryptoDropMeta"
+                                >Each file carries its own nonce · nothing leaves this page</span
+                            >
+                            <input type="file" id="cryptoFile" multiple hidden />
+                        </label>
+                        <table class="files" id="cryptoFileTable" hidden>
+                            <thead>
+                                <tr>
+                                    <th>File</th>
+                                    <th>Size</th>
+                                    <th>Result</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="cryptoFileList"></tbody>
+                        </table>
+                        <button id="cryptoDownload" class="btn" type="button" hidden>
+                            <svg class="i"><use href="#i-save" /></svg>Save all
+                        </button>
+                    </div>
+                </div>
+
+                <!-- HTML ↔ Markdown, URL and JWT: two editors, each converting into the other. -->
+                <div id="pairWorkspace" class="tool-body" hidden>
+                    <div class="bar" id="jwtControls" hidden>
+                        <label class="field">
+                            <span class="label">Algorithm</span>
+                            <select id="jwtAlgorithm">
+                                <option value="HS256">HS256</option>
+                                <option value="HS384">HS384</option>
+                                <option value="HS512">HS512</option>
+                            </select>
+                        </label>
+                        <label class="field grow">
+                            <span class="label">Secret</span>
+                            <input
+                                type="password"
+                                id="jwtSecret"
+                                class="input mono"
+                                placeholder="Signs the payload as you type"
+                                spellcheck="false"
+                                autocomplete="off"
+                            />
+                        </label>
+                    </div>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="pairInputLabel">Markdown</h2>
+                                <span class="meta" id="pairInputHint"></span>
+                                <div class="pane-actions">
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="pairInput"
+                                    >
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <textarea id="pairInput" class="editor" spellcheck="false"></textarea>
+                            <div id="urlQuerySection" class="params" hidden>
+                                <div class="params-head">
+                                    <h3 class="group-title">Query parameters</h3>
+                                    <div class="pane-actions">
+                                        <button id="urlQueryAdd" class="btn quiet" type="button">
+                                            + Add
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="urlQueryTable"></div>
+                                <p id="urlQueryEmpty" class="empty-line" hidden>
+                                    No query parameters
+                                </p>
+                            </div>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="pairOutputLabel">HTML</h2>
+                                <span class="meta" id="pairOutputHint"></span>
+                                <div class="pane-actions">
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="pairOutput"
+                                    >
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <textarea id="pairOutput" class="editor" spellcheck="false"></textarea>
+                            <pre id="pairOutputMeta" class="pane-foot" hidden></pre>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- Number Bases: type into any base, the others follow. -->
+                <div id="numberWorkspace" class="tool-body" hidden>
+                    <div class="sheet">
+                        <ul class="kv edit">
+                            <li>
+                                <label class="k" for="numberBinary">Binary</label>
+                                <input
+                                    id="numberBinary"
+                                    class="input mono"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                    placeholder="1010"
+                                />
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Copy"
+                                    data-copy-from="numberBinary"
+                                >
+                                    <svg class="i"><use href="#i-copy" /></svg>
+                                </button>
+                            </li>
+                            <li>
+                                <label class="k" for="numberOctal">Octal</label>
+                                <input
+                                    id="numberOctal"
+                                    class="input mono"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                    placeholder="12"
+                                />
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Copy"
+                                    data-copy-from="numberOctal"
+                                >
+                                    <svg class="i"><use href="#i-copy" /></svg>
+                                </button>
+                            </li>
+                            <li>
+                                <label class="k" for="numberDecimal">Decimal</label>
+                                <input
+                                    id="numberDecimal"
+                                    class="input mono"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                    placeholder="10"
+                                />
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Copy"
+                                    data-copy-from="numberDecimal"
+                                >
+                                    <svg class="i"><use href="#i-copy" /></svg>
+                                </button>
+                            </li>
+                            <li>
+                                <label class="k" for="numberHex">Hexadecimal</label>
+                                <input
+                                    id="numberHex"
+                                    class="input mono"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                    placeholder="a"
+                                />
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Copy"
+                                    data-copy-from="numberHex"
+                                >
+                                    <svg class="i"><use href="#i-copy" /></svg>
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Unit Converter: type into any unit, the others follow. -->
+                <div id="unitWorkspace" class="tool-body" hidden>
+                    <div class="sheet">
+                        <div class="groups">
+                            <div>
+                                <h2 class="group-title">Bits</h2>
+                                <ul class="kv edit">
+                                    <li>
+                                        <label class="k" for="unitBit">Bit</label>
+                                        <input
+                                            id="unitBit"
+                                            class="input mono"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="8"
+                                        />
+                                        <button
+                                            class="icon-btn"
+                                            type="button"
+                                            title="Copy"
+                                            data-copy-from="unitBit"
+                                        >
+                                            <svg class="i"><use href="#i-copy" /></svg>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <label class="k" for="unitKilobit">Kilobit</label>
+                                        <input
+                                            id="unitKilobit"
+                                            class="input mono"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="1"
+                                        />
+                                        <button
+                                            class="icon-btn"
+                                            type="button"
+                                            title="Copy"
+                                            data-copy-from="unitKilobit"
+                                        >
+                                            <svg class="i"><use href="#i-copy" /></svg>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <label class="k" for="unitMegabit">Megabit</label>
+                                        <input
+                                            id="unitMegabit"
+                                            class="input mono"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="0.001"
+                                        />
+                                        <button
+                                            class="icon-btn"
+                                            type="button"
+                                            title="Copy"
+                                            data-copy-from="unitMegabit"
+                                        >
+                                            <svg class="i"><use href="#i-copy" /></svg>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <label class="k" for="unitGigabit">Gigabit</label>
+                                        <input
+                                            id="unitGigabit"
+                                            class="input mono"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="0.000001"
+                                        />
+                                        <button
+                                            class="icon-btn"
+                                            type="button"
+                                            title="Copy"
+                                            data-copy-from="unitGigabit"
+                                        >
+                                            <svg class="i"><use href="#i-copy" /></svg>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <label class="k" for="unitTerabit">Terabit</label>
+                                        <input
+                                            id="unitTerabit"
+                                            class="input mono"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="0.000000001"
+                                        />
+                                        <button
+                                            class="icon-btn"
+                                            type="button"
+                                            title="Copy"
+                                            data-copy-from="unitTerabit"
+                                        >
+                                            <svg class="i"><use href="#i-copy" /></svg>
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h2 class="group-title">Bytes</h2>
+                                <ul class="kv edit">
+                                    <li>
+                                        <label class="k" for="unitByte">Byte</label>
+                                        <input
+                                            id="unitByte"
+                                            class="input mono"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="1"
+                                        />
+                                        <button
+                                            class="icon-btn"
+                                            type="button"
+                                            title="Copy"
+                                            data-copy-from="unitByte"
+                                        >
+                                            <svg class="i"><use href="#i-copy" /></svg>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <label class="k" for="unitKilobyte">Kilobyte</label>
+                                        <input
+                                            id="unitKilobyte"
+                                            class="input mono"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="0.125"
+                                        />
+                                        <button
+                                            class="icon-btn"
+                                            type="button"
+                                            title="Copy"
+                                            data-copy-from="unitKilobyte"
+                                        >
+                                            <svg class="i"><use href="#i-copy" /></svg>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <label class="k" for="unitMegabyte">Megabyte</label>
+                                        <input
+                                            id="unitMegabyte"
+                                            class="input mono"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="0.000125"
+                                        />
+                                        <button
+                                            class="icon-btn"
+                                            type="button"
+                                            title="Copy"
+                                            data-copy-from="unitMegabyte"
+                                        >
+                                            <svg class="i"><use href="#i-copy" /></svg>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <label class="k" for="unitGigabyte">Gigabyte</label>
+                                        <input
+                                            id="unitGigabyte"
+                                            class="input mono"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="0.000000125"
+                                        />
+                                        <button
+                                            class="icon-btn"
+                                            type="button"
+                                            title="Copy"
+                                            data-copy-from="unitGigabyte"
+                                        >
+                                            <svg class="i"><use href="#i-copy" /></svg>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <label class="k" for="unitTerabyte">Terabyte</label>
+                                        <input
+                                            id="unitTerabyte"
+                                            class="input mono"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="0.000000000125"
+                                        />
+                                        <button
+                                            class="icon-btn"
+                                            type="button"
+                                            title="Copy"
+                                            data-copy-from="unitTerabyte"
+                                        >
+                                            <svg class="i"><use href="#i-copy" /></svg>
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Timestamp: one input read in any format; every rendering is a copyable row. -->
+                <div id="timestampWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <select
+                            id="timestampFormat"
+                            aria-label="Input format"
+                            title="How the input is read"
+                        >
+                            <option value="auto">Auto</option>
+                            <option value="unix_s">Unix seconds</option>
+                            <option value="unix_ms">Unix milliseconds</option>
+                            <option value="unix_us">Unix microseconds</option>
+                            <option value="unix_ns">Unix nanoseconds</option>
+                            <option value="custom">Custom…</option>
+                        </select>
+                        <input
+                            id="timestampPattern"
+                            class="input mono pattern"
+                            aria-label="Input pattern"
+                            placeholder="%d-%m-%Y %H:%M"
+                            spellcheck="false"
+                            autocomplete="off"
+                            hidden
+                        />
+                        <label class="field grow">
+                            <input
+                                id="timestampInput"
+                                class="input mono large"
+                                aria-label="Timestamp or date"
+                                placeholder="1767323045, 2026-01-02T03:04:05Z, now - 3d…"
+                                spellcheck="false"
+                                autocomplete="off"
+                            />
+                        </label>
+                        <select
+                            id="timestampZone"
+                            aria-label="Time zone for input without one"
+                        ></select>
+                        <button id="timestampNow" class="btn" type="button">
+                            <svg class="i"><use href="#i-clock" /></svg>Now
+                        </button>
+                    </div>
+                    <p class="readout">
+                        <span class="chip" id="timestampKind" hidden></span>
+                        <span id="timestampWords"></span>
+                        <span class="meta" id="timestampHelp"></span>
+                    </p>
+                    <div class="sheet">
+                        <div class="groups">
+                            <div>
+                                <h2 class="group-title">Unix</h2>
+                                <ul class="kv" id="timestampUnix"></ul>
+                                <h2 class="group-title">Relative</h2>
+                                <ul class="kv" id="timestampRelative"></ul>
+                                <h2 class="group-title">
+                                    Your formats <span class="meta">kept in this browser</span>
+                                </h2>
+                                <ul class="kv custom" id="timestampCustom"></ul>
+                                <button id="timestampAddFormat" class="btn quiet add" type="button">
+                                    + Add format
+                                </button>
+                            </div>
+                            <div>
+                                <h2 class="group-title">UTC</h2>
+                                <ul class="kv" id="timestampUtc"></ul>
+                                <h2 class="group-title">
+                                    Local <span class="meta" id="timestampZoneLabel"></span>
+                                </h2>
+                                <ul class="kv" id="timestampLocal"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- IP Tools: one address, block or range; everything it implies. -->
+                <div id="ipv4Workspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field grow">
+                            <input
+                                id="ipv4Input"
+                                class="input mono large"
+                                aria-label="IP address, CIDR block or range"
+                                placeholder="192.168.0.1, 10.0.0.0/8, 10.0.0.0/255.255.0.0, 2001:db8::/32"
+                                spellcheck="false"
+                                autocomplete="off"
+                            />
+                        </label>
+                    </div>
+                    <div class="sheet" id="ipv4Results"></div>
+                </div>
+
+                <!-- UUID: one of every version, new on demand. -->
+                <div id="uuidWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="check"
+                            ><input type="checkbox" id="uuidUpper" />Uppercase</label
+                        >
+                        <div class="bar-end">
+                            <button id="uuidRegenerate" class="btn primary" type="button" data-run>
+                                <svg class="i"><use href="#i-refresh" /></svg>New
+                                <kbd data-keys="run">⌘↵</kbd>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="sheet"><ul class="kv" id="uuidList"></ul></div>
+                </div>
+
+                <!-- User-Agent: current strings from the table the weekly workflow refreshes. -->
+                <div id="userAgentWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field">
+                            <span class="label">Browser</span>
+                            <select id="uaBrowser">
+                                <option value="">Any</option>
+                                <option value="chrome">Chrome</option>
+                                <option value="firefox">Firefox</option>
+                                <option value="safari">Safari</option>
+                                <option value="edge">Edge</option>
+                                <option value="vivaldi">Vivaldi</option>
+                                <option value="yandex">Yandex</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span class="label">Platform</span>
+                            <select id="uaOS">
+                                <option value="">Any</option>
+                                <option value="windows">Windows</option>
+                                <option value="macos">macOS</option>
+                                <option value="linux">Linux</option>
+                                <option value="android">Android</option>
+                                <option value="ios">iOS</option>
+                            </select>
+                        </label>
+                        <span class="meta" id="uaCount"></span>
+                    </div>
+                    <div class="sheet"><ul class="kv" id="uaResults"></ul></div>
+                </div>
+
+                <!-- SSH Key: a key pair in OpenSSH format, public and private side by side. -->
+                <div id="sshWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <div class="seg" role="group" aria-label="Key type">
+                            <button type="button" id="sshTypeEd25519" aria-pressed="true">
+                                Ed25519
+                            </button>
+                            <button type="button" id="sshTypeRsa" aria-pressed="false">RSA</button>
+                        </div>
+                        <label class="field" id="sshBitsWrap" hidden>
+                            <span class="label">Bits</span>
+                            <select id="sshBits">
+                                <option value="2048">2048</option>
+                                <option value="3072">3072</option>
+                                <option value="4096" selected>4096</option>
+                            </select>
+                        </label>
+                        <label class="field grow">
+                            <span class="label">Comment</span>
+                            <input
+                                id="sshComment"
+                                class="input mono"
+                                spellcheck="false"
+                                autocomplete="off"
+                                placeholder="you@host"
+                            />
+                        </label>
+                        <div class="bar-end">
+                            <button id="sshGenerate" class="btn primary" type="button" data-run>
+                                Generate <kbd data-keys="run">⌘↵</kbd>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">Public key</h2>
+                                <span class="meta" id="sshFingerprint"></span>
+                                <div class="pane-actions">
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="sshPublic"
+                                    >
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        id="sshSavePublic"
+                                        title="Save"
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <textarea
+                                id="sshPublic"
+                                class="editor wrap"
+                                spellcheck="false"
+                                readonly
+                                placeholder="Goes in ~/.ssh/authorized_keys on the server"
+                            ></textarea>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">Private key</h2>
+                                <span class="meta">stays with you, unencrypted</span>
+                                <div class="pane-actions">
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="sshPrivate"
+                                    >
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        id="sshSavePrivate"
+                                        title="Save"
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <textarea
+                                id="sshPrivate"
+                                class="editor"
+                                spellcheck="false"
+                                readonly
+                            ></textarea>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- Browser Fingerprint: what this browser tells a page without asking. -->
+                <div id="fingerprintWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field grow search">
+                            <svg class="i"><use href="#i-search" /></svg>
+                            <input
+                                id="fingerprintSearch"
+                                class="input"
+                                type="search"
+                                spellcheck="false"
+                                autocomplete="off"
+                                placeholder="Filter by name or value"
+                            />
+                        </label>
+                        <span class="meta" id="fingerprintCount"></span>
+                        <div class="bar-end">
+                            <button id="fingerprintRefresh" class="btn" type="button">
+                                <svg class="i"><use href="#i-refresh" /></svg>Read again
+                            </button>
+                            <button
+                                id="fingerprintCopyAll"
+                                class="icon-btn"
+                                type="button"
+                                title="Copy all"
+                            >
+                                <svg class="i"><use href="#i-copy" /></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="sheet"><div class="groups flow" id="fingerprintGrid"></div></div>
+                </div>
+
+                <!-- SSL Inspector: a PEM certificate or chain in, each certificate's fields out. -->
+                <div id="certWorkspace" class="tool-body" hidden>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">PEM</h2>
+                                <span class="meta">a certificate or a whole chain</span>
+                                <div class="pane-actions">
+                                    <button id="certSample" class="btn quiet" type="button">
+                                        Sample chain
+                                    </button>
+                                </div>
+                            </header>
+                            <textarea
+                                id="certInput"
+                                class="editor"
+                                spellcheck="false"
+                                placeholder="-----BEGIN CERTIFICATE-----"
+                            ></textarea>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">Certificates</h2>
+                                <span class="meta" id="certSummary"></span>
+                            </header>
+                            <div class="sheet" id="certResults"></div>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- Random: strings from the characters picked, new on every change. -->
+                <div id="randomWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field">
+                            <span class="label">Length</span>
+                            <input
+                                id="randomLength"
+                                class="input mono num"
+                                type="number"
+                                min="1"
+                                max="2048"
+                                value="24"
+                            />
+                        </label>
+                        <label class="field">
+                            <span class="label">Count</span>
+                            <input
+                                id="randomCount"
+                                class="input mono num"
+                                type="number"
+                                min="1"
+                                max="256"
+                                value="5"
+                            />
+                        </label>
+                        <label class="check"
+                            ><input type="checkbox" id="randomIncludeDigits" checked />0–9</label
+                        >
+                        <label class="check"
+                            ><input type="checkbox" id="randomIncludeLower" />a–z</label
+                        >
+                        <label class="check"
+                            ><input type="checkbox" id="randomIncludeUpper" />A–Z</label
+                        >
+                        <label class="check"
+                            ><input type="checkbox" id="randomIncludeSymbols" />Symbols</label
+                        >
+                        <label class="field">
+                            <span class="label">Leave out</span>
+                            <input
+                                id="randomExclude"
+                                class="input mono pattern"
+                                spellcheck="false"
+                                autocomplete="off"
+                                placeholder="e.g. O0Il1"
+                            />
+                        </label>
+                        <div class="bar-end">
+                            <button id="randomGenerate" class="btn primary" type="button" data-run>
+                                <svg class="i"><use href="#i-refresh" /></svg>New
+                                <kbd data-keys="run">⌘↵</kbd>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="sheet">
+                        <section id="randomSymbolsGroup" hidden>
+                            <h2 class="group-title">
+                                Symbols <span class="meta">the ones to draw from</span>
+                            </h2>
+                            <div class="toggles" id="randomSymbolToggles"></div>
+                        </section>
+                        <section id="randomMinimums" hidden>
+                            <h2 class="group-title">
+                                At least <span class="meta">in every string</span>
+                            </h2>
+                            <ul class="kv edit narrow">
+                                <li id="randomMinDigitsRow">
+                                    <label class="k" for="randomMinDigits">Digits</label>
+                                    <input
+                                        id="randomMinDigits"
+                                        class="input mono num"
+                                        type="number"
+                                        min="0"
+                                        value="0"
+                                    />
+                                </li>
+                                <li id="randomMinLowerRow">
+                                    <label class="k" for="randomMinLower">Lowercase</label>
+                                    <input
+                                        id="randomMinLower"
+                                        class="input mono num"
+                                        type="number"
+                                        min="0"
+                                        value="0"
+                                    />
+                                </li>
+                                <li id="randomMinUpperRow">
+                                    <label class="k" for="randomMinUpper">Uppercase</label>
+                                    <input
+                                        id="randomMinUpper"
+                                        class="input mono num"
+                                        type="number"
+                                        min="0"
+                                        value="0"
+                                    />
+                                </li>
+                                <li id="randomMinSymbolsRow">
+                                    <label class="k" for="randomMinSymbols">Symbols</label>
+                                    <input
+                                        id="randomMinSymbols"
+                                        class="input mono num"
+                                        type="number"
+                                        min="0"
+                                        value="0"
+                                    />
+                                </li>
+                            </ul>
+                        </section>
+                        <section id="randomDigitOptions">
+                            <h2 class="group-title">Numbers</h2>
+                            <ul class="kv edit narrow">
+                                <li id="randomAllowZeroRow">
+                                    <span class="k">Leading zero</span>
+                                    <label class="check"
+                                        ><input
+                                            type="checkbox"
+                                            id="randomAllowZero"
+                                            checked
+                                        />Allowed</label
+                                    >
+                                </li>
+                                <li id="randomDigitRangeRow" hidden>
+                                    <span class="k">Between</span>
+                                    <span class="range-pair">
+                                        <input
+                                            id="randomDigitMin"
+                                            class="input mono"
+                                            inputmode="numeric"
+                                            aria-label="Smallest number"
+                                            placeholder="1"
+                                        />
+                                        <span class="meta">and</span>
+                                        <input
+                                            id="randomDigitMax"
+                                            class="input mono"
+                                            inputmode="numeric"
+                                            aria-label="Largest number"
+                                            placeholder="999999"
+                                        />
+                                    </span>
+                                </li>
+                            </ul>
+                        </section>
+                        <h2 class="group-title">
+                            Strings <span class="meta" id="randomMeta"></span>
+                            <button
+                                id="randomCopyAll"
+                                class="icon-btn"
+                                type="button"
+                                title="Copy all, one per line"
+                            >
+                                <svg class="i"><use href="#i-copy" /></svg>
+                            </button>
+                        </h2>
+                        <p class="notice" id="randomError" hidden></p>
+                        <ul class="kv bare" id="randomResults"></ul>
+                    </div>
+                </div>
+
+                <!-- ASCII Art: text drawn in a FIGlet font as it is typed. -->
+                <div id="asciiWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field">
+                            <span class="label">Font</span>
+                            <select id="asciiFont"></select>
+                        </label>
+                        <label class="field">
+                            <span class="label">Wrap at</span>
+                            <input
+                                id="asciiWidth"
+                                class="input mono num"
+                                type="number"
+                                min="10"
+                                max="200"
+                                value="80"
+                            />
+                            <span class="label">columns</span>
+                        </label>
+                        <div class="seg" role="group" aria-label="Align">
+                            <button type="button" id="asciiAlignLeft" aria-pressed="true">
+                                Left
+                            </button>
+                            <button type="button" id="asciiAlignCenter" aria-pressed="false">
+                                Center
+                            </button>
+                            <button type="button" id="asciiAlignRight" aria-pressed="false">
+                                Right
+                            </button>
+                        </div>
+                    </div>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">Text</h2>
+                            </header>
+                            <textarea
+                                id="asciiInput"
+                                class="editor"
+                                spellcheck="false"
+                                placeholder="Type the text to draw"
+                            ></textarea>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">Art</h2>
+                                <span class="meta" id="asciiMeta"></span>
+                                <div class="pane-actions">
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="asciiOutput"
+                                    >
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        id="asciiDownload"
+                                        title="Save as ascii-art.txt"
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <p class="notice" id="asciiError" hidden></p>
+                            <pre id="asciiOutput" class="editor" aria-live="polite"></pre>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- QR Code: an authenticator entry, a Wi-Fi network or any text, drawn as it is typed. -->
+                <div id="qrWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <div class="seg" role="group" aria-label="Content">
+                            <button type="button" id="qrModeOtp" aria-pressed="true">
+                                Authenticator
+                            </button>
+                            <button type="button" id="qrModeWifi" aria-pressed="false">
+                                Wi-Fi
+                            </button>
+                            <button type="button" id="qrModeCustom" aria-pressed="false">
+                                Text
+                            </button>
+                        </div>
+                        <label
+                            class="field"
+                            title="How much of the code can be damaged and still read"
+                        >
+                            <span class="label">Error correction</span>
+                            <select id="qrEccLevel">
+                                <option value="L">L (7%)</option>
+                                <option value="M">M (15%)</option>
+                                <option value="Q" selected>Q (25%)</option>
+                                <option value="H">H (30%)</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span class="label">Format</span>
+                            <select id="qrFormat">
+                                <option value="png">PNG</option>
+                                <option value="svg">SVG</option>
+                                <option value="webp">WebP</option>
+                                <option value="jpg">JPG</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="qrContentLabel">Account</h2>
+                            </header>
+                            <div class="sheet" id="qrFields">
+                                <ul class="kv edit" data-mode="otp">
+                                    <li>
+                                        <label class="k" for="qrOtpIssuer">Issuer</label>
+                                        <input
+                                            id="qrOtpIssuer"
+                                            class="input"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="Example Inc."
+                                        />
+                                    </li>
+                                    <li>
+                                        <label class="k" for="qrOtpAccount">Account</label>
+                                        <input
+                                            id="qrOtpAccount"
+                                            class="input"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="you@example.com"
+                                        />
+                                    </li>
+                                    <li>
+                                        <label class="k" for="qrOtpSecret">Secret</label>
+                                        <input
+                                            id="qrOtpSecret"
+                                            class="input mono"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="Base32, e.g. JBSWY3DPEHPK3PXP"
+                                        />
+                                    </li>
+                                    <li>
+                                        <label class="k" for="qrOtpAlgorithm">Algorithm</label>
+                                        <select id="qrOtpAlgorithm">
+                                            <option value="SHA1" selected>SHA-1</option>
+                                            <option value="SHA256">SHA-256</option>
+                                            <option value="SHA512">SHA-512</option>
+                                        </select>
+                                    </li>
+                                    <li>
+                                        <label class="k" for="qrOtpPeriod">Period</label>
+                                        <span class="field">
+                                            <input
+                                                id="qrOtpPeriod"
+                                                class="input mono num"
+                                                type="number"
+                                                min="1"
+                                                max="300"
+                                                value="30"
+                                            />
+                                            <span class="label">seconds</span>
+                                        </span>
+                                    </li>
+                                    <li>
+                                        <label class="k" for="qrOtpDigits">Digits</label>
+                                        <input
+                                            id="qrOtpDigits"
+                                            class="input mono num"
+                                            type="number"
+                                            min="4"
+                                            max="10"
+                                            value="6"
+                                        />
+                                    </li>
+                                </ul>
+                                <ul class="kv edit" data-mode="wifi" hidden>
+                                    <li>
+                                        <label class="k" for="qrWifiSsid">Network</label>
+                                        <input
+                                            id="qrWifiSsid"
+                                            class="input"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                            placeholder="The name it broadcasts"
+                                        />
+                                    </li>
+                                    <li>
+                                        <label class="k" for="qrWifiType">Security</label>
+                                        <select id="qrWifiType">
+                                            <option value="WPA" selected>WPA / WPA2 / WPA3</option>
+                                            <option value="WEP">WEP</option>
+                                            <option value="nopass">None</option>
+                                        </select>
+                                    </li>
+                                    <li id="qrWifiPassRow">
+                                        <label class="k" for="qrWifiPass">Password</label>
+                                        <input
+                                            id="qrWifiPass"
+                                            class="input mono"
+                                            spellcheck="false"
+                                            autocomplete="off"
+                                        />
+                                    </li>
+                                </ul>
+                            </div>
+                            <textarea
+                                id="qrCustomString"
+                                class="editor wrap"
+                                spellcheck="false"
+                                placeholder="A link or any text"
+                                hidden
+                            ></textarea>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">QR code</h2>
+                                <span class="meta" id="qrMeta"></span>
+                                <div class="pane-actions">
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        id="qrDownload"
+                                        title="Save"
+                                        disabled
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <p class="notice" id="qrError" hidden></p>
+                            <div class="qr-stage" id="qrPreview"></div>
+                            <ul class="kv qr-payload" id="qrPayload" hidden></ul>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- QR Parse: every QR code in every image dropped. -->
+                <div id="qrParseWorkspace" class="tool-body" hidden>
+                    <div class="sheet">
+                        <label class="drop" id="qrParseDrop">
+                            <svg class="i"><use href="#i-upload" /></svg>
+                            <span><strong>Drop images here</strong> or <u>choose them</u></span>
+                            <span class="meta"
+                                >PNG, JPG, WebP or AVIF · as many as you like · nothing leaves this
+                                page</span
+                            >
+                            <input
+                                type="file"
+                                id="qrParseFile"
+                                multiple
+                                accept="image/png,image/jpeg,image/webp,image/avif"
+                                hidden
+                            />
+                        </label>
+                        <div id="qrParseResults"></div>
+                    </div>
+                </div>
+
+                <!-- TOTP: the current code for a secret, ticking. -->
+                <div id="totpWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field">
+                            <span class="label">Algorithm</span>
+                            <select id="totpAlgorithm">
+                                <option value="SHA1" selected>SHA-1</option>
+                                <option value="SHA256">SHA-256</option>
+                                <option value="SHA512">SHA-512</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span class="label">Period</span>
+                            <input
+                                id="totpPeriod"
+                                class="input mono num"
+                                type="number"
+                                min="1"
+                                max="300"
+                                value="30"
+                            />
+                            <span class="label">seconds</span>
+                        </label>
+                        <label class="field">
+                            <span class="label">Digits</span>
+                            <input
+                                id="totpDigits"
+                                class="input mono num"
+                                type="number"
+                                min="4"
+                                max="10"
+                                value="6"
+                            />
+                        </label>
+                    </div>
+                    <div class="sheet">
+                        <ul class="kv edit">
+                            <li>
+                                <label class="k" for="totpSecret">Secret</label>
+                                <input
+                                    id="totpSecret"
+                                    class="input mono"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                    placeholder="Base32, or a whole otpauth:// link"
+                                />
+                                <span></span>
+                            </li>
+                        </ul>
+                        <p class="notice" id="totpError" hidden></p>
+                        <div class="otp" id="totpResult" hidden>
+                            <button
+                                class="otp-code"
+                                type="button"
+                                id="totpCode"
+                                title="Copy"
+                            ></button>
+                            <div class="otp-time">
+                                <span class="otp-bar"><span id="totpBar"></span></span>
+                                <span class="meta" id="totpRemaining"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SQL Inserts: sample rows for a schema, its columns adjustable one by one. -->
+                <div id="dataWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field">
+                            <span class="label">Rows</span>
+                            <input
+                                id="dataRows"
+                                class="input mono num"
+                                type="number"
+                                min="1"
+                                max="100"
+                                value="5"
+                            />
+                        </label>
+                        <div class="bar-end">
+                            <button id="dataGenerate" class="btn primary" type="button" data-run>
+                                <svg class="i"><use href="#i-refresh" /></svg>New
+                                <kbd data-keys="run">⌘↵</kbd>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title">Schema</h2>
+                                <span class="meta">MySQL CREATE TABLE, JSON or JSON Schema</span>
+                            </header>
+                            <textarea
+                                id="dataSchema"
+                                class="editor"
+                                spellcheck="false"
+                                placeholder="CREATE TABLE users (&#10;  id INT PRIMARY KEY,&#10;  name VARCHAR(64),&#10;  created_at DATETIME&#10;);"
+                            ></textarea>
+                            <div class="params" id="dataColumnEditor" hidden></div>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="dataOutputLabel">Rows</h2>
+                                <span class="meta" id="dataOutputMeta"></span>
+                                <div class="pane-actions">
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="dataOutput"
+                                    >
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        id="dataSave"
+                                        title="Save"
+                                    >
+                                        <svg class="i"><use href="#i-save" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <p class="notice" id="dataError" hidden></p>
+                            <textarea
+                                id="dataOutput"
+                                class="editor"
+                                spellcheck="false"
+                                readonly
+                            ></textarea>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- Text Diff: two texts above, their unified diff below. -->
+                <div id="diffWorkspace" class="tool-body" hidden>
+                    <div class="split">
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="diffLeftLabel">Original</h2>
+                                <div class="pane-actions">
+                                    <button
+                                        id="diffSwap"
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Swap sides"
+                                    >
+                                        <svg class="i"><use href="#i-swap" /></svg>
+                                    </button>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="diffLeftInput"
+                                    >
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <textarea
+                                id="diffLeftInput"
+                                class="editor"
+                                spellcheck="false"
+                                placeholder="Paste the original text"
+                            ></textarea>
+                        </section>
+                        <section class="pane">
+                            <header class="pane-head">
+                                <h2 class="pane-title" id="diffRightLabel">Modified</h2>
+                                <div class="pane-actions">
+                                    <button
+                                        id="diffClear"
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Clear both"
+                                    >
+                                        <svg class="i"><use href="#i-clear" /></svg>
+                                    </button>
+                                    <button
+                                        class="icon-btn"
+                                        type="button"
+                                        title="Copy"
+                                        data-copy-from="diffRightInput"
+                                    >
+                                        <svg class="i"><use href="#i-copy" /></svg>
+                                    </button>
+                                </div>
+                            </header>
+                            <textarea
+                                id="diffRightInput"
+                                class="editor"
+                                spellcheck="false"
+                                placeholder="Paste the modified text"
+                            ></textarea>
+                        </section>
+                    </div>
+                    <section class="pane">
+                        <header class="pane-head">
+                            <h2 class="pane-title">Diff</h2>
+                            <span class="meta" id="diffSummary"></span>
+                            <div class="pane-actions">
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Copy"
+                                    data-copy-from="diffOutput"
+                                >
+                                    <svg class="i"><use href="#i-copy" /></svg>
+                                </button>
+                            </div>
+                        </header>
+                        <pre id="diffOutput" class="editor diff"></pre>
+                    </section>
+                </div>
+            </main>
+        </div>
+
+        <script type="module" src="main.js"></script>
+    </body>
+</html>

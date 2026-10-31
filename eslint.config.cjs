@@ -1,0 +1,90 @@
+// eslint.config.cjs
+// Minimal flat config tuned for the SPA; defines browser globals explicitly to avoid lint noise.
+const browserGlobals = {
+    window: 'readonly',
+    document: 'readonly',
+    console: 'readonly',
+    navigator: 'readonly',
+    location: 'readonly',
+    history: 'readonly',
+    localStorage: 'readonly',
+    sessionStorage: 'readonly',
+    fetch: 'readonly',
+    Headers: 'readonly',
+    Request: 'readonly',
+    Response: 'readonly',
+    AbortController: 'readonly',
+    AbortSignal: 'readonly',
+    setTimeout: 'readonly',
+    clearTimeout: 'readonly',
+    setInterval: 'readonly',
+    clearInterval: 'readonly',
+    requestAnimationFrame: 'readonly',
+    cancelAnimationFrame: 'readonly',
+    performance: 'readonly',
+    btoa: 'readonly',
+    atob: 'readonly',
+    Blob: 'readonly',
+    URL: 'readonly',
+    URLSearchParams: 'readonly',
+    Notification: 'readonly',
+    CSS: 'readonly',
+    PublicKeyCredential: 'readonly',
+    crypto: 'readonly',
+    TextEncoder: 'readonly',
+    TextDecoder: 'readonly',
+    File: 'readonly',
+    FileList: 'readonly',
+    FileReader: 'readonly',
+    FormData: 'readonly',
+    DOMParser: 'readonly',
+    HTMLElement: 'readonly',
+    HTMLInputElement: 'readonly',
+    HTMLTextAreaElement: 'readonly',
+    HTMLSelectElement: 'readonly',
+    Event: 'readonly',
+    Image: 'readonly',
+    Audio: 'readonly',
+    structuredClone: 'readonly',
+    // Only inside a VSCode webview (embed mode); main.js checks for it first.
+    acquireVsCodeApi: 'readonly',
+};
+const js = require('@eslint/js');
+module.exports = [
+    { ignores: ['node_modules/**', 'dist/**', 'build/**', 'www/pkg/**'] },
+    js.configs.recommended,
+    // CI-run maintenance scripts execute under Node, not in the page.
+    {
+        files: ['scripts/**/*.mjs'],
+        languageOptions: {
+            ecmaVersion: 'latest',
+            sourceType: 'module',
+            globals: {
+                console: 'readonly',
+                process: 'readonly',
+                fetch: 'readonly',
+                URL: 'readonly',
+                AbortSignal: 'readonly',
+            },
+        },
+    },
+    {
+        files: ['www/**/*.js'],
+        languageOptions: {
+            ecmaVersion: 'latest',
+            sourceType: 'module',
+            globals: browserGlobals,
+        },
+        rules: {
+            'no-unused-vars': [
+                'warn',
+                {
+                    argsIgnorePattern: '^_',
+                    varsIgnorePattern: '^_',
+                    caughtErrors: 'none',
+                },
+            ],
+            'no-undef': 'error',
+        },
+    },
+];
