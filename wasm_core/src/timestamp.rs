@@ -67,7 +67,12 @@ type Reader = fn(&str, DateTime<Utc>) -> Option<Parsed>;
 /// Every format the menu offers. Auto reads a number as Unix time in the unit its
 /// digit count implies, then tries the rest in this order (the shapes barely overlap).
 const FORMATS: &[(&str, &str, &str, Reader)] = &[
-    ("now", "Relative", "Now ± an amount (now - 3d)", read_now),
+    (
+        "now",
+        "Relative",
+        "Relative (now - 1h30m, 3 days ago)",
+        read_now,
+    ),
     ("unix_s", "Unix", "Unix seconds", |s, _| {
         read_unix(s, Some(Unit::Seconds))
     }),
@@ -172,39 +177,68 @@ fn regex(cell: &'static OnceLock<Regex>, pattern: &str) -> &'static Regex {
 
 fn read_now(text: &str, now: DateTime<Utc>) -> Option<Parsed> {
     static NOW: OnceLock<Regex> = OnceLock::new();
-    // U+2212 too: it is what the tool's own hint shows.
-    let caps = regex(
-        &NOW,
-        r"(?i)^now(?:\s*([+\-−])\s*(\d+)\s*(s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|d|days?|w|weeks?)?)?$",
-    )
-    .captures(text)?;
+    static AGO: OnceLock<Regex> = OnceLock::new();
+    static IN: OnceLock<Regex> = OnceLock::new();
+    let lower = text.trim().to_lowercase();
+    // As GNU date reads them: the same time a day away, not midnight.
+    let (later, amount) = match lower.as_str() {
+        "now" | "today" => (true, String::new()),
+        "yesterday" => (false, "1d".into()),
+        "tomorrow" => (true, "1d".into()),
+        _ => {
+            // U+2212 too: it is what the tool's own hint shows.
+            if let Some(caps) = regex(&NOW, r"^now\s*([+\-−])\s*(.+)$").captures(&lower) {
+                (&caps[1] == "+", caps[2].to_string())
+            } else if let Some(caps) = regex(&AGO, r"^(.+?)\s+ago$").captures(&lower) {
+                (false, caps[1].to_string())
+            } else {
+                let caps = regex(&IN, r"^in\s+(.+)$").captures(&lower)?;
+                (true, caps[1].to_string())
+            }
+        }
+    };
     let mut parsed = Parsed::at(now, "Now");
     parsed.relative = true;
-    let (Some(sign), Some(amount)) = (caps.get(1), caps.get(2)) else {
+    if amount.is_empty() {
         return Some(parsed);
-    };
-    let amount: i64 = amount.as_str().parse().ok()?;
-    let unit = caps.get(3).map_or("s", |m| m.as_str()).to_ascii_lowercase();
-    let (step, name) = match unit.chars().next()? {
-        'm' => (Duration::try_minutes(amount)?, "minute"),
-        'h' => (Duration::try_hours(amount)?, "hour"),
-        'd' => (Duration::try_days(amount)?, "day"),
-        'w' => (Duration::try_weeks(amount)?, "week"),
-        _ => (Duration::try_seconds(amount)?, "second"),
-    };
-    let later = sign.as_str() == "+";
-    let at = if later {
+    }
+    let (step, words) = read_duration(&amount)?;
+    parsed.when = When::At(if later {
         now.checked_add_signed(step)?
     } else {
         now.checked_sub_signed(step)?
-    };
-    let plural = if amount == 1 { "" } else { "s" };
-    parsed.when = When::At(at);
-    parsed.label = format!(
-        "Now {} {amount} {name}{plural}",
-        if later { "+" } else { "−" }
-    );
+    });
+    parsed.label = format!("Now {} {words}", if later { "+" } else { "−" });
     Some(parsed)
+}
+
+/// "1h30m", "2 days 3 hours", "45": amounts with units (seconds when bare).
+fn read_duration(text: &str) -> Option<(Duration, String)> {
+    static PART: OnceLock<Regex> = OnceLock::new();
+    static WHOLE: OnceLock<Regex> = OnceLock::new();
+    const UNIT: &str = r"(?:w|weeks?|d|days?|h|hrs?|hours?|m|mins?|minutes?|s|secs?|seconds?)?";
+    let whole = format!(r"^(?:\s*,?\s*(?:and\s+)?\d+\s*{UNIT})+\s*$");
+    if !regex(&WHOLE, &whole).is_match(text) {
+        return None;
+    }
+    let mut total = Duration::zero();
+    let mut words = Vec::new();
+    for caps in regex(&PART, &format!(r"(\d+)\s*({UNIT})")).captures_iter(text) {
+        let amount: i64 = caps[1].parse().ok()?;
+        let (step, name) = match caps[2].chars().next().unwrap_or('s') {
+            'w' => (Duration::try_weeks(amount)?, "week"),
+            'd' => (Duration::try_days(amount)?, "day"),
+            'h' => (Duration::try_hours(amount)?, "hour"),
+            'm' => (Duration::try_minutes(amount)?, "minute"),
+            _ => (Duration::try_seconds(amount)?, "second"),
+        };
+        total = total.checked_add(&step)?;
+        words.push(format!(
+            "{amount} {name}{}",
+            if amount == 1 { "" } else { "s" }
+        ));
+    }
+    Some((total, words.join(" ")))
 }
 
 #[derive(Clone, Copy)]
@@ -817,6 +851,21 @@ mod tests {
             (now().timestamp() + 3600).to_string()
         );
         assert_eq!(read("now − 90 minutes").label, "Now − 90 minutes");
+    }
+
+    // Only "now ± one amount" used to be read; these are what people type.
+    #[test]
+    fn relative_phrases_and_compound_amounts() {
+        let at = |input: &str| read(input).seconds.parse::<i64>().unwrap() - now().timestamp();
+        assert_eq!(at("now + 1h30m"), 5_400);
+        assert_eq!(read("now + 1h30m").label, "Now + 1 hour 30 minutes");
+        assert_eq!(at("now - 1 day 2 hours"), -93_600);
+        assert_eq!(at("3 days ago"), -3 * 86_400);
+        assert_eq!(at("in 2 hours"), 7_200);
+        assert_eq!(at("yesterday"), -86_400);
+        assert_eq!(at("Tomorrow"), 86_400);
+        assert!(read("yesterday").relative);
+        assert!(read_timestamp_at("now + soon", "auto", "", now()).is_err());
     }
 
     #[test]

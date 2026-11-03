@@ -9,7 +9,6 @@ use std::path::Path;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use font8x8::{BASIC_FONTS, UnicodeFonts};
 use image::{
     DynamicImage, ExtendedColorType, GenericImageView, ImageEncoder, ImageFormat, ImageReader,
     Rgba, RgbaImage,
@@ -117,11 +116,20 @@ pub enum WatermarkDirection {
     Both,
 }
 
+/// The watermark text as the page drew it with the browser's fonts: one alpha
+/// byte per pixel, row by row. An 8x8 ASCII bitmap font used to be drawn here,
+/// with no CJK and its size taken as a scale factor (32 px came out 256 px).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WatermarkMask {
+    pub width: u32,
+    pub height: u32,
+    pub alpha: Vec<u8>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WatermarkOptions {
-    /// Text to render as the watermark.
-    pub text: String,
+    pub mask: WatermarkMask,
     /// Opacity in the range [0.0, 1.0]; clamped during normalization.
     #[serde(default = "default_watermark_opacity")]
     pub opacity: f32,
@@ -131,9 +139,6 @@ pub struct WatermarkOptions {
     /// Pixel spacing between repeated watermarks; clamped to a minimum of 10px.
     #[serde(default = "default_watermark_spacing")]
     pub spacing: u32,
-    /// Requested font size in pixels; rendered using a compact bitmap font.
-    #[serde(default = "default_watermark_font_size")]
-    pub font_size: u32,
     /// Text color in hex (e.g., #FFFFFF or FFFFFF); alpha channel optional.
     #[serde(default = "default_watermark_color")]
     pub color: String,
@@ -162,10 +167,6 @@ fn default_watermark_spacing() -> u32 {
     32
 }
 
-fn default_watermark_font_size() -> u32 {
-    32
-}
-
 fn default_watermark_color() -> String {
     "#FFFFFF".into()
 }
@@ -180,19 +181,21 @@ struct RgbaColor {
 
 #[derive(Clone, Debug)]
 struct NormalizedWatermark {
-    text: String,
+    mask: WatermarkMask,
     opacity: f32,
     rotation_rad: f32,
     spacing: u32,
-    font_size: u32,
     color: RgbaColor,
     direction: WatermarkDirection,
 }
 
 impl WatermarkOptions {
     fn normalize(&self) -> Result<NormalizedWatermark, String> {
-        let text = self.text.trim().to_string();
-        if text.is_empty() {
+        let mask = &self.mask;
+        if mask.alpha.len() != (mask.width as usize) * (mask.height as usize) {
+            return Err("watermark mask does not match its size".into());
+        }
+        if mask.alpha.iter().all(|a| *a == 0) {
             return Err("watermark text cannot be empty".into());
         }
         let opacity = self.opacity.clamp(0.0, 1.0);
@@ -200,7 +203,6 @@ impl WatermarkOptions {
             return Err("watermark opacity must be greater than 0".into());
         }
         let spacing = self.spacing.clamp(10, 2_000);
-        let font_size = self.font_size.clamp(8, 256);
         let color = parse_hex_color(&self.color).unwrap_or(RgbaColor {
             r: 255,
             g: 255,
@@ -209,11 +211,10 @@ impl WatermarkOptions {
         });
         let rotation_rad = self.rotation_deg.to_radians();
         Ok(NormalizedWatermark {
-            text,
+            mask: mask.clone(),
             opacity,
             rotation_rad,
             spacing,
-            font_size,
             color,
             direction: self.direction,
         })
@@ -223,11 +224,10 @@ impl WatermarkOptions {
 impl Default for WatermarkOptions {
     fn default() -> Self {
         Self {
-            text: "watermark".into(),
+            mask: WatermarkMask::default(),
             opacity: default_watermark_opacity(),
             rotation_deg: 0.0,
             spacing: default_watermark_spacing(),
-            font_size: default_watermark_font_size(),
             color: default_watermark_color(),
             direction: WatermarkDirection::Both,
         }
@@ -265,6 +265,8 @@ pub struct ImageOptions {
     pub compression: Option<u8>,
     /// Request lossless when the encoder supports it (only AVIF toggleable here).
     pub lossless: Option<bool>,
+    /// RGB a JPG fills transparent areas with; white when absent.
+    pub background: Option<[u8; 3]>,
 }
 
 /// Converts image bytes between JPG/PNG/WebP/AVIF.
@@ -278,7 +280,7 @@ pub fn convert_image_bytes(
         return Err("input image is empty".into());
     }
     let source = PictureFormat::parse(from)?;
-    let target = PictureFormat::parse(to)?;
+    let target = resolve_target_format(from, to)?;
     let decoded = decode_image(bytes, source)?;
     let (width, height) = decoded.dimensions();
     let encoded = encode_image(&decoded, target, options)?;
@@ -489,8 +491,19 @@ fn encode_image(
     match target {
         PictureFormat::Jpeg => {
             let quality = options.quality.unwrap_or(85).clamp(1, 100);
-            let rgb = image.to_rgb8();
-            let (width, height) = rgb.dimensions();
+            // JPG has no alpha. Dropping it kept the colour under transparent
+            // pixels, which is usually black; composite over a background instead.
+            let background = options.background.unwrap_or([255, 255, 255]);
+            let rgba = image.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            let mut rgb = image::RgbImage::new(width, height);
+            for (out, px) in rgb.pixels_mut().zip(rgba.pixels()) {
+                let alpha = u32::from(px[3]);
+                for c in 0..3 {
+                    let over = u32::from(px[c]) * alpha + u32::from(background[c]) * (255 - alpha);
+                    out[c] = ((over + 127) / 255) as u8;
+                }
+            }
             let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(
                 Cursor::new(&mut buffer),
                 quality,
@@ -551,48 +564,18 @@ fn encode_image(
     Ok(buffer)
 }
 
-fn build_watermark_bitmap(text: &str, scale: u32, alpha: u8) -> (Vec<(i32, i32, u8)>, i32, i32) {
-    let scale = scale.max(1);
-    let glyph_gap = scale.max(1);
-    let mut cursor_x: i32 = 0;
-    let mut max_height: i32 = 0;
-    let mut pixels: Vec<(i32, i32, u8)> = Vec::new();
-
-    let total = text.chars().count();
-    for (idx, ch) in text.chars().enumerate() {
-        let glyph = BASIC_FONTS
-            .get(ch)
-            .unwrap_or_else(|| BASIC_FONTS.get('?').unwrap());
-        // Each glyph is 8x8 bits; we scale it up using nearest-neighbor.
-        let glyph_width = (8 * scale) as i32;
-        let glyph_height = (8 * scale) as i32;
-        max_height = max_height.max(glyph_height);
-
-        for (row, bits) in glyph.iter().enumerate() {
-            for col in 0..8 {
-                if (bits >> col) & 1 == 0 {
-                    continue;
-                }
-                let base_x = cursor_x + (col * scale as usize) as i32;
-                let base_y = (row * scale as usize) as i32;
-                for dx in 0..scale {
-                    for dy in 0..scale {
-                        pixels.push((base_x + dx as i32, base_y + dy as i32, alpha));
-                    }
-                }
-            }
-        }
-        // Advance cursor with a small gap to keep glyphs readable.
-        cursor_x += glyph_width + glyph_gap as i32;
-        // Avoid trailing gap on the final glyph.
-        if idx + 1 == total {
-            cursor_x -= glyph_gap as i32;
-        }
-    }
-
-    let width = cursor_x.max(1);
-    let height = max_height.max(1);
-    (pixels, width, height)
+fn mask_pixels(mask: &WatermarkMask, alpha: u8) -> Vec<(i32, i32, u8)> {
+    let width = mask.width.max(1) as usize;
+    mask.alpha
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| **a > 0)
+        .map(|(i, a)| {
+            // The mask's own alpha is the glyphs' antialiasing.
+            let scaled = (u16::from(*a) * u16::from(alpha) + 127) / 255;
+            ((i % width) as i32, (i / width) as i32, scaled as u8)
+        })
+        .collect()
 }
 
 fn apply_watermark(image: &DynamicImage, opts: &NormalizedWatermark) -> RgbaImage {
@@ -602,7 +585,8 @@ fn apply_watermark(image: &DynamicImage, opts: &NormalizedWatermark) -> RgbaImag
     let center_y = img_h as f32 / 2.0;
 
     let alpha = ((opts.opacity * opts.color.a as f32).clamp(0.0, 255.0)).round() as u8;
-    let (bitmap, text_w, text_h) = build_watermark_bitmap(&opts.text, opts.font_size, alpha);
+    let bitmap = mask_pixels(&opts.mask, alpha);
+    let (text_w, text_h) = (opts.mask.width as i32, opts.mask.height as i32);
 
     let step_x = (text_w + opts.spacing as i32).max((opts.spacing as i32) + 1);
     let step_y = (text_h + opts.spacing as i32).max((opts.spacing as i32) + 1);
@@ -936,6 +920,24 @@ mod tests {
         assert_eq!(res.error.as_deref(), Some("input image is empty"));
     }
 
+    fn solid_mask(width: u32, height: u32) -> WatermarkMask {
+        WatermarkMask {
+            width,
+            height,
+            alpha: vec![255; (width * height) as usize],
+        }
+    }
+
+    fn changed_pixels(before: &DynamicImage, data_base64: &str) -> usize {
+        let after = image::load_from_memory(&STANDARD.decode(data_base64).unwrap()).unwrap();
+        before
+            .to_rgba8()
+            .pixels()
+            .zip(after.to_rgba8().pixels())
+            .filter(|(a, b)| a != b)
+            .count()
+    }
+
     #[test]
     fn watermark_rejects_empty_text() {
         let png_bytes = encode_sample_as(PictureFormat::Png);
@@ -945,7 +947,11 @@ mod tests {
             &png_bytes,
             ImageOptions::default(),
             WatermarkOptions {
-                text: "".into(),
+                mask: WatermarkMask {
+                    width: 4,
+                    height: 2,
+                    alpha: vec![0; 8],
+                },
                 ..Default::default()
             },
         )
@@ -962,11 +968,10 @@ mod tests {
             &png_bytes,
             ImageOptions::default(),
             WatermarkOptions {
-                text: "WATERMARK".into(),
+                mask: solid_mask(3, 2),
                 opacity: 0.5,
                 rotation_deg: 30.0,
                 spacing: 12,
-                font_size: 16,
                 color: "#FF0000".into(),
                 direction: WatermarkDirection::Both,
             },
@@ -977,26 +982,83 @@ mod tests {
         assert!(res.data_base64.len() > 8);
     }
 
+    // A 64x48 image with one horizontal row of text came out untouched while the
+    // font size was read as a scale factor; the mask is drawn at its own size.
     #[test]
-    fn watermark_spacing_is_clamped() {
-        let png_bytes = encode_sample_as(PictureFormat::Png);
+    fn watermark_horizontal_marks_a_small_image() {
+        let source = gradient_rgba(64, 48);
+        let png_bytes = encode_dynamic_as(&source, PictureFormat::Png);
         let res = apply_image_watermark_bytes(
             "png",
             "png",
             &png_bytes,
             ImageOptions::default(),
             WatermarkOptions {
-                text: "X".into(),
+                mask: solid_mask(20, 10),
                 opacity: 0.7,
                 rotation_deg: 0.0,
-                spacing: 1, // below minimum
-                font_size: 12,
+                spacing: 1, // below minimum, clamped
                 color: "#00FF00".into(),
                 direction: WatermarkDirection::Horizontal,
             },
         )
         .expect("watermark applied");
-        assert!(res.data_url.starts_with("data:image/png;base64,"));
+        assert!(changed_pixels(&source, &res.data_base64) > 100);
+    }
+
+    #[test]
+    fn watermark_rejects_a_mask_of_the_wrong_size() {
+        let png_bytes = encode_sample_as(PictureFormat::Png);
+        let err = apply_image_watermark_bytes(
+            "png",
+            "png",
+            &png_bytes,
+            ImageOptions::default(),
+            WatermarkOptions {
+                mask: WatermarkMask {
+                    width: 4,
+                    height: 4,
+                    alpha: vec![255; 3],
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+        assert!(err.contains("size"), "{err}");
+    }
+
+    #[test]
+    fn original_keeps_the_source_format() {
+        let png_bytes = encode_sample_as(PictureFormat::Png);
+        let res = convert_image_bytes("png", "original", &png_bytes, ImageOptions::default())
+            .expect("original converts");
+        assert_eq!(res.format, "png");
+        let webp = encode_sample_as(PictureFormat::Webp);
+        let res = convert_image_bytes("webp", "Original", &webp, ImageOptions::default()).unwrap();
+        assert_eq!(res.mime, "image/webp");
+    }
+
+    // Transparent pixels used to turn black in a JPG: their RGB under alpha 0.
+    #[test]
+    fn jpg_fills_transparency_with_the_background() {
+        let clear = DynamicImage::ImageRgba8(RgbaImage::from_pixel(8, 8, Rgba([0, 0, 0, 0])));
+        let png_bytes = encode_dynamic_as(&clear, PictureFormat::Png);
+        let decode = |res: ImageConversionResult| {
+            let bytes = STANDARD.decode(res.data_base64).unwrap();
+            image::load_from_memory(&bytes)
+                .unwrap()
+                .to_rgb8()
+                .get_pixel(4, 4)
+                .0
+        };
+        let white = convert_image_bytes("png", "jpg", &png_bytes, ImageOptions::default()).unwrap();
+        assert!(decode(white).iter().all(|c| *c > 245));
+        let options = ImageOptions {
+            background: Some([255, 0, 0]),
+            ..Default::default()
+        };
+        let red = decode(convert_image_bytes("png", "jpg", &png_bytes, options).unwrap());
+        assert!(red[0] > 240 && red[1] < 20 && red[2] < 20, "{red:?}");
     }
 
     // =====================================================================
@@ -1034,7 +1096,7 @@ mod tests {
             &png_bytes,
             ImageOptions::default(),
             WatermarkOptions {
-                text: "test".into(),
+                mask: solid_mask(3, 2),
                 opacity: 0.0,
                 ..Default::default()
             },
@@ -1056,7 +1118,7 @@ mod tests {
             &png_bytes,
             ImageOptions::default(),
             WatermarkOptions {
-                text: "V".into(),
+                mask: solid_mask(3, 2),
                 opacity: 0.5,
                 direction: WatermarkDirection::Vertical,
                 ..Default::default()
@@ -1074,7 +1136,7 @@ mod tests {
             &png_bytes,
             ImageOptions::default(),
             WatermarkOptions {
-                text: "H".into(),
+                mask: solid_mask(3, 2),
                 opacity: 0.5,
                 direction: WatermarkDirection::Horizontal,
                 ..Default::default()

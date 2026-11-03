@@ -324,11 +324,29 @@ fn markdown_nested_formatting() {
     assert!(html.contains("<em>"));
 }
 
+// Raw HTML is part of the Markdown source and comes out as written, as in pandoc
+// and cmark-gfm; the converted HTML is text in a textarea, never rendered, while
+// inline text still has its `<` escaped.
 #[test]
-fn markdown_html_escaping_prevents_xss() {
-    let html = markdown::markdown_to_html("<script>alert('xss')</script>").unwrap();
-    assert!(!html.contains("<script>"), "scripts must be escaped");
-    assert!(html.contains("&lt;script&gt;"));
+fn markdown_raw_html_passes_through_and_text_is_escaped() {
+    let html = markdown::markdown_to_html("<div class=\"x\">raw</div>\n\n1 < 2 & 3").unwrap();
+    assert!(html.contains("<div class=\"x\">raw</div>"), "{html}");
+    assert!(html.contains("1 &lt; 2 &amp; 3"), "{html}");
+}
+
+// The pair tool converts both ways: GFM that survived one way and lost its
+// strikethrough or task boxes on the way back changed the document.
+#[test]
+fn markdown_gfm_survives_html_and_back() {
+    let source = "~~strike~~ text\n\n- [ ] todo\n- [x] done\n";
+    let html = markdown::markdown_to_html(source).unwrap();
+    let back = markdown::html_to_markdown(&html).unwrap();
+    assert!(back.contains("~~strike~~ text"), "{back}");
+    assert!(
+        back.contains("[ ] todo") && back.contains("[x] done"),
+        "{back}"
+    );
+    assert_eq!(markdown::markdown_to_html(&back).unwrap(), html);
 }
 
 #[test]
@@ -921,4 +939,20 @@ fn toon_handles_special_values() {
     let parsed: Value = serde_json::from_str(&json_back).unwrap();
     assert!(parsed["null_val"].is_null());
     assert_eq!(parsed["bool_val"], true);
+}
+
+// A key that is no XML name became a tag no parser reads: `<y z>`.
+#[test]
+fn json_to_xml_makes_keys_valid_names() {
+    let xml = xml::json_to_xml(r#"{"nested":{"y z":"two words","1st":1,"ok-name.x":2}}"#).unwrap();
+    assert!(xml.contains("<y_z>two words</y_z>"), "{xml}");
+    assert!(xml.contains("<_1st>1</_1st>"), "{xml}");
+    assert!(xml.contains("<ok-name.x>2</ok-name.x>"), "{xml}");
+}
+
+// TOML has no null: an empty string in its place changed the data silently.
+#[test]
+fn json_null_to_toml_names_the_field() {
+    let err = formats::convert_formats("JSON", "TOML", r#"{"a":{"b":[1,null]}}"#).unwrap_err();
+    assert!(err.contains("a.b[1]"), "{err}");
 }

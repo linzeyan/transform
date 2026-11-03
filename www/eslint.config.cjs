@@ -44,6 +44,8 @@ const browserGlobals = {
     HTMLSelectElement: 'readonly',
     Event: 'readonly',
     Image: 'readonly',
+    createImageBitmap: 'readonly',
+    Option: 'readonly',
     Audio: 'readonly',
     structuredClone: 'readonly',
     // Only inside a VSCode webview (embed mode); main.js checks for it first.

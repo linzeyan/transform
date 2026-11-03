@@ -130,8 +130,17 @@ pub fn toml_to_json(value: toml::Value) -> Value {
 /// # Ok::<(), String>(())
 /// ```
 pub fn json_to_toml(value: &Value) -> Result<toml::Value, String> {
+    json_to_toml_at(value, "")
+}
+
+// The path names the offending field, since TOML has no null to write it as:
+// an empty string in its place silently changed the data.
+fn json_to_toml_at(value: &Value, path: &str) -> Result<toml::Value, String> {
     match value {
-        Value::Null => Ok(toml::Value::String(String::new())),
+        Value::Null => Err(format!(
+            "TOML has no null value: remove or replace {}",
+            if path.is_empty() { "the null" } else { path }
+        )),
         Value::Bool(b) => Ok(toml::Value::Boolean(*b)),
         Value::Number(num) => {
             if let Some(i) = num.as_i64() {
@@ -147,15 +156,20 @@ pub fn json_to_toml(value: &Value) -> Result<toml::Value, String> {
         Value::String(s) => Ok(toml::Value::String(s.clone())),
         Value::Array(arr) => {
             let mut out = Vec::with_capacity(arr.len());
-            for item in arr {
-                out.push(json_to_toml(item)?);
+            for (index, item) in arr.iter().enumerate() {
+                out.push(json_to_toml_at(item, &format!("{path}[{index}]"))?);
             }
             Ok(toml::Value::Array(out))
         }
         Value::Object(map) => {
             let mut table = toml::value::Table::new();
             for (k, v) in map.iter() {
-                table.insert(k.clone(), json_to_toml(v)?);
+                let child = if path.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{path}.{k}")
+                };
+                table.insert(k.clone(), json_to_toml_at(v, &child)?);
             }
             Ok(toml::Value::Table(table))
         }

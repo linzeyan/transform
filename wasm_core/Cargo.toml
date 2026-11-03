@@ -2,7 +2,7 @@
 name = "wasm_core"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.89"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -62,8 +62,10 @@ parquet = { version = "60.1", default-features = false, features = ["arrow", "sn
 arrow-avro = { version = "60.1", default-features = false, features = ["deflate", "snappy", "zstd", "bzip2"] }
 bytes = "1"
 csv = "1"
-figlet-rs = "0.1"
-font8x8 = "0.3"
+# GitHub Flavored Markdown both ways: comrak is a port of cmark-gfm, the
+# reference GFM renderer; htmd turns HTML back into Markdown, tables included.
+comrak = { version = "0.59", default-features = false }
+htmd = "0.5"
 
 # Each getrandom major needs its browser backend switched on by someone: 0.2 for
 # bcrypt and rand_core 0.6 (ssh-key, aes-gcm), which arrow2 used to do as a side

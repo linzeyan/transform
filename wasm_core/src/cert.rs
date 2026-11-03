@@ -352,7 +352,9 @@ fn render_extended_key_usage(eku: &ExtendedKeyUsage<'_>) -> Vec<String> {
 }
 
 fn spki_fingerprint(spki: &SubjectPublicKeyInfo<'_>) -> Vec<u8> {
-    Sha256::digest(spki.subject_public_key.data.as_ref()).to_vec()
+    // The whole DER SubjectPublicKeyInfo, as HPKP and curl --pinnedpubkey pin it,
+    // not just the key bit string inside it.
+    Sha256::digest(spki.raw).to_vec()
 }
 
 fn first_common_name(rdn: &X509Name<'_>) -> Option<String> {

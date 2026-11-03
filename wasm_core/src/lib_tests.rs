@@ -382,7 +382,7 @@ fn encode_decode_base91_roundtrip() {
 fn jwt_encode_decode_roundtrip() {
     let token =
         jwt_encode_internal("{\"sub\":\"demo\"}", "topsecret", "HS256").expect("token encoded");
-    let decoded = jwt_decode_internal(&token).expect("token decoded");
+    let decoded = jwt_decode_internal(&token, "").expect("token decoded");
     assert!(decoded.payload.unwrap().contains("\"sub\": \"demo\""));
     assert_eq!(decoded.algorithm.unwrap(), "HS256");
 }
@@ -394,14 +394,23 @@ fn url_encode_decode_handles_spaces() {
     assert_eq!(decoded, "a b+c");
 }
 
+// Values from an independent implementation with the published primes
+// (2^40 + 0x1b3, 2^88 + 0x13b). The 64- and 128-bit ones used to be whatever
+// the code computed with mistyped primes, so the test agreed with the bug.
 #[test]
 fn fnv_hashes_match_reference() {
     assert_eq!(fnv1_32(b"fnv"), 0x418f_6079);
     assert_eq!(fnv1a_32(b"fnv"), 0xb2f5_cb99);
-    assert_eq!(fnv1_64(b"fnv"), 0x33e5_1b18_6ba1_3779);
-    assert_eq!(fnv1a_64(b"fnv"), 0x7280_7b18_fedc_1a99);
-    assert_eq!(fnv1_128(b"fnv"), 0x158c_3dea_7d8b_5822_836d_bc78_c6a7_b2a9);
-    assert_eq!(fnv1a_128(b"fnv"), 0x158c_3dea_7d8b_5822_836d_bc79_768e_89e9);
+    assert_eq!(fnv1_64(b"fnv"), 0xd8cb_c818_6ba1_3779);
+    assert_eq!(fnv1a_64(b"fnv"), 0xdcb5_7e18_fedc_1a99);
+    assert_eq!(fnv1_128(b"fnv"), 0xa68b_b298_328b_5822_836d_bc78_c6a7_b2a9);
+    assert_eq!(fnv1a_128(b"fnv"), 0xa68d_5ed3_788b_5822_836d_bc79_768e_89e9);
+    // The FNV-1a 64 check value for "123456789".
+    assert_eq!(fnv1a_64(b"123456789"), 0x06d5_5739_23c6_cdfc);
+    assert_eq!(
+        fnv1a_128(b"123456789"),
+        0xda2d_42a0_8d04_e458_5dd3_2511_7f71_d504
+    );
 }
 
 #[test]
@@ -633,6 +642,26 @@ fn totp_token_internal_validates_inputs() {
     assert!(err.contains("digits must be between 4 and 10"));
 }
 
+// A QR whose secret isn't Base32 scans into an authenticator that can't use it.
+#[test]
+fn qr_otp_rejects_a_secret_that_is_not_base32() {
+    let qr = |secret: &str| {
+        generate_qr_code_internal(
+            "otp",
+            "png",
+            QrRequest {
+                otp_secret: Some(secret.into()),
+                ..Default::default()
+            },
+        )
+    };
+    let Err(err) = qr("not-base32!") else {
+        panic!("a secret that isn't Base32 was encoded");
+    };
+    assert!(err.contains("Base32"), "{err}");
+    assert!(qr("jbsw y3dp ehpk 3pxp").is_ok());
+}
+
 #[test]
 fn qr_code_internal_produces_png_with_otpauth() {
     // Ensure the QR helper preserves the otpauth URI and PNG signature.
@@ -759,13 +788,73 @@ fn ascii_art_rejects_empty_and_long_input() {
     assert!(err.contains("256"));
 }
 
+// figlet's own layout, as pyfiglet draws it (fixture written by
+// dev_docs/transform/scripts/figlet-golden.py). Characters set side by side at
+// full width matched none of these, and slant and small used to be standard.
 #[test]
-fn ascii_art_renders_and_wraps() {
-    let art = ascii::generate_ascii_art_internal("rustacean", "standard", Some(4), Some("center"))
-        .expect("art generated");
-    assert!(!art.trim().is_empty());
-    // Wrapping 9 chars at width=4 should yield multiple rendered blocks.
-    assert!(art.split('\n').count() >= 6);
+fn ascii_art_matches_figlet_layout() {
+    let golden: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/fixtures/figlet_golden.json")).unwrap();
+    for case in golden {
+        let width = case["width"].as_u64().unwrap() as u32;
+        // pyfiglet wraps a column short of its width; the wrapped case is
+        // checked for its width in ascii_art_wraps_on_drawn_width instead.
+        if width < 80 {
+            continue;
+        }
+        let text = case["text"].as_str().unwrap();
+        let font = case["font"].as_str().unwrap();
+        let expected: Vec<&str> = case["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r.as_str().unwrap())
+            .collect();
+        let art = ascii::generate_ascii_art_internal(text, font, Some(width), None).unwrap();
+        let rows: Vec<&str> = art.trim_end().split('\n').collect();
+        assert_eq!(rows, expected, "{font}: {text}");
+    }
+}
+
+#[test]
+fn ascii_art_wraps_on_drawn_width() {
+    let art = ascii::generate_ascii_art_internal(
+        "Hello world from transform",
+        "standard",
+        Some(40),
+        None,
+    )
+    .unwrap();
+    let widest = art.lines().map(|l| l.chars().count()).max().unwrap();
+    assert!(widest <= 40, "widest line {widest}");
+    // Wrapping breaks lines, it does not drop letters: three or more blocks.
+    assert!(art.lines().count() >= 6 * 3);
+}
+
+// pyfiglet -w 40 breaks "transform" as "transfo" + "rm" and centres "Hi" in
+// 80 columns with every row 35 columns in; a 40-column line and a top row
+// padded on its own both differed from figlet.
+#[test]
+fn ascii_art_wraps_and_centres_like_figlet() {
+    let art = ascii::generate_ascii_art_internal("transform", "standard", Some(40), None).unwrap();
+    let blocks: Vec<&str> = art.lines().collect();
+    assert_eq!(blocks[1].trim_end(), r"| |_ _ __ __ _ _ __  ___ / _| ___");
+    assert!(art.lines().all(|line| line.chars().count() < 40), "{art}");
+
+    let art =
+        ascii::generate_ascii_art_internal("Hi", "standard", Some(80), Some("center")).unwrap();
+    let starts: Vec<usize> = art
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.len() - line.trim_start().len())
+        .collect();
+    assert_eq!(starts, [36, 35, 35, 35, 35], "{art}");
+}
+
+#[test]
+fn ascii_art_names_a_letter_the_font_lacks() {
+    let err = ascii::generate_ascii_art_internal("台北", "standard", None, None).unwrap_err();
+    assert!(err.contains('台'), "{err}");
 }
 
 #[test]
@@ -810,7 +899,7 @@ fn sql_insert_generates_for_multiple_columns() {
 #[test]
 fn jwt_encode_with_empty_payload() {
     let token = jwt_encode_internal("{}", "secret", "HS256").expect("empty payload");
-    let decoded = jwt_decode_internal(&token).expect("decode empty");
+    let decoded = jwt_decode_internal(&token, "").expect("decode empty");
     let payload = decoded.payload.as_deref().unwrap_or("");
     assert!(
         payload.contains('{'),
@@ -820,14 +909,43 @@ fn jwt_encode_with_empty_payload() {
 
 #[test]
 fn jwt_decode_malformed_token() {
-    let err = jwt_decode_internal("not.a.valid.jwt.token");
+    let err = jwt_decode_internal("not.a.valid.jwt.token", "");
     assert!(err.is_err() || err.unwrap().payload.is_none());
 }
 
 #[test]
 fn jwt_decode_single_segment() {
-    let err = jwt_decode_internal("singlesegment");
+    let err = jwt_decode_internal("singlesegment", "");
     assert!(err.is_err());
+}
+
+// A token missing its signature decoded silently, and a tampered one showed
+// the same as a genuine one.
+#[test]
+fn jwt_decode_requires_a_signature_part_and_checks_it_against_the_secret() {
+    let err = jwt_decode_internal("eyJhbGciOiJIUzI1NiJ9.e30", "").unwrap_err();
+    assert!(err.contains("three parts"), "{err}");
+
+    let token = jwt_encode_internal("{\"sub\":\"demo\"}", "topsecret", "HS384").unwrap();
+    let check = |token: &str, secret: &str| jwt_decode_internal(token, secret).unwrap().verified;
+    assert_eq!(check(&token, "topsecret"), Some(true));
+    assert_eq!(check(&token, "wrong"), Some(false));
+    assert_eq!(check(&token, ""), None);
+    let (head, rest) = token.split_once('.').unwrap();
+    let (_, sig) = rest.split_once('.').unwrap();
+    let forged = format!(
+        "{head}.{}.{sig}",
+        URL_SAFE_NO_PAD.encode("{\"sub\":\"admin\"}")
+    );
+    assert_eq!(check(&forged, "topsecret"), Some(false));
+
+    // RS256 can't be checked with a shared secret.
+    let rs = format!(
+        "{}.{}.c2ln",
+        URL_SAFE_NO_PAD.encode("{\"alg\":\"RS256\"}"),
+        URL_SAFE_NO_PAD.encode("{}")
+    );
+    assert_eq!(check(&rs, "topsecret"), None);
 }
 
 #[test]
@@ -1930,4 +2048,125 @@ fn ip_info_ipv4_mapped_ipv6() {
     let info = ip_info_internal("::ffff:192.168.1.1");
     // Should either parse as IPv6 or return an error - should not panic
     assert!(info.is_ok() || info.is_err());
+}
+
+// =====================================================================
+// 2026-11-03 live-check findings
+// =====================================================================
+
+// The pin HPKP and `curl --pinnedpubkey` use: SHA-256 over the whole DER
+// SubjectPublicKeyInfo (openssl x509 -pubkey | openssl pkey -pubin -outform DER).
+#[test]
+fn spki_sha256_is_the_public_key_pin() {
+    const CHAIN: &str = include_str!("../tests/fixtures/test_chain.pem");
+    let leaf = &cert::inspect_certificates_internal(CHAIN).unwrap()[0];
+    assert_eq!(
+        leaf.fingerprints.spki_sha256.to_lowercase(),
+        "ba691908668d341806a8e48e2a3fbd88061a3789eef059f3c42af1e0180e20b2"
+    );
+}
+
+#[test]
+fn hmac_includes_md5() {
+    let map = hash_hmac_map(b"msg", b"k");
+    assert_eq!(map["md5"], "1104b024fb2aa8a780f7acb04f3d7ed5");
+}
+
+// `base64` and PEM wrap at 76 columns, hex dumps space their bytes.
+#[test]
+fn decoding_ignores_whitespace_inside() {
+    let wrapped = format!("{}\n{}", "QUFB".repeat(19), "QUFB");
+    assert_eq!(
+        decode_content_internal("base64_standard", &wrapped).unwrap(),
+        b"AAA".repeat(20)
+    );
+    assert_eq!(
+        decode_content_internal("hex_upper", "48 65 6c\n6c 6f").unwrap(),
+        b"Hello"
+    );
+}
+
+#[test]
+fn ascii85_writes_z_for_zero_groups_and_still_decodes() {
+    let data = [0u8, 0, 0, 0, b'a', b'b', b'c', b'd', 0, 0, 0];
+    let encoded = encode_ascii85(&data);
+    assert!(encoded.starts_with("<~z"), "{encoded}");
+    assert_eq!(
+        decode_content_internal("base85_ascii85", &encoded).unwrap(),
+        data
+    );
+    // A zero tail is not a whole group and keeps its characters.
+    assert!(!encode_ascii85(&[0, 0, 0]).contains('z'));
+}
+
+#[test]
+fn units_keep_precision_and_reject_overflow() {
+    let map = convert_units_internal("bit", "1").unwrap();
+    assert_eq!(map["kilobyte"], "0.0001220703125");
+    let map = convert_units_internal("byte", "1").unwrap();
+    // 15 significant digits, what an f64 holds exactly.
+    assert_eq!(map["terabyte"], "9.09494701772928e-13");
+    let err = convert_units_internal("terabyte", "1e300").unwrap_err();
+    assert!(err.contains("too large"), "{err}");
+    assert!(convert_units_internal("byte", "inf").is_err());
+}
+
+#[test]
+fn qr_text_keeps_surrounding_spaces() {
+    let request = QrRequest {
+        custom_string: Some(" spaced ".into()),
+        ..Default::default()
+    };
+    assert_eq!(build_custom_payload(&request).unwrap(), " spaced ");
+    let blank = QrRequest {
+        custom_string: Some("   ".into()),
+        ..Default::default()
+    };
+    assert!(build_custom_payload(&blank).is_err());
+}
+
+#[test]
+fn sql_keeps_non_ascii_column_names() {
+    let schema = "CREATE TABLE `顧客` (`名前` VARCHAR(10), id INT);";
+    let sql = generate_insert_statements_native(schema, 2, BTreeMap::new()).unwrap();
+    assert!(sql.contains("`名前`"), "{sql}");
+    assert!(sql.contains("INSERT INTO `顧客`"), "{sql}");
+}
+
+// Rows generated from a JSON Schema must validate against that schema.
+#[test]
+fn json_schema_rows_respect_constraints() {
+    let schema = r#"{"type":"object","properties":{
+        "code":{"type":"string","maxLength":8},
+        "score":{"type":"integer","minimum":0,"maximum":10},
+        "ratio":{"type":"number","exclusiveMinimum":0,"maximum":1},
+        "tags":{"type":"array","items":{"type":"string","maxLength":5}},
+        "kind":{"enum":["a","b",3]},
+        "mail":{"type":"string","format":"email"},
+        "note":{"type":["null","integer"]}}}"#;
+    for _ in 0..20 {
+        let out = generate_insert_statements_native(schema, 5, BTreeMap::new()).unwrap();
+        let rows: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
+        for row in rows {
+            assert!(row["code"].as_str().unwrap().len() <= 8, "{row}");
+            let score = row["score"].as_i64().unwrap();
+            assert!((0..=10).contains(&score), "{row}");
+            let ratio = row["ratio"].as_f64().unwrap();
+            assert!((0.0..=1.0).contains(&ratio), "{row}");
+            let tags = row["tags"].as_array().unwrap();
+            assert!(
+                !tags.is_empty() && tags.iter().all(|t| t.as_str().unwrap().len() <= 5),
+                "{row}"
+            );
+            assert!(
+                ["\"a\"", "\"b\"", "3"].contains(&row["kind"].to_string().as_str()),
+                "{row}"
+            );
+            assert!(
+                row["mail"].as_str().unwrap().ends_with("@example.com"),
+                "{row}"
+            );
+            assert!(row["note"].is_i64(), "{row}");
+        }
+    }
 }

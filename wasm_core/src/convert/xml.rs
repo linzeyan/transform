@@ -21,7 +21,7 @@ fn build_xml(buf: &mut String, name: &str, value: &Value, depth: usize) {
             buf.push_str(&format!("{indent}<{name}>\n"));
             for key in ordered_keys(map) {
                 if let Some(child) = map.get(&key) {
-                    build_xml(buf, &key, child, depth + 1);
+                    build_xml(buf, &xml_name(&key), child, depth + 1);
                 }
             }
             buf.push_str(&format!("{indent}</{name}>\n"));
@@ -42,6 +42,29 @@ fn build_xml(buf: &mut String, name: &str, value: &Value, depth: usize) {
             buf.push_str(&format!("{indent}<{name}>{}</{name}>\n", xml_escape(&text)));
         }
     }
+}
+
+// A JSON key is any string, an XML element name is not: `y z` or `1st` as a tag
+// is a document no parser accepts. Characters a name cannot hold become `_`.
+fn xml_name(key: &str) -> String {
+    let mut name: String = key
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || matches!(c, '_' | '-' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let starts_ok = name
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_alphabetic() || c == '_');
+    if !starts_ok {
+        name.insert(0, '_');
+    }
+    name
 }
 
 fn xml_escape(input: &str) -> String {

@@ -536,6 +536,8 @@ fn build_otp_payload(payload: &QrRequest) -> Result<String, String> {
         .filter(|ch| !ch.is_whitespace())
         .map(|ch| ch.to_ascii_uppercase())
         .collect();
+    // An authenticator can't use a code whose secret isn't Base32; it used to be encoded anyway.
+    decode_totp_secret(&secret)?;
 
     let account = payload.otp_account.as_deref().unwrap_or("account").trim();
     let issuer = payload.otp_issuer.as_deref().unwrap_or("").trim();
@@ -606,13 +608,9 @@ fn build_wifi_payload(payload: &QrRequest) -> Result<String, String> {
 }
 
 fn build_custom_payload(payload: &QrRequest) -> Result<String, String> {
-    let custom = payload
-        .custom_string
-        .as_deref()
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    if custom.is_empty() {
+    // Kept verbatim: spaces at either end are part of the text being encoded.
+    let custom = payload.custom_string.as_deref().unwrap_or("").to_string();
+    if custom.trim().is_empty() {
         return Err("customString cannot be empty".into());
     }
     Ok(custom)
@@ -1041,7 +1039,7 @@ fn encode_content_map_bytes(data: &[u8]) -> BTreeMap<String, String> {
     map.insert("base64_raw_standard".into(), STANDARD_NO_PAD.encode(data));
     map.insert("base64_url".into(), URL_SAFE.encode(data));
     map.insert("base64_raw_url".into(), URL_SAFE_NO_PAD.encode(data));
-    map.insert("base85_ascii85".into(), ascii85_encode(data));
+    map.insert("base85_ascii85".into(), encode_ascii85(data));
     map.insert("base91".into(), encode_base91(data));
     map.insert("hex_upper".into(), hex::encode_upper(data));
     map
@@ -1236,6 +1234,17 @@ struct ColumnSchema {
     scale: Option<u32>,
     enum_values: Vec<String>,
     default_value: Option<ColumnDefault>,
+    hints: SchemaHints,
+}
+
+// What a JSON Schema property says beyond its type. Rows that ignored these
+// failed validation against the very schema they were generated from.
+#[derive(Debug, Clone, Default)]
+struct SchemaHints {
+    minimum: Option<f64>,
+    maximum: Option<f64>,
+    items: Option<Box<ColumnSchema>>,
+    email: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1282,14 +1291,14 @@ enum SchemaInput {
 
 fn table_regex() -> &'static Regex {
     TABLE_REGEX.get_or_init(|| {
-        Regex::new(r#"(?i)create\s+table\s+(?:if\s+not\s+exists\s+)?[`"\[]?([a-zA-Z0-9_]+)[`"\]]?"#)
+        Regex::new(r#"(?i)create\s+table\s+(?:if\s+not\s+exists\s+)?[`"\[]?([\w$]+)[`"\]]?"#)
             .expect("create table regex")
     })
 }
 
 fn column_regex() -> &'static Regex {
     COLUMN_REGEX.get_or_init(|| {
-        Regex::new(r#"(?i)^\s*[`"\[]?([a-zA-Z0-9_]+)[`"\]]?\s+([a-zA-Z0-9]+(?:\s*\([^)]*\))?)"#)
+        Regex::new(r#"(?i)^\s*[`"\[]?([\w$]+)[`"\]]?\s+([a-zA-Z0-9]+(?:\s*\([^)]*\))?)"#)
             .expect("column regex")
     })
 }
@@ -1371,14 +1380,40 @@ fn json_schema_to_tables(schema: &Value) -> Option<Vec<TableSchema>> {
 fn schema_property_to_column(name: &str, prop: &Value) -> ColumnSchema {
     let (base_type, data_type, length, scale) = match prop.get("type") {
         Some(Value::String(kind)) => map_schema_type(kind),
+        // `["null", "string"]` is a nullable string, not a null.
         Some(Value::Array(types)) => types
             .iter()
             .filter_map(|v| v.as_str())
-            .next()
+            .find(|kind| !kind.eq_ignore_ascii_case("null"))
             .map(map_schema_type)
             .unwrap_or(("string".into(), "string".into(), None, None)),
         _ => ("string".into(), "string".into(), None, None),
     };
+    let number = |key: &str| prop.get(key).and_then(Value::as_f64);
+    let integer = base_type == "int";
+    // An exclusive bound on an integer is the next integer in; on a float the
+    // bound itself is drawn so rarely that it stands.
+    let minimum = number("minimum")
+        .or_else(|| number("exclusiveMinimum").map(|v| if integer { v.floor() + 1.0 } else { v }));
+    let maximum = number("maximum")
+        .or_else(|| number("exclusiveMaximum").map(|v| if integer { v.ceil() - 1.0 } else { v }));
+    let max_length = prop.get("maxLength").and_then(Value::as_u64);
+    let min_length = prop.get("minLength").and_then(Value::as_u64);
+    let length = match (max_length, min_length) {
+        (Some(max), _) => Some(max as usize),
+        (None, Some(min)) => Some((min as usize).max(32)),
+        (None, None) => length,
+    };
+    let enum_values = prop
+        .get("enum")
+        .and_then(Value::as_array)
+        .map(|values| values.iter().map(Value::to_string).collect())
+        .unwrap_or_default();
+    let items = prop
+        .get("items")
+        .filter(|items| items.is_object())
+        .map(|items| Box::new(schema_property_to_column(name, items)));
+    let email = prop.get("format").and_then(Value::as_str) == Some("email");
     ColumnSchema {
         name: name.into(),
         data_type,
@@ -1386,8 +1421,14 @@ fn schema_property_to_column(name: &str, prop: &Value) -> ColumnSchema {
         unsigned: false,
         length,
         scale,
-        enum_values: Vec::new(),
+        enum_values,
         default_value: None,
+        hints: SchemaHints {
+            minimum,
+            maximum,
+            items,
+            email,
+        },
     }
 }
 
@@ -1396,7 +1437,8 @@ fn map_schema_type(kind: &str) -> (String, String, Option<usize>, Option<u32>) {
         "integer" | "int" => ("int".into(), "integer".into(), None, None),
         "number" | "float" | "double" => ("float".into(), "float".into(), None, Some(4)),
         "boolean" | "bool" => ("boolean".into(), "boolean".into(), None, None),
-        "object" | "array" | "json" => ("json".into(), "json".into(), None, None),
+        "array" => ("array".into(), "array".into(), None, None),
+        "object" | "json" => ("json".into(), "json".into(), None, None),
         "null" => ("string".into(), "string".into(), None, None),
         _ => ("string".into(), "string".into(), None, None),
     }
@@ -1448,6 +1490,7 @@ fn infer_columns_from_object(map: &serde_json::Map<String, Value>) -> Vec<Column
             scale: None,
             enum_values: Vec::new(),
             default_value: None,
+            hints: SchemaHints::default(),
         });
     }
     columns
@@ -1522,6 +1565,7 @@ fn parse_column_line(line: &str, column_re: &Regex) -> Option<ColumnSchema> {
         scale,
         enum_values,
         default_value,
+        hints: SchemaHints::default(),
     })
 }
 
@@ -1810,7 +1854,21 @@ fn sample_json_value(
     row_idx: usize,
     override_cfg: Option<&ColumnOverride>,
 ) -> Value {
+    let merged = with_schema_bounds(column, override_cfg);
+    let override_cfg = merged.as_ref().or(override_cfg);
+    if !column.enum_values.is_empty() {
+        let picked = &column.enum_values[random_index(column.enum_values.len())];
+        return serde_json::from_str(picked).unwrap_or_else(|_| Value::String(picked.clone()));
+    }
     match column.base_type.as_str() {
+        "array" => {
+            let count = 1 + row_idx % 3;
+            let items = (0..count).map(|i| match &column.hints.items {
+                Some(item) => sample_json_value(item, row_idx + i, None),
+                None => Value::String(lorem_text(8)),
+            });
+            Value::Array(items.collect())
+        }
         base if base.contains("int") || base == "serial" || base == "year" || base == "bit" => {
             Value::Number(serde_json::Number::from(sample_integer_json(
                 column,
@@ -1934,8 +1992,39 @@ fn sample_float_json(_column: &ColumnSchema, override_cfg: Option<&ColumnOverrid
     random_decimal_value(min, max)
 }
 
+// The schema's minimum/maximum unless the user set their own in the UI.
+fn with_schema_bounds(
+    column: &ColumnSchema,
+    user: Option<&ColumnOverride>,
+) -> Option<ColumnOverride> {
+    let hints = &column.hints;
+    if hints.minimum.is_none() && hints.maximum.is_none() {
+        return None;
+    }
+    let mut merged = user.cloned().unwrap_or_default();
+    merged.min = merged.min.or(hints.minimum);
+    merged.max = merged.max.or(hints.maximum);
+    Some(merged)
+}
+
+fn is_email_column(column: &ColumnSchema) -> bool {
+    column.hints.email || column.name.to_ascii_lowercase().contains("email")
+}
+
+fn sample_email(max_len: usize) -> String {
+    let mut value = format!(
+        "{}@example.com",
+        LOREM_WORDS[random_index(LOREM_WORDS.len())]
+    );
+    value.truncate(max_len);
+    value
+}
+
 fn sample_text_value_plain(column: &ColumnSchema) -> String {
     let max_len = column.length.unwrap_or(32).clamp(1, 256);
+    if is_email_column(column) {
+        return sample_email(max_len);
+    }
     let mut value = lorem_text(max_len);
     if value.len() > max_len {
         value.truncate(max_len);
@@ -2156,6 +2245,9 @@ fn unix_timestamp_value() -> String {
 
 fn sample_text_value(column: &ColumnSchema) -> String {
     let max_len = column.length.unwrap_or(32).clamp(1, 256);
+    if is_email_column(column) {
+        return escape_sql_string(&sample_email(max_len));
+    }
     let mut value = lorem_text(max_len);
     if value.len() > max_len {
         value.truncate(max_len);
@@ -2320,7 +2412,11 @@ pub fn decode_content_bytes(kind: &str, input: &str) -> Result<Vec<u8>, JsValue>
 }
 
 fn decode_content_internal(kind: &str, input: &str) -> Result<Vec<u8>, String> {
-    let trimmed = input.trim();
+    // Whitespace carries nothing in any of these alphabets, while `base64` and PEM
+    // wrap at 76 columns and hex dumps space their bytes: drop it all, not just
+    // the ends.
+    let compact: String = input.chars().filter(|c| !c.is_whitespace()).collect();
+    let trimmed = compact.as_str();
     match kind {
         "base32_standard" => BASE32
             .decode(trimmed.as_bytes())
@@ -2346,7 +2442,11 @@ fn decode_content_internal(kind: &str, input: &str) -> Result<Vec<u8>, String> {
         "base64_raw_url" => URL_SAFE_NO_PAD
             .decode(trimmed.as_bytes())
             .map_err(|err| err.to_string()),
-        "base85_ascii85" => ascii85_decode(trimmed).map_err(|err| err.to_string()),
+        // The ascii85 crate rejects Adobe's `z`; it is outside the alphabet, so
+        // expanding it back to five `!` is exact.
+        "base85_ascii85" => {
+            ascii85_decode(&trimmed.replace('z', "!!!!!")).map_err(|err| err.to_string())
+        }
         "base91" => decode_base91(trimmed),
         "hex_upper" => hex::decode(trimmed).map_err(|err| err.to_string()),
         other => Err(format!("unsupported decode type {}", other)),
@@ -2838,6 +2938,7 @@ fn hash_content_map(data: &[u8]) -> BTreeMap<String, String> {
 fn hash_hmac_map(data: &[u8], key: &[u8]) -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
 
+    map.insert("md5".into(), hmac_hex_generic::<Hmac<Md5>>(key, data));
     map.insert("sha1".into(), hmac_hex_generic::<Hmac<Sha1>>(key, data));
     map.insert("sha224".into(), hmac_hex_generic::<Hmac<Sha224>>(key, data));
     map.insert("sha256".into(), hmac_hex_generic::<Hmac<Sha256>>(key, data));
@@ -2914,7 +3015,7 @@ fn parse_number_by_base(base: &str, value: &str) -> Result<BigInt, String> {
         slice = rest;
     }
     if slice.is_empty() {
-        return Err("value is empty".into());
+        return Err("a sign needs digits after it".into());
     }
     let radix = match base {
         "binary" => {
@@ -2990,6 +3091,10 @@ fn convert_units_internal(unit: &str, value: &str) -> Result<BTreeMap<String, St
     let mut results = BTreeMap::new();
     for (name, unit_factor) in UNIT_FACTORS.iter() {
         let converted = total_bits / unit_factor;
+        // An overflow would otherwise fill every cell with "inf".
+        if !converted.is_finite() {
+            return Err("value is too large to convert".into());
+        }
         results.insert((*name).to_string(), format_unit_value(converted));
     }
     Ok(results)
@@ -3008,33 +3113,28 @@ fn parse_unit_value(value: &str) -> Result<f64, String> {
     if cleaned.is_empty() {
         return Err("value is empty".into());
     }
-    cleaned
-        .parse::<f64>()
-        .map_err(|_| "invalid numeric value".into())
+    match cleaned.parse::<f64>() {
+        // f64 parsing accepts "inf" and "NaN", which are not quantities.
+        Ok(parsed) if parsed.is_finite() => Ok(parsed),
+        Ok(_) => Err("value is too large to convert".into()),
+        Err(_) => Err("invalid numeric value".into()),
+    }
 }
 
 fn format_unit_value(value: f64) -> String {
     if value == 0.0 {
         return "0".into();
     }
-    if !value.is_finite() {
-        return value.to_string();
+    // 15 significant digits is what an f64 holds exactly: enough to show
+    // 1 bit = 0.0001220703125 KB in full, while 0.1 + 0.2 noise is rounded away.
+    // A fixed number of decimals cut small values short instead.
+    let rounded: f64 = format!("{:.14e}", value).parse().unwrap_or(value);
+    let magnitude = rounded.abs();
+    if (1e-6..1e21).contains(&magnitude) {
+        rounded.to_string()
+    } else {
+        format!("{:e}", rounded)
     }
-    let mut formatted = format!("{:.12}", value);
-    if let Some(dot_pos) = formatted.find('.') {
-        let mut idx = formatted.len();
-        while idx > dot_pos && formatted.as_bytes()[idx - 1] == b'0' {
-            idx -= 1;
-        }
-        if idx > dot_pos && formatted.as_bytes()[idx - 1] == b'.' {
-            idx -= 1;
-        }
-        formatted.truncate(idx);
-    }
-    if formatted == "-0" {
-        formatted = "0".into();
-    }
-    formatted
 }
 
 #[derive(Serialize, Default)]
@@ -3459,13 +3559,16 @@ fn format_binary(value: u128, bits: usize) -> String {
     out
 }
 
-#[derive(Serialize, Default)]
+#[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct JwtDecodeResult {
     header: Option<String>,
     payload: Option<String>,
     signature: Option<String>,
     algorithm: Option<String>,
+    /// Whether the signature matches the given secret; absent when there is no
+    /// secret or the algorithm isn't HMAC (RS/ES/PS need a public key).
+    verified: Option<bool>,
 }
 
 #[wasm_bindgen]
@@ -3492,10 +3595,10 @@ pub fn jwt_encode(payload_input: &str, secret: &str, algorithm: &str) -> Result<
 }
 
 #[wasm_bindgen]
-/// Decodes a JWT without verifying the signature, returning pretty-printed header/payload
-/// text plus the algorithm and raw signature segment for inspection.
-pub fn jwt_decode(token: &str) -> Result<JsValue, JsValue> {
-    jwt_decode_internal(token)
+/// Decodes a JWT, returning pretty-printed header/payload text plus the algorithm and raw
+/// signature segment; with a secret, HS256/384/512 signatures are checked against it.
+pub fn jwt_decode(token: &str, secret: &str) -> Result<JsValue, JsValue> {
+    jwt_decode_internal(token, secret)
         .and_then(|res| serde_wasm_bindgen::to_value(&res).map_err(|err| err.to_string()))
         .map_err(|err| JsValue::from_str(&err))
 }
@@ -3531,14 +3634,18 @@ fn jwt_encode_internal(
     ))
 }
 
-fn jwt_decode_internal(token: &str) -> Result<JwtDecodeResult, String> {
+fn jwt_decode_internal(token: &str, secret: &str) -> Result<JwtDecodeResult, String> {
     let trimmed = token.trim();
     if trimmed.is_empty() {
         return Err("token is empty".into());
     }
     let segments: Vec<&str> = trimmed.split('.').collect();
-    if segments.len() < 2 {
-        return Err("invalid JWT token".into());
+    // `header.payload` used to decode as if nothing were missing.
+    if segments.len() != 3 {
+        return Err(format!(
+            "a JWT has three parts, header.payload.signature; this has {}",
+            segments.len()
+        ));
     }
     let header_bytes =
         decode_base64_segment(segments[0]).map_err(|err| format!("invalid header: {}", err))?;
@@ -3560,11 +3667,20 @@ fn jwt_decode_internal(token: &str) -> Result<JwtDecodeResult, String> {
                 .map(|alg| alg.to_string()),
             _ => None,
         });
+    let verified = match algorithm.as_deref() {
+        Some(alg @ ("HS256" | "HS384" | "HS512")) if !secret.is_empty() => {
+            let signing_input = format!("{}.{}", segments[0], segments[1]);
+            let expected = sign_jwt(&signing_input, secret, alg)?;
+            Some(expected == segments[2].trim_end_matches('='))
+        }
+        _ => None,
+    };
     Ok(JwtDecodeResult {
         header: Some(header_pretty),
         payload: Some(payload_pretty),
         signature,
         algorithm,
+        verified,
     })
 }
 
@@ -3710,7 +3826,7 @@ fn fnv1a_32(data: &[u8]) -> u32 {
 fn fnv1_64(data: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf29ce484222325;
     for &byte in data {
-        hash = hash.wrapping_mul(0x1000_0000_01b3);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
         hash ^= u64::from(byte);
     }
     hash
@@ -3720,14 +3836,14 @@ fn fnv1a_64(data: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf29ce484222325;
     for &byte in data {
         hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x1000_0000_01b3);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
     }
     hash
 }
 
 fn fnv1_128(data: &[u8]) -> u128 {
     let mut hash: u128 = 0x6c62272e07bb014262b821756295c58d;
-    let prime: u128 = 0x0000000000000000000000000000013b;
+    let prime: u128 = 0x0000000001000000000000000000013b;
     for &byte in data {
         hash = hash.wrapping_mul(prime);
         hash ^= u128::from(byte);
@@ -3737,7 +3853,7 @@ fn fnv1_128(data: &[u8]) -> u128 {
 
 fn fnv1a_128(data: &[u8]) -> u128 {
     let mut hash: u128 = 0x6c62272e07bb014262b821756295c58d;
-    let prime: u128 = 0x0000000000000000000000000000013b;
+    let prime: u128 = 0x0000000001000000000000000000013b;
     for &byte in data {
         hash ^= u128::from(byte);
         hash = hash.wrapping_mul(prime);
@@ -3891,3 +4007,23 @@ pub fn generate_unified_text_diff(
 
 #[cfg(test)]
 mod lib_tests;
+
+// Adobe's `z` for an all-zero group, which the ascii85 crate never writes. Only
+// whole groups qualify: a zero tail is shorter than five characters.
+fn encode_ascii85(data: &[u8]) -> String {
+    let encoded = ascii85_encode(data);
+    let body = &encoded[2..encoded.len() - 2];
+    let full_groups = data.len() / 4;
+    let mut out = String::with_capacity(encoded.len());
+    out.push_str("<~");
+    for group in 0..full_groups {
+        if data[group * 4..group * 4 + 4] == [0, 0, 0, 0] {
+            out.push('z');
+        } else {
+            out.push_str(&body[group * 5..group * 5 + 5]);
+        }
+    }
+    out.push_str(&body[full_groups * 5..]);
+    out.push_str("~>");
+    out
+}

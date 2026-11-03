@@ -95,6 +95,7 @@ const formats = [
 ];
 
 const tabularFormats = ['Parquet', 'Avro', 'Arrow IPC', 'Feather', 'CSV', 'TSV', 'JSON'];
+const tabularExtensions = { 'Arrow IPC': 'arrow' };
 
 // Image converter supports these formats.
 const imageFormats = ['original', 'jpg', 'png', 'webp', 'avif'];
@@ -107,7 +108,16 @@ const imageFormatLabels = {
 };
 // Per-format tunables the Rust encoder actually supports.
 const imageFormatOptions = {
-    jpg: [{ key: 'quality', type: 'range', min: 1, max: 100, label: 'Quality', defaultValue: 85 }],
+    jpg: [
+        { key: 'quality', type: 'range', min: 1, max: 100, label: 'Quality', defaultValue: 85 },
+        {
+            key: 'background',
+            type: 'color',
+            label: 'Background',
+            hint: 'JPG has no transparency; transparent areas get this colour',
+            defaultValue: '#ffffff',
+        },
+    ],
     png: [
         {
             key: 'compression',
@@ -1025,7 +1035,7 @@ const quietStatuses = new Set(['Ready', 'Done', 'Cleared']);
 // Timestamp: one input read by wasm, which knows the formats; zones by name come
 // from the browser's tz database (Intl), which the wasm build doesn't carry.
 const timestampHelp =
-    'Unix time in s, ms, µs or ns · ISO 8601 · RFC 2822 · SQL · log lines · UUID, ULID, ObjectId · now - 3d';
+    'Unix time in s, ms, µs or ns · ISO 8601 · RFC 2822 · SQL · log lines · UUID, ULID, ObjectId · now - 1h30m, 3 days ago';
 
 boot();
 
@@ -1679,13 +1689,11 @@ function bindUI() {
         }
     });
     elements.jwtSecret?.addEventListener('input', () => {
-        if (
-            state.currentTool === 'coder-jwt' &&
-            state.pairLastSource === 'input' &&
-            elements.pairInput?.value.trim()
-        ) {
-            runPairConversion('input');
-        }
+        if (state.currentTool !== 'coder-jwt') return;
+        // A pasted token is re-checked against the secret; a payload is re-signed.
+        const source = state.pairLastSource === 'output' ? 'output' : 'input';
+        const field = source === 'output' ? elements.pairOutput : elements.pairInput;
+        if (field?.value.trim()) runPairConversion(source);
     });
     elements.numberBinary?.addEventListener('input', () => handleNumberInput('binary'));
     elements.numberOctal?.addEventListener('input', () => handleNumberInput('octal'));
@@ -1700,6 +1708,17 @@ function bindUI() {
     elements.uuidRegenerate?.addEventListener('click', refreshUUIDs);
     elements.uaBrowser?.addEventListener('change', activateUserAgentTool);
     elements.uaOS?.addEventListener('change', activateUserAgentTool);
+    // Out-of-range numbers are used clamped; the field shows the clamped value
+    // once it's left (not while typing: 5 is on the way to 50), so it never
+    // claims a length or digit count the output doesn't have.
+    document.querySelectorAll('input[type="number"][min][max]').forEach((input) => {
+        input.addEventListener('change', () => {
+            if (input.value === '') return;
+            const fallback = Number(input.defaultValue);
+            const value = clampNumber(input.value, Number(input.min), Number(input.max), fallback);
+            input.value = String(value);
+        });
+    });
     [
         elements.randomLength,
         elements.randomCount,
@@ -2019,7 +2038,8 @@ function normalizeRowCount(value) {
 }
 
 function deriveOutputName(inputName, targetFormat) {
-    const ext = (targetFormat || 'bin').toLowerCase();
+    // "Arrow IPC" is a display name; its files are .arrow.
+    const ext = tabularExtensions[targetFormat] || (targetFormat || 'bin').toLowerCase();
     const base = inputName ? inputName.replace(/\.[^.]+$/, '') : 'converted';
     return `${base}.${ext}`;
 }
@@ -2292,7 +2312,10 @@ function runCoder() {
     elements.coderResults.hidden = false;
     elements.coderResultActions.hidden = true;
     elements.coderResultMeta.textContent = '';
-    if (fromFile ? !bytes : !text) {
+    // Empty text still has digests (MD5 d41d8cd9…), so Hash shows them; for
+    // decoding, whitespace alone is nothing to read rather than an error.
+    const empty = fromFile ? !bytes : mode === 'decode' ? !text.trim() : mode !== 'hash' && !text;
+    if (empty) {
         renderCoderEmpty();
         return;
     }
@@ -2376,6 +2399,7 @@ const decodeAutoOrder = [
     'base85_ascii85',
     'base91',
 ];
+const permissiveAlphabets = new Set(['base85_ascii85', 'base91']);
 
 function decodeAs(key, text) {
     return decode_content_bytes(key, key === 'hex_upper' ? text.toUpperCase() : text);
@@ -2398,10 +2422,14 @@ function decodeAuto(text) {
         }
         if (!bytes.length) continue;
         if (readableText(bytes) !== null) return { key, bytes };
-        binary ??= { key, bytes };
+        // Base85 and Base91 decode almost any text (`%%%` came out as one
+        // byte), so a binary result from them is noise, not a guess.
+        if (!permissiveAlphabets.has(key)) binary ??= { key, bytes };
     }
     if (binary) return binary;
-    throw new Error('Not Base16, Base32, Base64, Base85 or Base91 text');
+    throw new Error(
+        'Not Base16, Base32 or Base64, and not Base85 or Base91 of text: pick the encoding to decode binary'
+    );
 }
 
 function renderDecodeResult(text) {
@@ -2443,7 +2471,11 @@ function encodeDigest(hexValue) {
 }
 
 function renderHashResults(map) {
-    elements.coderResultMeta.textContent = state.hashUseHmac ? 'HMAC with the key above' : '';
+    const fromFile = state.coder.inputMode === 'file';
+    const meta = [];
+    if (state.hashUseHmac) meta.push('HMAC with the key above');
+    if (!fromFile && !elements.coderInput.value) meta.push('of empty input');
+    elements.coderResultMeta.textContent = meta.join(' · ');
     renderCoderGroups(
         hashGroups.map((group) => ({
             title: group.label,
@@ -2561,6 +2593,7 @@ function isDiffTool(toolId) {
 function activatePairTool(toolId) {
     state.currentPairTool = toolId;
     state.pairLastSource = 'input';
+    elements.jwtAlgorithm?.querySelector('[data-foreign]')?.remove();
     const config = pairToolConfigs[toolId];
     if (!config) {
         setStatus("This tool isn't wired up in this build.", true);
@@ -2611,6 +2644,23 @@ function activatePairTool(toolId) {
     setStatus('Ready', false);
 }
 
+const jwtSignable = new Set(['HS256', 'HS384', 'HS512']);
+
+// The menu says what a decoded token uses even when this page can't sign it:
+// RS256 used to blank the select, and editing the payload then re-signed the
+// token as HS256 without a word.
+function showJwtAlgorithm(algorithm) {
+    const select = elements.jwtAlgorithm;
+    if (!select) return;
+    select.querySelector('[data-foreign]')?.remove();
+    if (!jwtSignable.has(algorithm)) {
+        const option = new Option(`${algorithm} (can't sign here)`, algorithm);
+        option.dataset.foreign = '';
+        select.add(option);
+    }
+    select.value = algorithm;
+}
+
 function handlePairInput(source) {
     if (!isPairTool(state.currentTool) || state.pairSyncing) return;
     runPairConversion(source);
@@ -2648,11 +2698,17 @@ function runPairConversion(source) {
             syncUrlParamsFromInput(decoded, true);
             setStatus('Done', false);
         } catch (err) {
+            // The last good decode would read as the answer to this input.
+            setPairField(elements.pairInput, '');
+            resetUrlQueryState();
             setStatus(`⚠️ ${err?.message || err}`, true);
         }
         return;
     }
     if (config.type === 'jwt') {
+        const secret = elements.jwtSecret?.value || '';
+        // On failure the other side is cleared: a token signed with an old
+        // secret or payload reads as the answer to the current input.
         if (source === 'input') {
             if (!inputValue.trim()) {
                 setPairField(elements.pairOutput, '');
@@ -2660,18 +2716,30 @@ function runPairConversion(source) {
                 setStatus('Cleared');
                 return;
             }
-            const secret = elements.jwtSecret?.value || '';
             if (!secret.trim()) {
+                setPairField(elements.pairOutput, '');
+                updatePairMeta(null);
                 setStatus('Secret is required', true);
                 return;
             }
             const algorithm = elements.jwtAlgorithm?.value || 'HS256';
+            if (!jwtSignable.has(algorithm)) {
+                setPairField(elements.pairOutput, '');
+                updatePairMeta(null);
+                setStatus(
+                    `This page can't sign ${algorithm}: pick HS256, HS384 or HS512 to sign the payload`,
+                    true
+                );
+                return;
+            }
             try {
                 const token = jwt_encode(inputValue, secret, algorithm);
                 setPairField(elements.pairOutput, token);
                 updatePairMeta(null);
+                showJwtAlgorithm(algorithm);
                 setStatus('Done', false);
             } catch (err) {
+                setPairField(elements.pairOutput, '');
                 setStatus(`⚠️ ${err?.message || err}`, true);
             }
             return;
@@ -2683,16 +2751,18 @@ function runPairConversion(source) {
             return;
         }
         try {
-            const info = jwt_decode(outputValue) || {};
-            if (info.payload && elements.pairInput) {
-                setPairField(elements.pairInput, info.payload);
-            }
-            if (info.algorithm && elements.jwtAlgorithm) {
-                elements.jwtAlgorithm.value = info.algorithm;
-            }
+            const info = jwt_decode(outputValue, secret) || {};
+            setPairField(elements.pairInput, info.payload || '');
+            showJwtAlgorithm(info.algorithm || 'none');
             updatePairMeta(info);
-            setStatus('Done', false);
+            if (info.verified === false) {
+                setStatus('⚠️ The signature does not match this secret', true);
+            } else {
+                setStatus('Done', false);
+            }
         } catch (err) {
+            setPairField(elements.pairInput, '');
+            updatePairMeta(null);
             setStatus(`⚠️ ${err?.message || err}`, true);
         }
         return;
@@ -2798,7 +2868,12 @@ function serializeQueryParams(params) {
     if (!params?.length) return '';
     const filtered = params.filter((entry) => (entry?.key || entry?.value || '').length > 0);
     if (!filtered.length) return '';
-    return filtered.map(({ key, value }) => `${key || ''}=${value || ''}`).join('&');
+    // Escapes only what would change how the query splits (`b` = `x&y=z` used to
+    // become a third parameter); the rest stays readable, as typed.
+    const escape = (text, reserved) => (text || '').replace(reserved, encodeURIComponent);
+    return filtered
+        .map(({ key, value }) => `${escape(key, /[%&=#+]/g)}=${escape(value, /[%&#+]/g)}`)
+        .join('&');
 }
 
 function buildUrlFromState() {
@@ -2945,7 +3020,12 @@ function updatePairMeta(info) {
         sections.push(`Header:\n${info.header}`);
     }
     if (info.signature) {
-        sections.push(`Signature:\n${info.signature}`);
+        const hmac = /^HS(256|384|512)$/.test(info.algorithm || '');
+        let check = `not checked: ${info.algorithm || 'this algorithm'} needs the issuer's public key`;
+        if (info.verified === true) check = 'valid for this secret';
+        else if (info.verified === false) check = 'does NOT match this secret';
+        else if (hmac) check = 'not checked: enter the secret to verify it';
+        sections.push(`Signature (${check}):\n${info.signature}`);
     }
     elements.pairOutputMeta.textContent = sections.join('\n\n');
     elements.pairOutputMeta.hidden = sections.length === 0;
@@ -3011,6 +3091,13 @@ function runNumberConversion(base) {
         state.numberSyncing = false;
         setStatus('Done', false);
     } catch (err) {
+        // The other fields still showing the previous number would read as its conversion.
+        state.numberSyncing = true;
+        [elements.numberBinary, elements.numberOctal, elements.numberDecimal, elements.numberHex]
+            .filter((input) => input && input !== field)
+            .forEach((input) => {
+                input.value = '';
+            });
         state.numberSyncing = false;
         setStatus(`⚠️ ${err?.message || err}`, true);
     }
@@ -3054,15 +3141,16 @@ function runUnitConversion(unitKey) {
         setStatus('Done', false);
     } catch (err) {
         state.unitSyncing = false;
+        clearUnitFields(field);
         setStatus(`⚠️ ${err?.message || err}`, true);
     }
 }
 
-function clearUnitFields() {
+function clearUnitFields(keep = null) {
     state.unitSyncing = true;
     unitKeys.forEach((key) => {
         const target = elements[`unit${capitalize(key)}`];
-        if (target) target.value = '';
+        if (target && target !== keep) target.value = '';
     });
     state.unitSyncing = false;
 }
@@ -3196,7 +3284,7 @@ function handleWatermarkRangeChange(event) {
     const value = Number.isFinite(raw) ? raw : 0;
     const clamp = (min, max) => Math.min(max, Math.max(min, value));
     const ranges = {
-        watermarkOpacity: ['opacity', 0, 100],
+        watermarkOpacity: ['opacity', 1, 100],
         watermarkRotation: ['rotation', -90, 90],
         watermarkSpacing: ['spacing', 10, 200],
         watermarkFontSize: ['fontSize', 8, 96],
@@ -3215,14 +3303,68 @@ function buildWatermarkPayload() {
     const text = (elements.watermarkText?.value || '').trim();
     if (!text) throw new Error('Type the watermark text first');
     return {
-        text,
+        mask: drawWatermarkMask(text, mark.fontSize || 32),
         opacity: (mark.opacity || 0) / 100,
         rotationDeg: mark.rotation || 0,
         spacing: mark.spacing || 32,
-        fontSize: mark.fontSize || 32,
         color: elements.watermarkColor?.value || mark.color || '#ffffff',
         direction: elements.watermarkDirection?.value || mark.direction || 'both',
     };
+}
+
+// The page draws the text with the browser's own fonts, so any script it can
+// show (CJK included) comes out at its real pixel size; wasm only tiles and
+// blends the alpha mask.
+function drawWatermarkMask(text, fontSize) {
+    const font = `${fontSize}px system-ui, sans-serif`;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = font;
+    const metrics = ctx.measureText(text);
+    const left = Math.ceil(metrics.actualBoundingBoxLeft || 0);
+    const ascent = Math.ceil(metrics.actualBoundingBoxAscent || fontSize);
+    const width = Math.max(1, left + Math.ceil(metrics.actualBoundingBoxRight || metrics.width));
+    const height = Math.max(1, ascent + Math.ceil(metrics.actualBoundingBoxDescent || 0));
+    canvas.width = width;
+    canvas.height = height;
+    ctx.font = font;
+    ctx.fillText(text, left, ascent);
+    const { data } = ctx.getImageData(0, 0, width, height);
+    const alpha = new Uint8Array(width * height);
+    for (let i = 0; i < alpha.length; i += 1) alpha[i] = data[i * 4 + 3];
+    return { width, height, alpha };
+}
+
+// The wasm build has no AVIF decoder (that needs native dav1d), while every
+// browser this page supports decodes AVIF; it hands wasm PNG bytes instead.
+async function decodeImageInBrowser(bytes, name) {
+    let bitmap;
+    try {
+        bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/avif' }), {
+            premultiplyAlpha: 'none',
+            colorSpaceConversion: 'none',
+        });
+    } catch {
+        throw new Error(`Couldn't decode ${name}: this browser can't read it as AVIF`);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    return new Uint8Array(await blob.arrayBuffer());
+}
+
+function hexToRgb(hex) {
+    const value = Number.parseInt(String(hex).replace('#', ''), 16);
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+}
+
+// Gives the browser a frame to paint the busy state before wasm blocks the
+// thread (a 1080p AVIF encode takes seconds).
+function nextPaint() {
+    return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
 // Image converter: reads uploads, calls wasm for transcoding, and keeps preview/download in sync.
@@ -3440,6 +3582,9 @@ function renderImageOptions(format) {
             if (spec.type === 'checkbox') {
                 return `<label class="check"${title}><input type="checkbox" data-image-opt="${spec.key}"${value ? ' checked' : ''} />${label}</label>`;
             }
+            if (spec.type === 'color') {
+                return `<label class="field"${title}><span class="label">${label}</span><input type="color" data-image-opt="${spec.key}" value="${escapeAttr(value)}" /></label>`;
+            }
             return `<label class="range"${title}><span class="label">${label}</span><input type="range" data-image-opt="${spec.key}" min="${spec.min ?? ''}" max="${spec.max ?? ''}" value="${escapeAttr(value)}" /><output>${escapeHTML(String(value))}</output></label>`;
         })
         .join('');
@@ -3464,53 +3609,72 @@ function handleImageOptionChange(event) {
     state.image.optionsByFormat[effectiveFormat] = current;
 }
 
-function handleImageConvert() {
+async function handleImageConvert() {
     if (!isImageTool(state.currentTool)) return;
     if (!state.wasmReady) {
         setStatus('Waiting for WebAssembly...', true);
         return;
     }
     const files = state.image.files || [];
-    if (!files.length) return;
+    if (!files.length || state.image.converting) return;
     const target = elements.imageTargetFormat?.value || state.image.targetFormat || 'webp';
     state.image.targetFormat = (target || '').toString().trim().toLowerCase();
     const applyWatermark = Boolean(state.image.watermark.enabled);
-    let watermark = null;
+    let watermark;
     try {
         watermark = buildWatermarkPayload();
     } catch (err) {
         renderImageError(err?.message || 'Watermark settings are invalid');
         return;
     }
+    state.image.converting = true;
+    if (elements.imageConvert) {
+        elements.imageConvert.disabled = true;
+        elements.imageConvert.firstChild.textContent = 'Converting… ';
+    }
+    await nextPaint();
     try {
         // Build batch payload so the wasm helper can process files in one call.
-        const payload = files.map((file) => {
+        const payload = [];
+        const decodeErrors = new Map();
+        for (const [idx, file] of files.entries()) {
             const detected =
                 detectImageFormat(file.bytes, file.name) || file.detectedFormat || 'png';
-            const to =
-                state.image.targetFormat === 'original' ? 'original' : state.image.targetFormat;
-            const formatForOptions = to === 'original' ? detected : to;
-            const options = state.image.optionsByFormat[formatForOptions] || {};
-            const base = {
-                from: detected,
-                to,
-                bytes: file.bytes,
-                fileName: file.name,
-                options,
-            };
-            return applyWatermark ? { ...base, watermark } : base;
-        });
+            const target = state.image.targetFormat;
+            const formatForOptions = target === 'original' ? detected : target;
+            const { background, ...rest } = state.image.optionsByFormat[formatForOptions] || {};
+            const options = background ? { ...rest, background: hexToRgb(background) } : rest;
+            let from = detected;
+            let bytes = file.bytes;
+            if (detected === 'avif') {
+                try {
+                    bytes = await decodeImageInBrowser(file.bytes, file.name);
+                    from = 'png';
+                } catch (err) {
+                    decodeErrors.set(idx, err.message);
+                }
+            }
+            // "original" means the source's format, which for a decoded AVIF is no longer `from`.
+            const to = target === 'original' ? detected : target;
+            const base = { from, to, bytes, fileName: file.name, options };
+            payload.push(applyWatermark ? { ...base, watermark } : base);
+        }
         const raw = applyWatermark
             ? apply_image_watermark_batch(payload)
             : convert_image_format_batch(payload);
         const items = Array.isArray(raw) ? raw : [];
-        state.image.batchResults = items.map(normalizeBatchImageResult);
+        state.image.batchResults = items.map((item, idx) =>
+            decodeErrors.has(idx)
+                ? { fileName: files[idx].name, error: decodeErrors.get(idx), result: null }
+                : normalizeBatchImageResult(item)
+        );
         state.image.result = state.image.batchResults[0]?.result || null;
         renderImageError('');
     } catch (err) {
         console.error(err);
         renderImageError(err?.message || String(err));
     }
+    state.image.converting = false;
     renderImageFiles();
 }
 
@@ -4513,7 +4677,7 @@ function runAsciiGenerator() {
             ? generate_ascii_art(
                   text,
                   elements.asciiFont.value,
-                  readNumber(elements.asciiWidth, 10, 200),
+                  readNumber(elements.asciiWidth, 10, 120),
                   state.ascii.align
               )
             : '';
@@ -4634,10 +4798,17 @@ function downloadQrImage() {
 
 function addQrParseFiles(files) {
     Promise.all(
-        files.map(async (file) => ({
-            fileName: file.name || 'image',
-            bytes: new Uint8Array(await file.arrayBuffer()),
-        }))
+        files.map(async (file) => {
+            const fileName = file.name || 'image';
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            if (detectImageMagic(bytes) !== 'avif') return { fileName, bytes };
+            // Same as the image converter: wasm can't decode AVIF, the browser can.
+            try {
+                return { fileName, bytes: await decodeImageInBrowser(bytes, fileName) };
+            } catch (err) {
+                return { fileName, bytes, decodeError: err.message };
+            }
+        })
     ).then((loaded) => {
         state.qrParse.files = loaded;
         runQrParse();
@@ -4648,8 +4819,15 @@ async function runQrParse() {
     if (state.currentTool !== 'generator-qr-parse' || !state.wasmReady) return;
     if (!state.qrParse.files.length) return;
     try {
-        const results = await parse_qr_codes_batch(state.qrParse.files);
-        state.qrParse.results = Array.isArray(results) ? results : [];
+        const files = state.qrParse.files;
+        const results = await parse_qr_codes_batch(
+            files.map(({ fileName, bytes }) => ({ fileName, bytes }))
+        );
+        state.qrParse.results = (Array.isArray(results) ? results : []).map((result, idx) =>
+            files[idx]?.decodeError
+                ? { fileName: files[idx].fileName, results: [], error: files[idx].decodeError }
+                : result
+        );
     } catch (err) {
         state.qrParse.results = state.qrParse.files.map((file) => ({
             fileName: file.fileName,
@@ -4756,8 +4934,9 @@ function saveSshKey(part) {
     if (!key) return;
     const base = key.keyType === 'rsa' ? 'id_rsa' : 'id_ed25519';
     const text = part === 'public' ? key.publicKey : key.privateKey;
+    // Chrome appends .txt to an extensionless text/plain download (id_rsa.txt).
     saveFile(
-        new Blob([`${text}\n`], { type: 'text/plain' }),
+        new Blob([`${text}\n`], { type: 'application/octet-stream' }),
         part === 'public' ? `${base}.pub` : base
     );
 }
@@ -4945,23 +5124,43 @@ function runTimestamp() {
     try {
         let ms = Number(reading.seconds) * 1000;
         let offset = 0;
+        // What the wall time was converted with; only a skipped hour shows another offset.
+        let shift = 0;
+        let skipped = false;
         if (zone !== 'UTC') {
             if (reading.zoned) {
                 offset = zoneOffsetAt(zone, ms);
             } else {
-                // Wall-clock input: find the instant whose local time it is. The second
-                // guess settles the hours around a daylight-saving change.
+                // Wall-clock input: find the instant whose local time it is. Around a
+                // daylight-saving change the zone keeps one of the offsets it has a day
+                // either side; a repeated hour fits both and, as in Temporal, the
+                // earlier instant (the larger offset) wins.
                 const wall = ms;
-                offset = zoneOffsetAt(zone, wall);
-                offset = zoneOffsetAt(zone, wall - offset * 1000);
-                ms = wall - offset * 1000;
+                const day = 86_400_000;
+                const offsets = [zoneOffsetAt(zone, wall - day), zoneOffsetAt(zone, wall + day)];
+                const fits = offsets.filter(
+                    (guess) => zoneOffsetAt(zone, wall - guess * 1000) === guess
+                );
+                offset = fits.length ? Math.max(...fits) : undefined;
+                if (offset === undefined) {
+                    // A skipped hour (02:30 when clocks jump 02:00 → 03:00) has no
+                    // instant; like Temporal, read it with the offset from before
+                    // the jump, which lands as far past the jump as it was into it.
+                    skipped = true;
+                    shift = Math.min(...offsets);
+                    ms = wall - shift * 1000;
+                    offset = zoneOffsetAt(zone, ms);
+                } else {
+                    shift = offset;
+                    ms = wall - offset * 1000;
+                }
             }
         }
         const seconds = reading.zoned
             ? reading.seconds
-            : (BigInt(reading.seconds) - BigInt(offset)).toString();
+            : (BigInt(reading.seconds) - BigInt(shift)).toString();
         const written = format_timestamp(seconds, reading.nanos, offset, patterns);
-        showTimestamp(reading, written, { ms, offset, zone, typed, patterns });
+        showTimestamp(reading, written, { ms, offset, zone, typed, patterns, skipped });
     } catch (err) {
         // Intl's dates end at ±275,760 years; wasm reads further than that.
         stopTimestampTicker();
@@ -4977,7 +5176,7 @@ function runTimestamp() {
     }
 }
 
-function showTimestamp(reading, written, { ms, offset, zone, typed, patterns }) {
+function showTimestamp(reading, written, { ms, offset, zone, typed, patterns, skipped }) {
     const zoneName = zone === 'UTC' ? 'UTC' : zone;
     if (elements.timestampKind) {
         elements.timestampKind.hidden = false;
@@ -4995,6 +5194,8 @@ function showTimestamp(reading, written, { ms, offset, zone, typed, patterns }) 
     if (elements.timestampHelp) {
         let help = '';
         if (!typed) help = `Showing the current time. ${timestampHelp}`;
+        else if (skipped)
+            help = `That time doesn't exist in ${zoneName}: clocks skipped it for daylight saving, so it is read as the same time past the jump.`;
         else if (!reading.zoned)
             help = `The input names no zone, so it is read as ${zoneName} time: pick another zone to change that.`;
         elements.timestampHelp.textContent = help;
@@ -5484,7 +5685,14 @@ function runKdfHash() {
                 elements.kdfOutput.textContent = hashPassword(elements.kdfPassword.value);
                 const ms = Math.round(performance.now() - started);
                 // The time is the point of the cost options: a login waits this long.
-                elements.kdfOutputMeta.textContent = `took ${ms} ms in this browser`;
+                const notes = [`took ${ms} ms in this browser`];
+                // bcrypt ignores everything past 72 bytes, so two such passwords
+                // sharing a prefix get the same hash.
+                const size = utf8ToBytes(elements.kdfPassword.value).length;
+                if (state.kdf.active !== 'argon2' && size > 72) {
+                    notes.push(`bcrypt used only the first 72 of ${size} bytes`);
+                }
+                elements.kdfOutputMeta.textContent = notes.join(' · ');
             } catch (err) {
                 elements.kdfOutput.textContent = String(err?.message || err);
                 elements.kdfOutput.classList.add('error');

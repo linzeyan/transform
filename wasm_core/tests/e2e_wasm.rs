@@ -407,11 +407,15 @@ fn image_watermark_round_trip() {
     let set_field = |key: &str, value: JsValue| {
         Reflect::set(&watermark, &JsValue::from_str(key), &value).expect("set watermark field");
     };
-    set_field("text", JsValue::from_str("demo"));
+    let mask = Object::new();
+    Reflect::set(&mask, &JsValue::from_str("width"), &JsValue::from_f64(2.0)).unwrap();
+    Reflect::set(&mask, &JsValue::from_str("height"), &JsValue::from_f64(1.0)).unwrap();
+    let alpha = js_sys::Uint8Array::from(&[255u8, 128][..]);
+    Reflect::set(&mask, &JsValue::from_str("alpha"), &alpha).unwrap();
+    set_field("mask", mask.into());
     set_field("opacity", JsValue::from_f64(0.6));
     set_field("rotationDeg", JsValue::from_f64(30.0));
     set_field("spacing", JsValue::from_f64(12.0));
-    set_field("fontSize", JsValue::from_f64(18.0));
     set_field("color", JsValue::from_str("#FF00FF"));
     set_field("direction", JsValue::from_str("both"));
 
@@ -815,7 +819,7 @@ fn url_encode_and_decode_roundtrip() {
 fn jwt_encode_and_decode_roundtrip() {
     let payload = r#"{"sub":"1234567890","name":"John Doe"}"#;
     let token = jwt_encode(payload, "secret", "").expect("jwt encode");
-    let decoded = js_to_json(jwt_decode(&token).expect("jwt decode"));
+    let decoded = js_to_json(jwt_decode(&token, "").expect("jwt decode"));
     let payload_text = field(&decoded, "payload");
     let payload_json: JsonValue =
         serde_json::from_str(payload_text).expect("payload should be valid json");
