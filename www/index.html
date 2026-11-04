@@ -55,10 +55,47 @@
                 <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" />
                 <circle cx="8" cy="8" r="2" />
             </symbol>
+            <!-- The brand mark: favicon.svg's wrench and screwdriver. Its mask cuts the
+                 wrench where the screwdriver crosses it, and sits outside the symbol so
+                 the icon's inherited stroke never reaches it. -->
+            <mask id="i-toolbox-gap" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+                <rect width="24" height="24" fill="#fff" />
+                <g
+                    transform="rotate(-45 12 12)"
+                    fill="#000"
+                    stroke="#000"
+                    stroke-width="4.5"
+                    stroke-linejoin="round"
+                >
+                    <rect x="9.5" y="12.5" width="5" height="9" rx="2" />
+                    <path d="M11.25 5.5h1.5V12.5h-1.5z" />
+                </g>
+            </mask>
+            <symbol id="i-toolbox" viewBox="0 0 24 24">
+                <!-- On a group, not the rotated path: the mask is drawn upright. -->
+                <g mask="url(#i-toolbox-gap)">
+                    <path
+                        transform="rotate(45 12 12)"
+                        d="M10.5 2.29V5h3V2.29A4 4 0 0 1 13.5 9.71V19.5a1.5 1.5 0 0 1-3 0V9.71A4 4 0 0 1 10.5 2.29z"
+                    />
+                </g>
+                <g transform="rotate(-45 12 12)">
+                    <path
+                        fill="currentcolor"
+                        stroke="none"
+                        d="M10.75 2.5h2.5l-.5 3h-1.5zM11.25 5.5h1.5v7h-1.5z"
+                    />
+                    <rect x="9.5" y="12.5" width="5" height="9" rx="2" />
+                </g>
+            </symbol>
         </svg>
         <div class="app" id="app">
             <nav class="nav" aria-label="Tools">
-                <div class="brand"><span class="brand-mark">t</span>transform</div>
+                <div class="brand">
+                    <span class="brand-mark"
+                        ><svg class="i"><use href="#i-toolbox" /></svg></span
+                    >transform
+                </div>
                 <label class="nav-search">
                     <svg class="i"><use href="#i-search" /></svg>
                     <input
