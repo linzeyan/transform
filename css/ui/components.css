@@ -1,0 +1,1152 @@
+/*
+ * The one layout every tool uses, top to bottom:
+ *   .tool-head  title, a one-line hint, tool-wide actions
+ *   .bar        the options that shape the result (modes, formats, keys)
+ *   body        .split of two .panes (input | output), or a scrolling .sheet
+ * Results appear as you type; a button exists only where running twice gives a
+ * different answer (a fresh nonce, a new UUID) or the work is slow. Every output
+ * keeps Copy (and Save, when it is a file) in the same place: its pane header.
+ */
+
+/* padding: the webview's default stylesheet pads the body by 20px. */
+body.ui {
+    margin: 0;
+    padding: 0;
+    font: var(--ui-size) / 1.5 var(--ui-font);
+    color: var(--ui-fg);
+    background: var(--ui-bg);
+    -webkit-font-smoothing: antialiased;
+}
+
+.ui *,
+.ui *::before,
+.ui *::after {
+    box-sizing: border-box;
+}
+
+/* The icon sprite: defines symbols, draws nothing, takes no room. */
+.sprite {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+}
+
+/* Components set their own display, which would otherwise outrank the attribute. */
+.ui [hidden] {
+    display: none !important;
+}
+
+.ui :focus-visible {
+    outline: 1px solid var(--ui-focus);
+    outline-offset: -1px;
+}
+
+/* ---- Tool frame ---- */
+
+.tool {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    min-width: 0;
+    background: var(--ui-surface);
+}
+
+.tool-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 14px var(--ui-pad) 10px;
+}
+
+.tool-title {
+    margin: 0;
+    font-size: calc(var(--ui-size) + 3px);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.tool-hint {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    color: var(--ui-muted);
+    font-size: var(--ui-size-sm);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Only what needs reading: loading, a failure, a slow job's progress. Success shows as the result. */
+.tool-status {
+    max-width: 50%;
+    margin-left: auto;
+    color: var(--ui-muted);
+    font-size: var(--ui-size-sm);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tool-status.error {
+    color: var(--ui-danger);
+}
+
+/* The active tool's part of the page, under the shared header. */
+.tool-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* A result pane under the .split (a diff under its two sides) shares the height. */
+.tool-body > .pane {
+    flex: 1;
+    border-top: 1px solid var(--ui-border);
+}
+
+/* A tool without a .bar still needs the line the bar would have drawn. */
+.tool-body > :is(.split, .sheet):first-child {
+    border-top: 1px solid var(--ui-border);
+}
+
+.bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    padding: 0 var(--ui-pad) 12px;
+    border-bottom: 1px solid var(--ui-border);
+}
+
+.bar + .bar {
+    padding-top: 12px;
+}
+
+.bar-end {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.field {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+:is(.field, .range) > .label {
+    color: var(--ui-muted);
+    font-size: var(--ui-size-sm);
+    white-space: nowrap;
+}
+
+.field.grow {
+    flex: 1 1 260px;
+}
+
+.field.grow > .input {
+    flex: 1;
+    min-width: 0;
+}
+
+/* A filter: the magnifier sits inside the box, as in the tool list. */
+.field.search {
+    position: relative;
+}
+
+.field.search > .input {
+    padding-left: 30px;
+}
+
+.field.search > .i {
+    position: absolute;
+    left: 9px;
+    color: var(--ui-faint);
+    pointer-events: none;
+}
+
+/* Options that come and go with a choice (an encoder's) sit in the bar as its own items. */
+.options {
+    display: contents;
+}
+
+/* ---- Controls ---- */
+
+.tool-body select,
+.ui .input {
+    height: var(--ui-h);
+    padding: 0 8px;
+    border: 1px solid var(--ui-input-border);
+    border-radius: var(--ui-radius);
+    background: var(--ui-input-bg);
+    color: var(--ui-fg);
+    font: inherit;
+}
+
+.ui .input.mono {
+    font-family: var(--ui-mono);
+    font-size: var(--ui-size-mono);
+}
+
+.ui .input.large {
+    height: calc(var(--ui-h) + 8px);
+    font-size: calc(var(--ui-size-mono) + 2px);
+}
+
+.tool-body select {
+    appearance: none;
+    padding-right: 26px;
+
+    /* A data URI cannot read var(): one mid grey that shows on light and dark alike. */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 6.5 8 10l3.5-3.5'/%3E%3C/svg%3E");
+    background-position: right 6px center;
+    background-repeat: no-repeat;
+    cursor: pointer;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: var(--ui-h);
+    padding: 0 12px;
+    border: 1px solid var(--ui-btn-border);
+    border-radius: var(--ui-radius);
+    background: var(--ui-btn-bg);
+    color: var(--ui-btn-fg);
+    font: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.btn:hover {
+    background: var(--ui-btn-hover);
+}
+
+.btn.primary {
+    border-color: transparent;
+    background: var(--ui-primary-bg);
+    color: var(--ui-primary-fg);
+    font-weight: 500;
+}
+
+.btn.primary:hover {
+    background: var(--ui-primary-hover);
+}
+
+.btn.quiet {
+    border-color: transparent;
+    background: transparent;
+    color: var(--ui-muted);
+}
+
+.btn.quiet:hover {
+    background: var(--ui-hover);
+    color: var(--ui-fg);
+}
+
+.icon-btn {
+    display: inline-grid;
+    place-items: center;
+    width: var(--ui-h);
+    height: var(--ui-h);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--ui-radius);
+    background: transparent;
+    color: var(--ui-muted);
+    cursor: pointer;
+}
+
+.icon-btn:hover {
+    background: var(--ui-hover);
+    color: var(--ui-fg);
+}
+
+:is(.btn, .icon-btn):disabled {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.tool-body input:is([type='checkbox'], [type='radio'], [type='range']) {
+    margin: 0;
+    accent-color: var(--ui-accent);
+}
+
+/* A slider with its value beside it, so the number is read rather than guessed. */
+.range {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.range input {
+    width: 110px;
+}
+
+.range output {
+    min-width: 3ch;
+    color: var(--ui-muted);
+    font-size: var(--ui-size-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+.tool-body input[type='color'] {
+    width: var(--ui-h);
+    height: var(--ui-h);
+    padding: 2px;
+    border: 1px solid var(--ui-input-border);
+    border-radius: var(--ui-radius);
+    background: var(--ui-input-bg);
+}
+
+.i {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    fill: none;
+    stroke: currentcolor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+kbd {
+    display: inline-block;
+    min-width: 18px;
+    padding: 0 4px;
+    border: 1px solid var(--ui-kbd-border);
+    border-radius: 3px;
+    background: var(--ui-kbd-bg);
+    font: 11px / 16px var(--ui-font);
+    text-align: center;
+}
+
+.btn.primary kbd {
+    border-color: transparent;
+    background: color-mix(in srgb, currentcolor 18%, transparent);
+    color: inherit;
+}
+
+/* Exclusive choices: the mode of a tool, text or file. */
+.seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--ui-input-border);
+    border-radius: var(--ui-radius);
+    background: var(--ui-input-bg);
+}
+
+.seg > button {
+    height: calc(var(--ui-h) - 6px);
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: max(0px, calc(var(--ui-radius) - 2px));
+    background: transparent;
+    color: var(--ui-muted);
+    font: inherit;
+    cursor: pointer;
+}
+
+.seg > button[aria-pressed='true'] {
+    border-color: var(--ui-seg-on-border);
+    background: var(--ui-seg-on-bg);
+    color: var(--ui-fg);
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 11px;
+    background: var(--ui-accent-soft);
+    color: var(--ui-accent);
+    font-size: var(--ui-size-sm);
+    white-space: nowrap;
+}
+
+.chip.danger {
+    background: color-mix(in srgb, var(--ui-danger) 14%, transparent);
+    color: var(--ui-danger);
+}
+
+.chip.live::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ui-success);
+}
+
+/* ---- Body: two panes ---- */
+
+.split {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+}
+
+.pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.pane + .pane {
+    border-left: 1px solid var(--ui-border);
+}
+
+.pane-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 8px 0 var(--ui-pad);
+    border-bottom: 1px solid var(--ui-border);
+}
+
+/* Section headers the way the editor draws them in its side bar. */
+.pane-title,
+.group-title {
+    margin: 0;
+    color: var(--ui-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.meta {
+    color: var(--ui-faint);
+    font-size: var(--ui-size-sm);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pane-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+}
+
+.editor {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    margin: 0;
+    padding: 12px var(--ui-pad);
+    border: 0;
+    resize: none;
+    background: transparent;
+    color: var(--ui-fg);
+    font: var(--ui-size-mono) / 1.6 var(--ui-mono);
+    tab-size: 4;
+    white-space: pre;
+    overflow: auto;
+}
+
+.editor:focus-visible {
+    outline: none;
+}
+
+/* One long line (a token, an encoded URL) reads better wrapped than scrolled. */
+.editor.wrap {
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.editor::placeholder {
+    color: var(--ui-faint);
+}
+
+.pane:focus-within .pane-title {
+    color: var(--ui-fg);
+}
+
+/* What a pane says before there is anything to show. */
+.empty {
+    flex: 1;
+    display: grid;
+    place-content: center;
+    gap: 6px;
+    padding: 24px;
+    color: var(--ui-muted);
+    text-align: center;
+}
+
+.empty strong {
+    color: var(--ui-fg);
+    font-weight: 500;
+}
+
+.notice {
+    display: flex;
+    gap: 8px;
+    margin: 12px var(--ui-pad) 0;
+    padding: 8px 12px;
+    border-left: 2px solid var(--ui-danger);
+    background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
+    color: var(--ui-fg);
+    font-size: var(--ui-size-sm);
+}
+
+.notice b {
+    color: var(--ui-danger);
+}
+
+/* What the tool understood the input as, right under it: the check before reading the results. */
+.readout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    margin: 0;
+    padding: 10px var(--ui-pad);
+    border-bottom: 1px solid var(--ui-border);
+    font-size: var(--ui-size-sm);
+}
+
+.readout .error {
+    color: var(--ui-danger);
+}
+
+.readout .meta {
+    flex-basis: 100%;
+    white-space: normal;
+}
+
+.ui .input.pattern {
+    width: 180px;
+}
+
+/* Small numbers (a cost, a pass count): wide enough for four digits and the spinner. */
+.ui .input.num {
+    width: 76px;
+}
+
+/* Menus sized to their usual choice, not their longest option (a 30-character zone name). */
+#timestampFormat {
+    width: 150px;
+}
+
+#timestampZone {
+    width: 210px;
+}
+
+/* ---- Body: a scrolling sheet of grouped results ---- */
+
+.sheet {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 4px var(--ui-pad) 24px;
+}
+
+/* Rows straight under the bar still need the gap a group title would give them. */
+.sheet > .kv:first-child {
+    margin-top: 12px;
+}
+
+.groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+    gap: 8px 32px;
+}
+
+/* Groups of very different lengths (2 rows beside 18): each flows under the last in its
+   column instead of sharing a row height with its neighbour. */
+.groups.flow {
+    display: block;
+    columns: 460px;
+    column-gap: 32px;
+}
+
+.groups.flow > section {
+    break-inside: avoid;
+}
+
+.group-title {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 16px 0 6px;
+}
+
+.group-title .meta {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+}
+
+/* A button for the whole group (copy all) sits on the title's line without making it taller. */
+.group-title > .icon-btn {
+    align-self: center;
+    margin-block: -6px;
+}
+
+/* label | value | copy. The whole row is the hit target for copying. */
+.kv {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.kv > li {
+    display: grid;
+    grid-template-columns: 128px 1fr auto;
+
+    /* The label sits on the value's first line, however many lines the value wraps to. */
+    align-items: baseline;
+    gap: 12px;
+    min-height: 32px;
+    padding: 0 0 0 8px;
+    border-radius: var(--ui-radius);
+}
+
+.kv > li + li {
+    border-top: 1px solid color-mix(in srgb, var(--ui-border) 60%, transparent);
+}
+
+.kv > li:hover {
+    background: var(--ui-hover);
+}
+
+.kv .k {
+    color: var(--ui-muted);
+    font-size: var(--ui-size-sm);
+}
+
+/* A second, quieter line under the label (the platform a user agent is for). */
+.kv .k small {
+    display: block;
+    color: var(--ui-faint);
+    font-size: var(--ui-size-sm);
+}
+
+/* Rows that are only values (generated strings): the value takes the label's room. */
+.kv.bare > li {
+    grid-template-columns: 1fr auto;
+}
+
+.kv .v.error {
+    color: var(--ui-danger);
+    user-select: text;
+}
+
+.row-actions {
+    display: flex;
+    gap: 2px;
+}
+
+/* Values wrap rather than truncate: a cut-off mask or binary form is a wrong answer. */
+.kv .v {
+    min-width: 0;
+    padding-block: 6px;
+    font: var(--ui-size-mono) / 1.4 var(--ui-mono);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+    user-select: all;
+}
+
+.kv .v .more {
+    margin-left: 4px;
+    color: var(--ui-faint);
+    font: var(--ui-size-sm) var(--ui-font);
+    white-space: nowrap;
+}
+
+/* A row whose label is the pattern it was written with. */
+.kv.custom > li {
+    grid-template-columns: 168px 1fr auto;
+    padding-left: 0;
+}
+
+.kv.custom .input {
+    height: calc(var(--ui-h) - 2px);
+    font-size: var(--ui-size-sm);
+}
+
+.btn.add {
+    margin-top: 4px;
+}
+
+.kv > li > :is(.icon-btn, .row-actions) {
+    align-self: center;
+}
+
+.kv .icon-btn {
+    opacity: 0;
+}
+
+/* A toggle shows state, so it stays in view; copy buttons wait for the pointer. */
+.kv .icon-btn[aria-pressed] {
+    opacity: 1;
+}
+
+.kv .icon-btn[aria-pressed='true'] {
+    color: var(--ui-fg);
+}
+
+.kv > li:is(:hover, :focus-within) .icon-btn {
+    opacity: 1;
+}
+
+/* Rows whose value is typed into: every field converts into all the others. */
+.kv.edit {
+    max-width: 720px;
+}
+
+/* A fixed button column keeps every field the same width, with or without a button. */
+.kv.edit > li {
+    grid-template-columns: 128px 1fr var(--ui-h);
+    padding-block: 3px;
+}
+
+.kv.edit .input {
+    width: 100%;
+    min-width: 0;
+}
+
+/* Short answers (a count, a checkbox) need no full-width field. */
+.kv.edit.narrow {
+    max-width: 420px;
+}
+
+/* A checkbox has no text baseline to share with the label: centre the row instead. */
+.kv.edit.narrow > li {
+    align-items: center;
+}
+
+.range-pair {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.range-pair > .input {
+    flex: 1;
+}
+
+.range-pair > .meta {
+    flex: none;
+}
+
+/* One button per character, pressed when it is drawn from. */
+.toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-width: 720px;
+}
+
+.toggles > button {
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--ui-input-border);
+    border-radius: var(--ui-radius);
+    background: var(--ui-input-bg);
+    color: var(--ui-faint);
+    font: var(--ui-size-mono) var(--ui-mono);
+    cursor: pointer;
+}
+
+.toggles > button[aria-pressed='true'] {
+    border-color: var(--ui-seg-on-border);
+    background: var(--ui-seg-on-bg);
+    color: var(--ui-fg);
+}
+
+/* The one-time password: read off the screen and typed elsewhere, so it is large. */
+.otp {
+    display: grid;
+    justify-items: start;
+    gap: 8px;
+    margin: 20px 0 0 8px;
+}
+
+.otp-code {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ui-fg);
+    font: 600 40px / 1.1 var(--ui-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+    cursor: copy;
+}
+
+.otp-time {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.otp-bar {
+    width: 160px;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: var(--ui-hover);
+}
+
+.otp-bar > span {
+    display: block;
+    height: 100%;
+    background: var(--ui-accent);
+    transition: width 0.3s linear;
+}
+
+/* A yes/no answer under the fields it judged (a password against a stored hash). */
+.verdict {
+    margin: 10px 0 0 8px;
+    font-size: var(--ui-size-sm);
+}
+
+.verdict.ok {
+    color: var(--ui-success);
+}
+
+.verdict.bad {
+    color: var(--ui-danger);
+}
+
+/* One certificate: its name, where it sits in the chain, whether it is still valid. */
+.cert-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 18px 0 6px;
+}
+
+.cert-head h3 {
+    margin: 0;
+    font-size: var(--ui-size);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+/* ---- Files ---- */
+
+.drop {
+    display: grid;
+    place-items: center;
+    gap: 8px;
+    margin: 16px 0;
+    padding: 28px;
+    border: 1px dashed var(--ui-border-strong);
+    border-radius: var(--ui-radius-lg);
+    color: var(--ui-muted);
+    text-align: center;
+    cursor: pointer;
+}
+
+.drop:hover,
+.drop.dragging {
+    border-color: var(--ui-accent);
+    color: var(--ui-fg);
+}
+
+.drop.dragging {
+    background: var(--ui-accent-soft);
+}
+
+/* Once files are chosen the zone only has to take more: one line. */
+.drop.compact {
+    grid-auto-flow: column;
+    justify-content: center;
+    gap: 12px;
+    padding: 10px 16px;
+}
+
+.drop.compact .i {
+    width: 16px;
+    height: 16px;
+}
+
+.drop .i {
+    width: 24px;
+    height: 24px;
+}
+
+.files {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--ui-size-sm);
+}
+
+.files th {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--ui-border);
+    color: var(--ui-muted);
+    font-weight: 500;
+    text-align: left;
+}
+
+.files td {
+    height: 36px;
+    padding: 0 8px;
+    border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 60%, transparent);
+    font-variant-numeric: tabular-nums;
+}
+
+.files td:last-child {
+    text-align: right;
+}
+
+.ok {
+    color: var(--ui-success);
+}
+
+.files .error {
+    color: var(--ui-danger);
+}
+
+.files + .btn {
+    margin-top: 12px;
+}
+
+/* Original beside result; the checkerboard is what transparency looks like. */
+.previews {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.preview {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+}
+
+.preview figcaption {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+
+.preview-frame {
+    display: grid;
+    place-items: center;
+    height: 280px;
+    overflow: hidden;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-lg);
+    background: repeating-conic-gradient(var(--ui-hover) 0 25%, transparent 0 50%) 0 0 / 16px 16px;
+    color: var(--ui-muted);
+}
+
+.preview-frame img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+/* The code at its own pixels, centred; scaled down only when the pane is smaller. */
+.qr-stage {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    overflow: hidden;
+}
+
+/* A flex item's percentage height resolves against the stage, so the code shrinks to fit. */
+.qr-stage img {
+    min-height: 0;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    image-rendering: pixelated;
+}
+
+.qr-payload {
+    padding: 4px 8px 8px var(--ui-pad);
+    border-top: 1px solid var(--ui-border);
+}
+
+/* ---- Pane extras ---- */
+
+/* Read-only detail under an editor (a JWT's header and signature). */
+.pane-foot {
+    max-height: 40%;
+    margin: 0;
+    padding: 10px var(--ui-pad);
+    overflow: auto;
+    border-top: 1px solid var(--ui-border);
+    color: var(--ui-muted);
+    font: var(--ui-size-sm) / 1.5 var(--ui-mono);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* The URL's query as rows, kept in step with the text above. */
+.params {
+    max-height: 45%;
+    overflow: auto;
+    padding: 0 8px 8px var(--ui-pad);
+    border-top: 1px solid var(--ui-border);
+}
+
+.params-head {
+    display: flex;
+    align-items: center;
+    height: 36px;
+}
+
+.params-head .group-title {
+    padding: 0;
+}
+
+.param {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.4fr) auto auto auto;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 0;
+}
+
+.param > .meta {
+    padding: 0 2px;
+}
+
+.params .empty-line {
+    margin: 0;
+    color: var(--ui-faint);
+    font-size: var(--ui-size-sm);
+}
+
+/* A schema column: whether it is filled, its type, and for numbers the values to draw. */
+.column {
+    display: grid;
+
+    /* The range fields fit an INT's bounds (-2147483648) without clipping. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 120px 120px minmax(0, 1.2fr);
+    align-items: center;
+    gap: 4px 8px;
+    min-height: 32px;
+}
+
+.column .name {
+    font: var(--ui-size-mono) var(--ui-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.column .detail {
+    grid-column: span 3;
+}
+
+.column.off > :not(.check) {
+    opacity: 0.45;
+}
+
+/* Unified diff: whole-line tints, as the editor's diff view draws them. */
+.diff {
+    padding-inline: 0;
+}
+
+.diff > div {
+    width: max-content;
+    min-width: 100%;
+    padding: 0 var(--ui-pad);
+}
+
+.diff > .addition {
+    background: var(--ui-diff-add);
+}
+
+.diff > .deletion {
+    background: var(--ui-diff-del);
+}
+
+.diff > .hunk {
+    color: var(--ui-accent);
+}
+
+.diff > .file {
+    color: var(--ui-muted);
+}
+
+/* ---- Feedback ---- */
+
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    z-index: 30;
+    padding: 6px 12px;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: var(--ui-radius);
+    background: var(--ui-raised);
+    color: var(--ui-fg);
+    font-size: var(--ui-size-sm);
+    box-shadow: 0 6px 20px rgb(0 0 0 / 25%);
+    translate: -50% 0;
+    pointer-events: none;
+    animation: toast 1.8s ease-out forwards;
+}
+
+@keyframes toast {
+    0% {
+        opacity: 0;
+        translate: -50% 6px;
+    }
+
+    10%,
+    80% {
+        opacity: 1;
+        translate: -50% 0;
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
+/* A tab beside code is often half a window wide: stack the panes. */
+@media (width <= 720px) {
+    .split {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr 1fr;
+    }
+
+    .pane + .pane {
+        border-left: 0;
+        border-top: 1px solid var(--ui-border);
+    }
+
+    .tool-hint {
+        display: none;
+    }
+}
