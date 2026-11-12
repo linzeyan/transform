@@ -1,0 +1,143 @@
+/*
+ * Design tokens for the tool UI. Components read only --ui-* names, so the two
+ * skins are two sets of values:
+ *   - the website: transform's own dark palette, plus a light one that follows
+ *     the system setting;
+ *   - embed (<html class="embed">, a VSCode tab): every value comes from the
+ *     editor's theme, at the editor's density -- a tool tab should look like
+ *     the settings editor beside it, not like a web page dropped into it.
+ */
+
+:root {
+    --ui-font: -apple-system, blinkmacsystemfont, 'Segoe UI', roboto, 'Noto Sans TC', sans-serif;
+    --ui-mono: 'SF Mono', ui-monospace, menlo, consolas, 'Liberation Mono', monospace;
+    --ui-size: 14px;
+    --ui-size-sm: 12px;
+    --ui-size-mono: 13px;
+
+    /* One control height everywhere, so a select, a button and an input in one row line up. */
+    --ui-h: 32px;
+    --ui-radius: 8px;
+    --ui-radius-lg: 14px;
+    --ui-pad: 16px;
+    --ui-bg: #0c0e13;
+    --ui-surface: #12151c;
+    --ui-raised: #1a1e28;
+    --ui-sunken: #090b0f;
+    --ui-border: #232836;
+    --ui-border-strong: #343b4d;
+    --ui-fg: #e7e9ef;
+    --ui-muted: #8a93a6;
+    --ui-faint: #646c7f;
+    --ui-accent: #7aa2f7;
+    --ui-accent-soft: color-mix(in srgb, var(--ui-accent) 15%, transparent);
+    --ui-hover: color-mix(in srgb, var(--ui-fg) 7%, transparent);
+    --ui-focus: var(--ui-accent);
+    --ui-danger: #ff7b7b;
+    --ui-success: #7dcfb6;
+    --ui-input-bg: var(--ui-sunken);
+    --ui-input-border: var(--ui-border);
+    --ui-btn-bg: var(--ui-raised);
+    --ui-btn-fg: var(--ui-fg);
+    --ui-btn-border: var(--ui-border);
+    --ui-btn-hover: #222735;
+    --ui-primary-bg: var(--ui-accent);
+    --ui-primary-fg: #0c0e13;
+    --ui-primary-hover: #93b4fa;
+    --ui-seg-on-bg: var(--ui-raised);
+    --ui-seg-on-border: var(--ui-border-strong);
+    --ui-kbd-bg: color-mix(in srgb, var(--ui-fg) 8%, transparent);
+    --ui-kbd-border: var(--ui-border);
+    --ui-diff-add: color-mix(in srgb, var(--ui-success) 14%, transparent);
+    --ui-diff-del: color-mix(in srgb, var(--ui-danger) 14%, transparent);
+
+    color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+    :root:not(.embed) {
+        --ui-bg: #f6f7f9;
+        --ui-surface: #fff;
+        --ui-raised: #fff;
+        --ui-sunken: #fff;
+        --ui-border: #e2e5eb;
+        --ui-border-strong: #c9ced8;
+        --ui-fg: #1b2130;
+        --ui-muted: #5b6477;
+        --ui-faint: #858da0;
+        --ui-accent: #2f63d0;
+        --ui-hover: color-mix(in srgb, var(--ui-fg) 6%, transparent);
+        --ui-danger: #c9302c;
+        --ui-success: #1f8a5b;
+        --ui-btn-hover: #f0f2f5;
+        --ui-primary-fg: #fff;
+        --ui-primary-hover: #2554b5;
+
+        color-scheme: light;
+    }
+}
+
+/* stylelint-disable custom-property-pattern -- VSCode names its theme variables in camelCase. */
+:root.embed {
+    --ui-font: var(--vscode-font-family);
+    --ui-mono: var(--vscode-editor-font-family);
+    --ui-size: var(--vscode-font-size);
+    --ui-size-sm: 12px;
+    --ui-size-mono: var(--vscode-editor-font-size);
+
+    /* The editor's 26px controls; corners a little rounder than its 2px. */
+    --ui-h: 26px;
+    --ui-radius: 5px;
+    --ui-radius-lg: 8px;
+    --ui-pad: 14px;
+
+    /* Flat, like the settings editor: surfaces are the editor background, edges are lines. */
+    --ui-bg: var(--vscode-editor-background);
+    --ui-surface: var(--ui-bg);
+    --ui-raised: var(--vscode-editorWidget-background);
+    --ui-sunken: var(--vscode-input-background);
+
+    /* Only high contrast themes define contrastBorder. */
+    --ui-border: var(
+        --vscode-contrastBorder,
+        var(--vscode-widget-border, var(--vscode-panel-border))
+    );
+    --ui-border-strong: var(--vscode-contrastBorder, var(--vscode-input-border, var(--ui-border)));
+    --ui-fg: var(--vscode-foreground);
+    --ui-muted: var(--vscode-descriptionForeground);
+    --ui-faint: var(--vscode-disabledForeground);
+
+    /* textLink rather than focusBorder: the accent is also drawn as text. */
+    --ui-accent: var(--vscode-textLink-foreground);
+    --ui-hover: var(--vscode-toolbar-hoverBackground, transparent);
+    --ui-focus: var(--vscode-focusBorder);
+
+    /* Text colours VSCode itself draws that reach 4.5:1 on every built-in theme. */
+    --ui-danger: var(--vscode-editorError-foreground);
+    --ui-success: var(--vscode-gitDecoration-addedResourceForeground);
+    --ui-input-bg: var(--vscode-input-background);
+    --ui-input-border: var(--vscode-input-border, transparent);
+    --ui-btn-bg: var(--vscode-button-secondaryBackground, transparent);
+    --ui-btn-fg: var(--vscode-button-secondaryForeground, var(--ui-fg));
+    --ui-btn-border: var(--vscode-button-border, var(--ui-border));
+    --ui-btn-hover: var(--vscode-button-secondaryHoverBackground, var(--ui-hover));
+    --ui-primary-bg: var(--vscode-button-background);
+    --ui-primary-fg: var(--vscode-button-foreground);
+    --ui-primary-hover: var(--vscode-button-hoverBackground);
+
+    /* A pressed segment is drawn like the search box's regex toggle. */
+    --ui-seg-on-bg: var(--vscode-inputOption-activeBackground);
+    --ui-seg-on-border: var(--vscode-inputOption-activeBorder);
+    --ui-kbd-bg: var(--vscode-keybindingLabel-background);
+    --ui-kbd-border: var(--vscode-keybindingLabel-border);
+    --ui-diff-add: var(--vscode-diffEditor-insertedLineBackground);
+    --ui-diff-del: var(--vscode-diffEditor-removedLineBackground);
+}
+
+/*
+ * Native controls (radios, scrollbars) follow color-scheme, which the webview
+ * leaves light. VSCode names the theme kind on <body>.
+ */
+:root.embed:has(body.vscode-light, body.vscode-high-contrast-light) {
+    color-scheme: light;
+}

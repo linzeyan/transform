@@ -1,0 +1,146 @@
+/*
+ * The website's frame around a tool: a searchable list of every tool. Inside a
+ * VSCode tab the editor's tree is the list, so embed drops the frame entirely.
+ */
+
+.app {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    height: 100vh;
+}
+
+:root.embed .app {
+    grid-template-columns: 1fr;
+}
+
+:root.embed .nav {
+    display: none;
+}
+
+.nav {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-right: 1px solid var(--ui-border);
+    background: var(--ui-bg);
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 16px 12px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+}
+
+.brand-mark {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: var(--ui-accent);
+    color: var(--ui-primary-fg);
+    font: 600 13px / 1 var(--ui-mono);
+}
+
+.nav-search {
+    position: relative;
+    margin: 0 12px 8px;
+}
+
+.nav-search .input {
+    width: 100%;
+    padding-left: 30px;
+}
+
+.nav-search > .i {
+    position: absolute;
+    left: 9px;
+    top: 50%;
+    translate: 0 -50%;
+    color: var(--ui-faint);
+}
+
+.nav-search kbd {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    translate: 0 -50%;
+    color: var(--ui-faint);
+}
+
+.nav-list {
+    flex: 1;
+    overflow: auto;
+    padding: 0 8px 16px;
+}
+
+.nav-list .group-title {
+    padding: 14px 8px 4px;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 30px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: var(--ui-radius);
+    background: transparent;
+    color: var(--ui-muted);
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.nav-item:hover {
+    background: var(--ui-hover);
+    color: var(--ui-fg);
+}
+
+.nav-item[aria-current='page'] {
+    background: var(--ui-accent-soft);
+    color: var(--ui-fg);
+    font-weight: 500;
+}
+
+.nav-toggle {
+    display: none;
+    align-self: center;
+}
+
+/* A phone has no room for the list beside the tool: it opens over it instead. */
+@media (width <= 720px) {
+    .app {
+        grid-template-columns: 1fr;
+    }
+
+    .nav {
+        display: none;
+    }
+
+    :root:not(.embed) .nav-toggle {
+        display: inline-grid;
+    }
+
+    .app.nav-open .nav {
+        display: flex;
+        position: fixed;
+        inset: 0 auto 0 0;
+        z-index: 20;
+        width: min(280px, 85vw);
+        box-shadow: 0 0 24px rgb(0 0 0 / 35%);
+    }
+
+    .app.nav-open::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        z-index: 19;
+        background: rgb(0 0 0 / 35%);
+    }
+}
