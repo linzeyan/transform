@@ -46,11 +46,13 @@ use wasm_bindgen::prelude::*;
 mod ascii;
 mod cert;
 mod convert;
+mod cron;
 mod diff;
 mod images;
 mod timestamp;
 
 pub use crate::ascii::{generate_ascii_art, list_ascii_fonts};
+pub use crate::cron::{cron_runs, read_cron};
 pub use crate::timestamp::{format_timestamp, read_timestamp, timestamp_formats};
 
 /// Wasm entry point that installs a panic hook so Rust panics appear in the browser console.

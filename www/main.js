@@ -67,6 +67,8 @@ import initWasm, {
     read_timestamp,
     format_timestamp,
     timestamp_formats,
+    read_cron,
+    cron_runs,
     totp_token,
     bcrypt_hash,
     bcrypt_verify,
@@ -587,6 +589,12 @@ const toolGroups = [
                 description: 'The current one-time password for a secret',
             },
             {
+                id: 'generator-cron',
+                label: 'Cron',
+                description:
+                    'Crontab schedules in words with their next runs, or built field by field',
+            },
+            {
                 id: 'generator-sql',
                 label: 'SQL Inserts',
                 description: 'Sample rows for a MySQL table, JSON or JSON Schema',
@@ -633,6 +641,7 @@ const workspaceByTool = {
     'generator-qr': 'qrWorkspace',
     'generator-qr-parse': 'qrParseWorkspace',
     'generator-totp': 'totpWorkspace',
+    'generator-cron': 'cronWorkspace',
     'generator-sql': 'dataWorkspace',
     'generator-ssh': 'sshWorkspace',
     'fingerprint-browser': 'fingerprintWorkspace',
@@ -655,6 +664,7 @@ const userAgentToolSet = new Set(['generator-useragent']);
 const randomToolSet = new Set(['generator-random']);
 const asciiToolSet = new Set(['generator-ascii']);
 const totpToolSet = new Set(['generator-totp']);
+const cronToolSet = new Set(['generator-cron']);
 const qrToolSet = new Set(['generator-qr', 'generator-qr-parse']);
 const dataToolSet = new Set(['generator-sql']);
 const sshToolSet = new Set(['generator-ssh']);
@@ -681,6 +691,7 @@ const implementedTools = new Set([
     'generator-qr',
     'generator-qr-parse',
     'generator-totp',
+    'generator-cron',
     'generator-sql',
     'generator-ssh',
     'fingerprint-browser',
@@ -717,6 +728,7 @@ const workspaceIds = [
     'qrWorkspace',
     'qrParseWorkspace',
     'totpWorkspace',
+    'cronWorkspace',
     'dataWorkspace',
     'sshWorkspace',
     'fingerprintWorkspace',
@@ -792,6 +804,8 @@ const state = {
     // Ticks while the input is relative to now ("now - 3d").
     timestampTimer: null,
     totpTimer: null,
+    // The last reading, and the timer that keeps "next runs" from going stale.
+    cron: { reading: null, timer: null },
     diffTimer: null,
     dataOverrides: {},
     dataTables: [],
@@ -940,6 +954,7 @@ const embedFields = {
     'coder-hash': () => coderTextFields(),
     'converter-ipv4': () => ({ input: 'ipv4Input' }),
     'converter-timestamp': () => ({ input: 'timestampInput' }),
+    'generator-cron': () => ({ input: 'cronInput' }),
     // Drawn at once rather than after the typing pause, so Replace takes the new art.
     'generator-ascii': () => ({
         input: 'asciiInput',
@@ -1043,6 +1058,7 @@ async function boot() {
     cacheElements();
     initTabularControls();
     initTimestampControls();
+    fillZoneSelect(elements.cronZone);
     renderSymbolButtons();
     initCoderControls();
     renderSidebar();
@@ -1373,6 +1389,17 @@ function cacheElements() {
     elements.timestampUtc = document.getElementById('timestampUtc');
     elements.timestampLocal = document.getElementById('timestampLocal');
     elements.timestampZoneLabel = document.getElementById('timestampZoneLabel');
+    elements.cronInput = document.getElementById('cronInput');
+    elements.cronSeconds = document.getElementById('cronSeconds');
+    elements.cronZone = document.getElementById('cronZone');
+    elements.cronAlias = document.getElementById('cronAlias');
+    elements.cronWords = document.getElementById('cronWords');
+    elements.cronFields = document.getElementById('cronFields');
+    elements.cronSchedule = document.getElementById('cronSchedule');
+    elements.cronRuns = document.getElementById('cronRuns');
+    elements.cronZoneLabel = document.getElementById('cronZoneLabel');
+    elements.cronBuild = document.getElementById('cronBuild');
+    elements.cronExamples = document.getElementById('cronExamples');
     elements.hashEncoding = document.getElementById('hashEncoding');
     elements.hashControls = document.getElementById('hashControls');
     elements.hashUseHmac = document.getElementById('hashUseHmac');
@@ -1832,6 +1859,21 @@ function bindUI() {
     elements.timestampAddFormat?.addEventListener('click', addTimestampFormat);
     elements.timestampCustom?.addEventListener('input', handleTimestampFormatEdit);
     elements.timestampCustom?.addEventListener('click', handleTimestampFormatRemove);
+    elements.cronInput?.addEventListener('input', () => runCron());
+    ['keyup', 'click', 'focus', 'blur'].forEach((type) =>
+        elements.cronInput?.addEventListener(type, highlightCronField)
+    );
+    elements.cronSeconds?.addEventListener('change', toggleCronSeconds);
+    elements.cronZone?.addEventListener('change', renderCronRuns);
+    elements.cronBuild?.addEventListener('click', handleCronBuildClick);
+    elements.cronBuild?.addEventListener('input', handleCronBuildInput);
+    elements.cronExamples?.addEventListener('click', (event) => {
+        const row = event.target.closest('[data-cron]');
+        if (!row) return;
+        elements.cronInput.value = row.dataset.cron;
+        runCron();
+        elements.cronInput.focus();
+    });
 
     // Diff tool event listeners
     // Diff is automatically generated on input via handleDiffInput
@@ -2149,6 +2191,7 @@ function selectTool(toolId) {
     if (previousTool === 'converter-timestamp' && toolId !== 'converter-timestamp') {
         stopTimestampTicker();
     }
+    if (isCronTool(previousTool) && !isCronTool(toolId)) stopCronTimer();
 
     elements.toolName && (elements.toolName.textContent = meta.label);
     elements.toolDesc && (elements.toolDesc.textContent = meta.description || '');
@@ -2564,6 +2607,10 @@ function isQrTool(toolId) {
 
 function isTotpTool(toolId) {
     return totpToolSet.has(toolId);
+}
+
+function isCronTool(toolId) {
+    return cronToolSet.has(toolId);
 }
 
 function isDataTool(toolId) {
@@ -3813,6 +3860,7 @@ function activateGeneratorTool(toolId) {
     else if (isAsciiTool(toolId)) activateAsciiTool();
     else if (isQrTool(toolId)) activateQrTool();
     else if (isTotpTool(toolId)) activateTotpTool();
+    else if (isCronTool(toolId)) activateCronTool();
     else if (isSshTool(toolId)) activateSshTool();
     else if (isDataTool(toolId)) activateDataTool();
     else if (isFingerprintTool(toolId)) activateFingerprintTool();
@@ -4943,17 +4991,23 @@ function saveSshKey(part) {
 
 function initTimestampControls() {
     if (!elements.timestampZone) return;
+    fillZoneSelect(elements.timestampZone);
+    elements.timestampZone.title = 'Zone for input that names none, and for the Local column';
+}
+
+// Local first (the empty value), then UTC, then every zone the browser knows.
+function fillZoneSelect(select) {
+    if (!select) return;
     const local = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     const zones =
         typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
-    elements.timestampZone.innerHTML = [
+    select.innerHTML = [
         `<option value="">Local · ${escapeHTML(local)}</option>`,
         '<option value="UTC">UTC</option>',
         ...zones
             .filter((zone) => zone !== 'UTC')
             .map((zone) => `<option>${escapeHTML(zone)}</option>`),
     ].join('');
-    elements.timestampZone.title = 'Zone for input that names none, and for the Local column';
 }
 
 function renderTimestampFormats() {
@@ -4977,9 +5031,11 @@ function renderTimestampFormats() {
 }
 
 function timestampZone() {
-    return (
-        elements.timestampZone?.value || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-    );
+    return zoneOf(elements.timestampZone);
+}
+
+function zoneOf(select) {
+    return select?.value || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 }
 
 // Seconds east of UTC that `zone` keeps at the instant `ms`.
@@ -5002,6 +5058,41 @@ function zoneOffsetAt(zone, ms) {
     wall.setUTCFullYear(year, part('month') - 1, part('day'));
     wall.setUTCHours(part('hour'), part('minute'), part('second'), 0);
     return Math.round((wall.getTime() - Math.floor(ms / 1000) * 1000) / 1000);
+}
+
+// The instant whose local time in `zone` is `wall` (ms, counted as if it were UTC).
+// Around a daylight-saving change the zone keeps one of the offsets it has a day
+// either side; a repeated hour fits both and, as in Temporal, the earlier instant
+// (the larger offset) wins. `shift` is the offset the wall time was converted with;
+// `later` is the repeated hour's second instant, for cron jobs that run in both.
+function placeWallTime(zone, wall) {
+    if (zone === 'UTC') return { ms: wall, offset: 0, shift: 0, skipped: false, later: null };
+    const day = 86_400_000;
+    const offsets = [zoneOffsetAt(zone, wall - day), zoneOffsetAt(zone, wall + day)];
+    const fits = offsets.filter((guess) => zoneOffsetAt(zone, wall - guess * 1000) === guess);
+    if (fits.length) {
+        const offset = Math.max(...fits);
+        const least = Math.min(...fits);
+        const later = least === offset ? null : wall - least * 1000;
+        return { ms: wall - offset * 1000, offset, shift: offset, skipped: false, later };
+    }
+    // A skipped hour (02:30 when clocks jump 02:00 → 03:00) has no instant; like
+    // Temporal, read it with the offset from before the jump, which lands as far past
+    // the jump as it was into it.
+    const shift = Math.min(...offsets);
+    const ms = wall - shift * 1000;
+    return { ms, offset: zoneOffsetAt(zone, ms), shift, skipped: true, later: null };
+}
+
+// The first instant in (lo, hi] that keeps hi's offset: where the clocks jumped.
+function zoneJump(zone, lo, hi) {
+    const after = zoneOffsetAt(zone, hi);
+    while (hi - lo > 1000) {
+        const mid = lo + Math.floor((hi - lo) / 2000) * 1000;
+        if (zoneOffsetAt(zone, mid) === after) hi = mid;
+        else lo = mid;
+    }
+    return hi;
 }
 
 function formatOffset(seconds) {
@@ -5128,33 +5219,8 @@ function runTimestamp() {
         let shift = 0;
         let skipped = false;
         if (zone !== 'UTC') {
-            if (reading.zoned) {
-                offset = zoneOffsetAt(zone, ms);
-            } else {
-                // Wall-clock input: find the instant whose local time it is. Around a
-                // daylight-saving change the zone keeps one of the offsets it has a day
-                // either side; a repeated hour fits both and, as in Temporal, the
-                // earlier instant (the larger offset) wins.
-                const wall = ms;
-                const day = 86_400_000;
-                const offsets = [zoneOffsetAt(zone, wall - day), zoneOffsetAt(zone, wall + day)];
-                const fits = offsets.filter(
-                    (guess) => zoneOffsetAt(zone, wall - guess * 1000) === guess
-                );
-                offset = fits.length ? Math.max(...fits) : undefined;
-                if (offset === undefined) {
-                    // A skipped hour (02:30 when clocks jump 02:00 → 03:00) has no
-                    // instant; like Temporal, read it with the offset from before
-                    // the jump, which lands as far past the jump as it was into it.
-                    skipped = true;
-                    shift = Math.min(...offsets);
-                    ms = wall - shift * 1000;
-                    offset = zoneOffsetAt(zone, ms);
-                } else {
-                    shift = offset;
-                    ms = wall - offset * 1000;
-                }
-            }
+            if (reading.zoned) offset = zoneOffsetAt(zone, ms);
+            else ({ ms, offset, shift, skipped } = placeWallTime(zone, ms));
         }
         const seconds = reading.zoned
             ? reading.seconds
@@ -5277,6 +5343,388 @@ function handleTimestampFormatRemove(event) {
 function activateTimestampTool() {
     runTimestamp();
     elements.timestampInput?.focus();
+}
+
+// Cron: wasm reads the expression and finds its runs as wall-clock times; the page
+// places them in the chosen zone through Intl, as Timestamp does.
+const cronRunCount = 10;
+const cronExamples = [
+    '*/5 * * * *',
+    '0 * * * *',
+    '0 */6 * * *',
+    '0 0 * * *',
+    '30 8 * * 1-5',
+    '0 18 * * 5',
+    '0 0 * * 0',
+    '0 0 1 * *',
+    '0 0 L * *',
+    '0 9 * * 1#1',
+    '0 0 1 */3 *',
+    '@yearly',
+    '@reboot',
+];
+const cronModes = [
+    ['every', 'Every'],
+    ['step', 'Every n'],
+    ['values', 'At'],
+    ['range', 'Between'],
+];
+const cronUnits = {
+    Second: 'second',
+    Minute: 'minute',
+    Hour: 'hour',
+    Day: 'day',
+    Month: 'month',
+    Weekday: 'day',
+};
+// What a field switched to "Every n" or "Between" starts at when its current value
+// gives nothing better: the steps people pick most, office hours, Monday to Friday.
+const cronStepSeeds = { Second: 10, Minute: 15, Hour: 2, Day: 2, Month: 3, Weekday: 2 };
+const cronRangeSeeds = { Hour: [9, 17], Weekday: [1, 5] };
+const cronMonthNames = 'JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC'.split(' ');
+const cronWeekdayNames = 'SUN MON TUE WED THU FRI SAT'.split(' ');
+const cronWeekdayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function activateCronTool() {
+    if (!state.wasmReady) return;
+    renderCronExamples();
+    runCron();
+    stopCronTimer();
+    // The list counts from now: keep its first row from slipping into the past.
+    state.cron.timer = setInterval(renderCronRuns, 30_000);
+    elements.cronInput?.focus();
+}
+
+function stopCronTimer() {
+    clearInterval(state.cron.timer);
+    state.cron.timer = null;
+}
+
+// `fromBuild`: the builder wrote the expression, so its rows already say what it is
+// and are left alone (redrawing them would take focus from the control in use).
+function runCron(fromBuild = false) {
+    if (!isCronTool(state.currentTool) || !state.wasmReady) return;
+    let reading;
+    try {
+        reading = read_cron(elements.cronInput.value);
+    } catch (err) {
+        state.cron.reading = null;
+        elements.cronAlias.hidden = true;
+        elements.cronWords.textContent = `${err?.message || err}`;
+        elements.cronWords.classList.add('error');
+        elements.cronFields.replaceChildren();
+        // Runs and builder rows of some earlier expression would read as this one's.
+        elements.cronSchedule.hidden = true;
+        return;
+    }
+    state.cron.reading = reading;
+    elements.cronSchedule.hidden = false;
+    elements.cronAlias.hidden = !reading.alias;
+    elements.cronAlias.textContent = reading.alias || '';
+    elements.cronWords.textContent = reading.error || reading.words;
+    elements.cronWords.classList.toggle('error', Boolean(reading.error));
+    elements.cronSeconds.checked = reading.fields.length === 6;
+    elements.cronSeconds.disabled = !reading.fields.length;
+    elements.cronFields.innerHTML = reading.fields
+        .map(
+            (field, index) =>
+                `<li data-index="${index}"${field.error ? ' class="error"' : ''} title="${escapeAttr(`${field.name}: ${field.allowed}`)}"><code>${escapeHTML(field.text)}</code><span class="name">${escapeHTML(field.name)}</span><span class="words">${escapeHTML(field.error || field.words)}</span></li>`
+        )
+        .join('');
+    if (!fromBuild) renderCronBuild(reading);
+    renderCronRuns();
+    highlightCronField();
+}
+
+function cronNone(message) {
+    return `<li class="none"><span class="v">${escapeHTML(message)}</span></li>`;
+}
+
+function renderCronRuns() {
+    const reading = state.cron.reading;
+    const list = elements.cronRuns;
+    if (!list || !reading) return;
+    const zone = zoneOf(elements.cronZone);
+    const now = Date.now();
+    const nowOffset = zoneOffsetAt(zone, now);
+    elements.cronZoneLabel.textContent = `${zone} · ${formatOffset(nowOffset)}`;
+    if (reading.error) {
+        list.innerHTML = cronNone('Fix the expression to see when it runs.');
+        return;
+    }
+    if (!reading.fields.length) {
+        list.innerHTML = cronNone('Only when cron starts, not on a schedule.');
+        return;
+    }
+    let runs;
+    try {
+        runs = cronInstants(reading, zone, Math.floor(now / 1000) + nowOffset);
+    } catch (err) {
+        list.innerHTML = cronNone(`${err?.message || err}`);
+        return;
+    }
+    if (!runs.length) {
+        list.innerHTML = cronNone('Never: no date has every field.');
+        return;
+    }
+    const seconds = reading.fields.length === 6;
+    const two = (n) => String(n).padStart(2, '0');
+    const clockOf = (at) =>
+        `${two(at.getUTCHours())}:${two(at.getUTCMinutes())}${seconds ? `:${two(at.getUTCSeconds())}` : ''}`;
+    list.innerHTML = runs
+        .map(({ wall, ms, offset, kind }) => {
+            // The time on the clock when it runs, which a skipped wall time is not.
+            const at = new Date(ms + offset * 1000);
+            const date = at.toISOString().slice(0, 10);
+            const shown = `${cronWeekdayShort[at.getUTCDay()]} ${date} ${clockOf(at)}`;
+            const abs = Math.abs(offset);
+            const zoneText = offset
+                ? `${offset < 0 ? '-' : '+'}${two(Math.floor(abs / 3600))}:${two(Math.floor((abs % 3600) / 60))}`
+                : 'Z';
+            const note =
+                kind === 'jumped'
+                    ? `due ${clockOf(new Date(wall * 1000))}, which the clocks skip: cron runs it right after the jump`
+                    : kind === 'again'
+                      ? 'again: the clocks go back and repeat this hour'
+                      : '';
+            return `<li><span class="k">${escapeHTML(relativeWords(ms))}</span><span class="v">${escapeHTML(shown)}${note ? `<span class="more">${escapeHTML(note)}</span>` : ''}</span><button class="icon-btn" type="button" title="Copy as ISO 8601" data-copy-text="${escapeAttr(at.toISOString().slice(0, 19) + zoneText)}"><svg class="i"><use href="#i-copy" /></svg></button></li>`;
+        })
+        .join('');
+}
+
+// The next runs as instants, the way cronie and Vixie cron treat daylight saving: in a
+// repeated hour, jobs whose minute or hour starts with * run in both passes and the
+// others once; in a skipped hour the * jobs don't run, the others run as the clocks
+// jump. Dropped runs mean asking wasm for more wall times until the list is settled.
+function cronInstants(reading, zone, fromWall) {
+    const runs = [];
+    let after = fromWall;
+    for (let round = 0; round < 40; round += 1) {
+        const walls = Array.from(cron_runs(reading.expression, after, 200));
+        let last = -Infinity;
+        for (const wall of walls) {
+            const placed = placeWallTime(zone, wall * 1000);
+            if (placed.skipped) {
+                if (reading.wildcard) continue;
+                const ms = zoneJump(zone, wall * 1000 - placed.offset * 1000, placed.ms);
+                runs.push({ wall, ms, offset: placed.offset, kind: 'jumped' });
+                last = ms;
+                continue;
+            }
+            runs.push({ wall, ms: placed.ms, offset: placed.offset, kind: '' });
+            last = placed.ms;
+            if (placed.later !== null && reading.wildcard) {
+                const offset = (wall * 1000 - placed.later) / 1000;
+                runs.push({ wall, ms: placed.later, offset, kind: 'again' });
+            }
+        }
+        runs.sort((a, b) => a.ms - b.ms);
+        // Later wall times never land before the last one: once the tenth run is no later,
+        // nothing still to come can push into the list.
+        if (
+            walls.length < 200 ||
+            (runs.length >= cronRunCount && runs[cronRunCount - 1].ms <= last)
+        )
+            break;
+        after = walls.at(-1);
+    }
+    return runs.slice(0, cronRunCount);
+}
+
+function renderCronExamples() {
+    if (!elements.cronExamples || elements.cronExamples.childElementCount) return;
+    elements.cronExamples.innerHTML = cronExamples
+        .map((expression) => {
+            const { words } = read_cron(expression);
+            return `<li data-cron="${escapeAttr(expression)}"><span class="k">${escapeHTML(expression)}</span><span class="v">${escapeHTML(words)}</span><button class="icon-btn" type="button" title="Use this schedule"><svg class="i"><use href="#i-arrow" /></svg></button></li>`;
+        })
+        .join('');
+}
+
+// The field the caret is in, lit in the legend and in the builder.
+function highlightCronField() {
+    const input = elements.cronInput;
+    let index = -1;
+    if (document.activeElement === input && !state.cron.reading?.alias) {
+        const before = input.value.slice(0, input.selectionStart ?? input.value.length).trimStart();
+        index = before ? before.split(/\s+/).length - 1 : 0;
+    }
+    [elements.cronFields, elements.cronBuild].forEach((list) =>
+        [...(list?.children || [])].forEach((li) =>
+            li.classList.toggle('on', Number(li.dataset.index) === index)
+        )
+    );
+}
+
+function toggleCronSeconds() {
+    const parts = (state.cron.reading?.expression || elements.cronInput.value.trim()).split(/\s+/);
+    if (elements.cronSeconds.checked && parts.length === 5) parts.unshift('0');
+    else if (!elements.cronSeconds.checked && parts.length === 6) parts.shift();
+    elements.cronInput.value = parts.join(' ');
+    runCron();
+}
+
+function renderCronBuild(reading) {
+    elements.cronBuild.innerHTML = reading.fields.length
+        ? reading.fields.map((field, index) => cronBuildRow(field, index)).join('')
+        : cronNone('@reboot has no fields: pick a common schedule below, or type one.');
+}
+
+function cronFormMode(field) {
+    return (
+        { every: 'every', step: 'step', range: 'range', values: 'values' }[field.form.kind] ||
+        'other'
+    );
+}
+
+// Where a row starts when it is switched to another mode, from what the field matches now.
+function cronSeed(field) {
+    const { min, max, form, name } = field;
+    const values = field.values.length ? field.values : [];
+    const full = values.length === max - min + 1;
+    const step =
+        form.kind === 'step' || (form.kind === 'range' && form.step > 1) ? form.step : null;
+    if (form.kind === 'range') return { step, from: form.from, to: form.to, values };
+    if (!values.length || full) {
+        const [from, to] = cronRangeSeeds[name] || [min, max];
+        return { step, from, to, values: [name === 'Weekday' ? 1 : min] };
+    }
+    return { step, from: values[0], to: values.length > 1 ? values.at(-1) : max, values };
+}
+
+function cronValueLabel(name, value) {
+    if (name === 'Month') return cronMonthNames[value - 1];
+    if (name === 'Weekday') return cronWeekdayNames[value];
+    return String(value);
+}
+
+function cronBuildRow(field, index, mode = cronFormMode(field)) {
+    const seed = cronSeed(field);
+    const { min, max, name } = field;
+    const unit = cronUnits[name];
+    const all = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+    const options = (selected) =>
+        all
+            .map(
+                (v) =>
+                    `<option value="${v}"${v === selected ? ' selected' : ''}>${cronValueLabel(name, v)}</option>`
+            )
+            .join('');
+    const number = (value, label) =>
+        `<input class="input mono num" type="number" data-part="step" min="1" max="${max - min + 1}" value="${value}" aria-label="${label}" />`;
+    let detail;
+    if (mode === 'every') {
+        detail = `<span class="meta">every ${unit}</span>`;
+    } else if (mode === 'step') {
+        detail = `<span class="cron-detail">every ${number(seed.step ?? cronStepSeeds[name], 'Step')} ${unit}s</span>`;
+    } else if (mode === 'range') {
+        detail = `<span class="cron-detail"><select data-part="from" aria-label="From">${options(seed.from)}</select>through<select data-part="to" aria-label="Through">${options(seed.to)}</select>step ${number(seed.step ?? 1, 'Step')}</span>`;
+    } else if (mode === 'values') {
+        detail = `<div class="toggles cron-values">${all
+            .map(
+                (v) =>
+                    `<button type="button" data-value="${v}" aria-pressed="${seed.values.includes(v)}">${cronValueLabel(name, v)}</button>`
+            )
+            .join('')}</div>`;
+    } else {
+        detail = field.error
+            ? `<span class="meta error">${escapeHTML(field.error)}</span>`
+            : `<span class="meta">${escapeHTML(field.text)} is written by hand: edit it above, or pick a mode</span>`;
+    }
+    const seg = cronModes
+        .map(
+            ([value, label]) =>
+                `<button type="button" data-mode="${value}" aria-pressed="${value === mode}">${label}</button>`
+        )
+        .join('');
+    return `<li data-index="${index}" data-mode="${mode}" data-text="${escapeAttr(field.text)}"><span class="k">${escapeHTML(name)}<small>${escapeHTML(field.allowed)}</small></span><div class="cron-edit"><div class="seg" role="group" aria-label="${escapeAttr(name)}">${seg}</div>${detail}</div></li>`;
+}
+
+// 1,2,3,4,5,10 → "1-5,10": runs of three or more become a range.
+function compressCronValues(values) {
+    const sorted = [...new Set(values)].sort((a, b) => a - b);
+    const parts = [];
+    for (let i = 0; i < sorted.length;) {
+        let j = i;
+        while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j += 1;
+        if (j - i >= 2) parts.push(`${sorted[i]}-${sorted[j]}`);
+        else for (let k = i; k <= j; k += 1) parts.push(String(sorted[k]));
+        i = j + 1;
+    }
+    return parts.join(',');
+}
+
+function cronRowText(li) {
+    const field = state.cron.reading?.fields[Number(li.dataset.index)];
+    const span = field ? field.max - field.min + 1 : 60;
+    const part = (name) => li.querySelector(`[data-part="${name}"]`);
+    const step = () => Math.min(Math.max(1, Math.trunc(Number(part('step')?.value)) || 1), span);
+    switch (li.dataset.mode) {
+        case 'every':
+            return '*';
+        case 'step':
+            return step() > 1 ? `*/${step()}` : '*';
+        case 'range': {
+            const from = Number(part('from').value);
+            const to = Number(part('to').value);
+            if (from === to) return String(from);
+            return step() > 1 ? `${from}-${to}/${step()}` : `${from}-${to}`;
+        }
+        case 'values':
+            return compressCronValues(
+                [...li.querySelectorAll('[data-value][aria-pressed="true"]')].map((b) =>
+                    Number(b.dataset.value)
+                )
+            );
+        default:
+            return li.dataset.text;
+    }
+}
+
+function writeCronFromBuild() {
+    elements.cronInput.value = [...elements.cronBuild.querySelectorAll('li[data-index]')]
+        .map(cronRowText)
+        .join(' ');
+    runCron(true);
+}
+
+function handleCronBuildClick(event) {
+    const li = event.target.closest('li[data-index]');
+    if (!li) return;
+    // The row carries data-mode too: only the segment's buttons switch it.
+    const modeButton = event.target.closest('button[data-mode]');
+    if (modeButton) {
+        const mode = modeButton.dataset.mode;
+        const field = state.cron.reading?.fields[Number(li.dataset.index)];
+        if (mode === li.dataset.mode || !field) return;
+        li.insertAdjacentHTML('afterend', cronBuildRow(field, Number(li.dataset.index), mode));
+        const row = li.nextElementSibling;
+        li.remove();
+        writeCronFromBuild();
+        row.querySelector(`[data-mode="${mode}"]`)?.focus();
+        return;
+    }
+    const toggle = event.target.closest('[data-value]');
+    if (toggle) {
+        const on = toggle.getAttribute('aria-pressed') === 'true';
+        // The last value can't go: a field with none would match nothing.
+        if (on && li.querySelectorAll('[data-value][aria-pressed="true"]').length === 1) return;
+        toggle.setAttribute('aria-pressed', String(!on));
+        writeCronFromBuild();
+    }
+}
+
+// Selects fire input too. A range that would run backwards drags its other end along.
+function handleCronBuildInput(event) {
+    const li = event.target.closest('li[data-index]');
+    if (!li) return;
+    const from = li.querySelector('[data-part="from"]');
+    const to = li.querySelector('[data-part="to"]');
+    if (from && to && Number(from.value) > Number(to.value)) {
+        if (event.target === from) to.value = from.value;
+        else from.value = to.value;
+    }
+    writeCronFromBuild();
 }
 
 // TOTP: the code ticks while the tool is open; the bar under it is the time left.

@@ -10,14 +10,14 @@ use wasm_bindgen_test::*;
 
 use wasm_core::{
     apply_image_watermark, argon2_hash, argon2_verify, bcrypt_hash, bcrypt_verify,
-    convert_image_format, convert_number_base, convert_tabular_format, convert_units,
+    convert_image_format, convert_number_base, convert_tabular_format, convert_units, cron_runs,
     decode_content, decode_content_bytes, decrypt_bytes, encode_content, encode_content_bytes,
     encrypt_bytes, format_timestamp, generate_ascii_art, generate_insert_statements,
     generate_qr_code, generate_text_diff, generate_unified_text_diff, generate_user_agents,
     generate_uuids, hash_content, hash_content_bytes, html_to_markdown_text, inspect_certificates,
     ipv4_info, jwt_decode, jwt_encode, list_ascii_fonts, markdown_to_html_text,
-    random_number_sequences, random_numeric_range_sequences, read_timestamp, timestamp_formats,
-    totp_token, transform_format, url_decode, url_encode,
+    random_number_sequences, random_numeric_range_sequences, read_cron, read_timestamp,
+    timestamp_formats, totp_token, transform_format, url_decode, url_encode,
 };
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -654,6 +654,21 @@ fn timestamp_menu_lists_the_formats_it_reads() {
             "{id} should reject nonsense"
         );
     }
+}
+
+#[wasm_bindgen_test]
+fn cron_reads_a_schedule_and_lists_its_runs() {
+    let reading = js_to_json(read_cron("23 0-20/2 * * *").expect("read"));
+    assert_eq!(
+        field(&reading, "words"),
+        "At minute 23 past every 2nd hour from 0 through 20."
+    );
+    assert_eq!(reading["fields"][1]["form"]["kind"], "range");
+    let bad = js_to_json(read_cron("61 * * * *").expect("a field error is a reading"));
+    assert_eq!(field(&bad, "error"), "Minute: 61 is outside 0–59");
+    // Wall-clock seconds in, wall-clock seconds out: Friday 2026-01-02 03:04:05.
+    let runs = cron_runs("0 9 * * 1-5", 1767323045.0, 3).expect("runs");
+    assert_eq!(runs, vec![1767344400.0, 1767603600.0, 1767690000.0]);
 }
 
 #[wasm_bindgen_test]

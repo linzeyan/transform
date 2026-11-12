@@ -1972,6 +1972,114 @@
                     </div>
                 </div>
 
+                <!-- Cron: one expression read field by field, when it runs next, and a
+                     builder that writes it one field at a time. -->
+                <div id="cronWorkspace" class="tool-body" hidden>
+                    <div class="bar">
+                        <label class="field grow">
+                            <input
+                                id="cronInput"
+                                class="input mono large"
+                                aria-label="Cron expression"
+                                value="*/15 9-17 * * 1-5"
+                                placeholder="*/15 9-17 * * 1-5, 0 0 1 * *, @daily…"
+                                spellcheck="false"
+                                autocomplete="off"
+                            />
+                        </label>
+                        <label class="check" title="A sixth field in front, for seconds"
+                            ><input type="checkbox" id="cronSeconds" />Seconds</label
+                        >
+                        <select id="cronZone" aria-label="Time zone the schedule runs in"></select>
+                    </div>
+                    <div class="readout">
+                        <span class="chip" id="cronAlias" hidden></span>
+                        <span id="cronWords"></span>
+                        <ol class="cron-fields" id="cronFields"></ol>
+                    </div>
+                    <div class="sheet">
+                        <div class="groups" id="cronSchedule">
+                            <section>
+                                <h2 class="group-title">
+                                    Next runs <span class="meta" id="cronZoneLabel"></span>
+                                </h2>
+                                <ul class="kv" id="cronRuns"></ul>
+                            </section>
+                            <section>
+                                <h2 class="group-title">
+                                    Build <span class="meta">each field writes its part above</span>
+                                </h2>
+                                <ul class="kv cron-build" id="cronBuild"></ul>
+                            </section>
+                        </div>
+                        <div class="groups">
+                            <section>
+                                <h2 class="group-title">Common schedules</h2>
+                                <ul class="kv cron-ref" id="cronExamples"></ul>
+                            </section>
+                            <section>
+                                <h2 class="group-title">Syntax</h2>
+                                <ul class="kv cron-ref">
+                                    <li>
+                                        <span class="k">*</span><span class="v">any value</span>
+                                    </li>
+                                    <li>
+                                        <span class="k">, - /</span
+                                        ><span class="v"
+                                            >a list <code>1,15</code>, a range <code>1-5</code>, a
+                                            step <code>*/15</code> or <code>0-30/10</code></span
+                                        >
+                                    </li>
+                                    <li>
+                                        <span class="k">L</span
+                                        ><span class="v"
+                                            >the last day of the month; in the weekday field
+                                            <code>5L</code> is the last Friday</span
+                                        >
+                                    </li>
+                                    <li>
+                                        <span class="k">W</span
+                                        ><span class="v"
+                                            ><code>15W</code> is the weekday nearest the 15th</span
+                                        >
+                                    </li>
+                                    <li>
+                                        <span class="k">#</span
+                                        ><span class="v"
+                                            ><code>1#2</code> is the second Monday of the
+                                            month</span
+                                        >
+                                    </li>
+                                    <li>
+                                        <span class="k">JAN SUN</span
+                                        ><span class="v"
+                                            >names for months and weekdays; 0 and 7 are both Sunday;
+                                            <code>?</code> is <code>*</code></span
+                                        >
+                                    </li>
+                                    <li>
+                                        <span class="k">day + weekday</span
+                                        ><span class="v"
+                                            >both set: either day runs. One starts with
+                                            <code>*</code>: both must match, as in Vixie cron and
+                                            cronie. <code>+</code> before the weekday always asks
+                                            for both.</span
+                                        >
+                                    </li>
+                                    <li>
+                                        <span class="k">@</span
+                                        ><span class="v"
+                                            ><code>@yearly</code> <code>@monthly</code>
+                                            <code>@weekly</code> <code>@daily</code>
+                                            <code>@hourly</code> <code>@reboot</code></span
+                                        >
+                                    </li>
+                                </ul>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- SQL Inserts: sample rows for a schema, its columns adjustable one by one. -->
                 <div id="dataWorkspace" class="tool-body" hidden>
                     <div class="bar">

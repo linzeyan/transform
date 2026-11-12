@@ -7,6 +7,7 @@ A lightweight Rust/WebAssembly rewrite of the original `transform-go` toolbox. I
 - Base encoders/decoders + hash digests
 - URL & JWT encode/decode helpers
 - Number-base converter, IPv4 calculator
+- Cron expressions in words, field by field, with their next runs in any zone, and a builder that writes them
 - JSON ⇄ YAML/TOML/XML/JSON Schema/Go Struct conversions
 - Markdown ⇄ HTML pair tool driven by the wasm module
 

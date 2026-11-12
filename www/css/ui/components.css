@@ -551,7 +551,8 @@ kbd {
     width: 150px;
 }
 
-#timestampZone {
+#timestampZone,
+#cronZone {
     width: 210px;
 }
 
@@ -1096,6 +1097,153 @@ kbd {
 
 .diff > .file {
     color: var(--ui-muted);
+}
+
+/* ---- Cron ---- */
+
+/* The sentence is the answer; the legend under it is the working. */
+#cronWords {
+    color: var(--ui-fg);
+    font-size: var(--ui-size);
+    font-weight: 500;
+}
+
+#cronWords.error {
+    color: var(--ui-danger);
+}
+
+/* One cell per field under the expression: its text, its name, what it alone means. */
+.cron-fields {
+    flex-basis: 100%;
+    display: grid;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    gap: 12px;
+    margin: 2px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.cron-fields > li {
+    display: grid;
+    align-content: start;
+    gap: 2px;
+    min-width: 0;
+    padding-top: 6px;
+    border-top: 2px solid var(--ui-border);
+}
+
+.cron-fields code {
+    color: var(--ui-fg);
+    font: var(--ui-size-mono) var(--ui-mono);
+    overflow-wrap: anywhere;
+}
+
+.cron-fields .name {
+    color: var(--ui-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.cron-fields .words {
+    color: var(--ui-faint);
+}
+
+/* The field the caret is in. */
+.cron-fields > li.on {
+    border-top-color: var(--ui-accent);
+}
+
+.cron-fields > li.error {
+    border-top-color: var(--ui-danger);
+}
+
+.cron-fields > li.error .words,
+.cron-build .error {
+    color: var(--ui-danger);
+    white-space: normal;
+}
+
+/* Builder rows hold controls, not a value to copy: no row hover, no copy column. */
+.kv.cron-build > li {
+    grid-template-columns: 128px 1fr;
+    align-items: start;
+    padding-block: 6px;
+}
+
+.kv.cron-build > li:hover {
+    background: none;
+}
+
+.kv.cron-build .k {
+    padding-top: 6px;
+}
+
+.kv.cron-build > li.on .k {
+    color: var(--ui-fg);
+}
+
+.cron-edit {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+}
+
+.cron-detail {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    color: var(--ui-muted);
+    font-size: var(--ui-size-sm);
+}
+
+/* Month and weekday names are three letters: wider than the digits' 30px. */
+.cron-values > button {
+    width: auto;
+    min-width: 30px;
+    padding: 0 4px;
+}
+
+/* Reference rows: the token in mono, the meaning in text. */
+.cron-ref .k {
+    color: var(--ui-fg);
+    font: var(--ui-size-mono) var(--ui-mono);
+}
+
+.kv.cron-ref .v {
+    font-family: var(--ui-font);
+    user-select: text;
+}
+
+.cron-ref code {
+    font: var(--ui-size-mono) var(--ui-mono);
+}
+
+#cronExamples > li {
+    cursor: pointer;
+}
+
+/* A daylight-saving note is a sentence: under the time, not squeezing it onto two lines. */
+#cronRuns .v .more {
+    display: block;
+    margin-left: 0;
+    white-space: normal;
+}
+
+/* A list with nothing to list says why, in words. */
+.kv > li.none {
+    grid-template-columns: 1fr;
+}
+
+.kv > li.none .v {
+    color: var(--ui-muted);
+    font-family: var(--ui-font);
+    user-select: text;
 }
 
 /* ---- Feedback ---- */

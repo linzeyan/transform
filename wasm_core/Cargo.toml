@@ -66,6 +66,8 @@ csv = "1"
 # reference GFM renderer; htmd turns HTML back into Markdown, tables included.
 comrak = { version = "0.59", default-features = false }
 htmd = "0.5"
+# Cron run times (L, W, #, both day fields); the words and field checks are ours.
+croner = "4.0"
 
 # Each getrandom major needs its browser backend switched on by someone: 0.2 for
 # bcrypt and rand_core 0.6 (ssh-key, aes-gcm), which arrow2 used to do as a side
